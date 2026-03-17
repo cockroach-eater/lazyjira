@@ -101,7 +101,7 @@ func (p *ProjectList) Update(msg tea.Msg) (*ProjectList, tea.Cmd) {
 			if p.cursor > 0 {
 				p.cursor--
 			}
-		case "enter":
+		case "enter", " ":
 			if p.cursor >= 0 && p.cursor < len(p.projects) {
 				selected := p.projects[p.cursor]
 				return p, func() tea.Msg {
@@ -134,10 +134,22 @@ func (p *ProjectList) View() string {
 		if i >= innerHeight {
 			break
 		}
-		line := fmt.Sprintf(" %-10s %s", proj.Key, proj.Name)
-		if len(line) > contentWidth {
-			line = line[:contentWidth]
+		lead := ""
+		if proj.Lead != nil {
+			lead = " · " + proj.Lead.DisplayName
 		}
+		line := fmt.Sprintf(" %-8s %s", proj.Key, proj.Name)
+		// Truncate name+lead to fit.
+		maxName := contentWidth - 10 - len(lead)
+		if maxName < 5 {
+			lead = "" // drop lead if no space
+			maxName = contentWidth - 10
+		}
+		namePart := proj.Name
+		if len(namePart) > maxName {
+			namePart = namePart[:maxName-1] + "…"
+		}
+		line = fmt.Sprintf(" %-8s %s%s", proj.Key, namePart, lead)
 		if i == p.cursor {
 			rows = append(rows, p.theme.SelectedItem.Width(contentWidth).Render(line))
 		} else {
@@ -146,5 +158,9 @@ func (p *ProjectList) View() string {
 	}
 
 	content := strings.Join(rows, "\n")
-	return components.RenderPanel("[3] Projects", content, p.width, innerHeight, p.focused)
+	footer := ""
+	if len(p.projects) > 0 {
+		footer = fmt.Sprintf("%d of %d", p.cursor+1, len(p.projects))
+	}
+	return components.RenderPanelWithFooter("[3] Projects", footer, content, p.width, innerHeight, p.focused)
 }

@@ -8,9 +8,14 @@ import (
 	"github.com/cockroach-eater/lazyjira/pkg/tui/theme"
 )
 
-// RenderPanel draws a bordered panel with a title embedded in the top border.
-// Like lazygit: ─[2] Issues────────────────
+// RenderPanel draws a bordered panel with a title in the top border
+// and an optional footer in the bottom border (like lazygit's "1 of 25").
 func RenderPanel(title, content string, width, innerHeight int, focused bool) string {
+	return RenderPanelWithFooter(title, "", content, width, innerHeight, focused)
+}
+
+// RenderPanelWithFooter draws a panel with title (top border) and footer (bottom-right border).
+func RenderPanelWithFooter(title, footer, content string, width, innerHeight int, focused bool) string {
 	th := theme.DefaultTheme()
 
 	borderColor := theme.ColorNone
@@ -18,7 +23,6 @@ func RenderPanel(title, content string, width, innerHeight int, focused bool) st
 		borderColor = theme.ColorGreen
 	}
 
-	// Title styling.
 	var styledTitle string
 	if focused {
 		styledTitle = th.Title.Render(title)
@@ -26,24 +30,24 @@ func RenderPanel(title, content string, width, innerHeight int, focused bool) st
 		styledTitle = lipgloss.NewStyle().Foreground(borderColor).Render(title)
 	}
 
-	contentWidth := width - 2 // left + right border chars
+	contentWidth := width - 2
 	if contentWidth < 1 {
 		contentWidth = 1
 	}
 
-	// Build top border: ╭Title──────────╮
-	// Total width = contentWidth + 2 (╭ and ╮).
-	titleLen := lipgloss.Width(styledTitle) // rendered width for padding calc
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	// Top border: ╭Title──────────╮
+	titleLen := lipgloss.Width(styledTitle)
 	topPadding := contentWidth - titleLen
 	if topPadding < 0 {
 		topPadding = 0
 	}
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 	topLine := borderStyle.Render("╭") +
 		styledTitle +
-		borderStyle.Render(strings.Repeat("─", topPadding) + "╮")
+		borderStyle.Render(strings.Repeat("─", topPadding)+"╮")
 
-	// Content lines — pad/truncate to fit.
+	// Content lines.
 	lines := strings.Split(content, "\n")
 	for len(lines) < innerHeight {
 		lines = append(lines, "")
@@ -52,10 +56,9 @@ func RenderPanel(title, content string, width, innerHeight int, focused bool) st
 		lines = lines[:innerHeight]
 	}
 
-	borderVert := lipgloss.NewStyle().Foreground(borderColor).Render("│")
+	borderVert := borderStyle.Render("│")
 	var body strings.Builder
 	for _, line := range lines {
-		// Pad line to contentWidth using spaces.
 		rendered := line
 		lineWidth := lipgloss.Width(rendered)
 		if lineWidth < contentWidth {
@@ -64,9 +67,21 @@ func RenderPanel(title, content string, width, innerHeight int, focused bool) st
 		body.WriteString(borderVert + rendered + borderVert + "\n")
 	}
 
-	// Bottom border: ╰──────────────╯
-	bottomLine := lipgloss.NewStyle().Foreground(borderColor).Render(
-		"╰" + strings.Repeat("─", contentWidth) + "╯")
+	// Bottom border: ╰──────────1 of 25─╯
+	var bottomLine string
+	if footer != "" {
+		styledFooter := borderStyle.Render(footer)
+		footerLen := lipgloss.Width(styledFooter)
+		padding := contentWidth - footerLen
+		if padding < 0 {
+			padding = 0
+		}
+		bottomLine = borderStyle.Render("╰"+strings.Repeat("─", padding)) +
+			styledFooter +
+			borderStyle.Render("╯")
+	} else {
+		bottomLine = borderStyle.Render("╰" + strings.Repeat("─", contentWidth) + "╯")
+	}
 
 	return topLine + "\n" + body.String() + bottomLine
 }

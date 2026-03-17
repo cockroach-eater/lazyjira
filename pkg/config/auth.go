@@ -8,9 +8,10 @@ import (
 
 // Credentials stores Jira connection info.
 type Credentials struct {
-	Host  string `json:"host"`
-	Email string `json:"email"`
-	Token string `json:"token"`
+	Host        string `json:"host"`
+	Email       string `json:"email"`
+	Token       string `json:"token"`
+	LastProject string `json:"last_project,omitempty"`
 }
 
 // AuthPath returns the path to auth.json in the config directory.

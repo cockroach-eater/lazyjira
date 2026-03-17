@@ -49,6 +49,15 @@ func (s *StatusPanel) View() string {
 		indicator = theme.StatusColor("").Render("✗")
 	}
 
-	line := fmt.Sprintf(" %s %s → %s", indicator, s.user, s.project)
+	// Shrink email to fit: " ✓ email → PROJECT" must fit in width-2
+	contentW := s.width - 2
+	fixedChars := 3 + 1 + 3 + len(s.project) // " ✓ " + " → " + project
+	maxEmail := contentW - fixedChars
+	email := s.user
+	if maxEmail > 5 && len(email) > maxEmail {
+		side := (maxEmail - 3) / 2
+		email = email[:side+1] + "..." + email[len(email)-side:]
+	}
+	line := fmt.Sprintf(" %s %s → %s", indicator, email, s.project)
 	return components.RenderPanel("[1] Status", line, s.width, innerHeight, s.focused)
 }

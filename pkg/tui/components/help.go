@@ -46,16 +46,16 @@ func (h HelpBar) Update(msg tea.Msg) (HelpBar, tea.Cmd) {
 }
 
 func (h HelpBar) View() string {
-	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	keyStyle := lipgloss.NewStyle().Bold(true)
-	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// All in the same blue like lazygit options bar.
+	blueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	sepStyle := blueStyle
 
 	sep := sepStyle.Render(" | ")
 
 	var parts []string
 	totalWidth := 0
 	for _, item := range h.items {
-		part := descStyle.Render(item.Description+": ") + keyStyle.Render(item.Key)
+		part := blueStyle.Render(item.Description+": "+item.Key)
 		partWidth := lipgloss.Width(part) + 3 // " | "
 		if h.width > 0 && totalWidth+partWidth > h.width {
 			break

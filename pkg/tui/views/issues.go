@@ -99,15 +99,23 @@ func (m *IssuesList) applyFilterKeepCursor() {
 	}
 }
 
-// SelectByKey moves cursor to the issue with the given key.
-func (m *IssuesList) SelectByKey(key string) {
+// SelectByKey moves cursor to the issue with the given key. Returns true if found.
+func (m *IssuesList) SelectByKey(key string) bool {
 	for i, issue := range m.issues {
 		if issue.Key == key {
 			m.cursor = i
 			m.adjustOffset()
-			return
+			return true
 		}
 	}
+	return false
+}
+
+func (m *IssuesList) GetTab() IssueTab { return m.tab }
+
+func (m *IssuesList) SetTab(tab IssueTab) {
+	m.tab = tab
+	m.applyFilter()
 }
 
 func (m *IssuesList) applyFilter() {
@@ -258,7 +266,11 @@ func (m *IssuesList) View() string {
 
 	content := strings.Join(rows, "\n")
 	title := m.buildTitle()
-	return components.RenderPanel(title, content, m.width, visible, m.focused)
+	footer := ""
+	if len(m.issues) > 0 {
+		footer = fmt.Sprintf("%d of %d", m.cursor+1, len(m.issues))
+	}
+	return components.RenderPanelWithFooter(title, footer, content, m.width, visible, m.focused)
 }
 
 func (m *IssuesList) buildTitle() string {
@@ -274,8 +286,8 @@ func (m *IssuesList) buildTitle() string {
 		}
 	}
 
-	allLabel := fmt.Sprintf("All(%d)", len(m.allIssues))
-	assignedLabel := fmt.Sprintf("Assigned(%d)", assignedCount)
+	allLabel := "All"
+	assignedLabel := "Assigned"
 
 	if m.tab == IssueTabAll {
 		allLabel = active.Render(allLabel)

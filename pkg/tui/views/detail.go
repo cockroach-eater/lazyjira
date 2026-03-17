@@ -43,16 +43,17 @@ type SplashInfo struct {
 }
 
 type DetailView struct {
-	issue     *jira.Issue
-	project   *jira.Project
-	splash    SplashInfo
-	mode      MainMode
-	activeTab DetailTab
-	scrollY   int
-	width     int
-	height    int
-	focused   bool
-	theme     *theme.Theme
+	issue      *jira.Issue
+	project    *jira.Project
+	splash     SplashInfo
+	mode       MainMode
+	activeTab  DetailTab
+	scrollY    int
+	listCursor int // cursor for list-based tabs (Sub, Cmt, Lnk, Hist)
+	width      int
+	height     int
+	focused    bool
+	theme      *theme.Theme
 }
 
 func NewDetailView() *DetailView {
@@ -108,6 +109,7 @@ func (d *DetailView) NextTab() {
 		if t == d.activeTab {
 			d.activeTab = vt[(i+1)%len(vt)]
 			d.scrollY = 0
+			d.listCursor = 0
 			return
 		}
 	}
@@ -123,6 +125,7 @@ func (d *DetailView) PrevTab() {
 		if t == d.activeTab {
 			d.activeTab = vt[(i+len(vt)-1)%len(vt)]
 			d.scrollY = 0
+			d.listCursor = 0
 			return
 		}
 	}
@@ -182,6 +185,44 @@ func (d *DetailView) ScrollBy(delta int) {
 	}
 }
 
+// listTabItemCount returns the number of items for list-based tabs, 0 for text tabs.
+func (d *DetailView) listTabItemCount() int {
+	if d.issue == nil {
+		return 0
+	}
+	switch d.activeTab {
+	case TabSubtasks:
+		return len(d.issue.Subtasks)
+	case TabComments:
+		return len(d.issue.Comments)
+	case TabLinks:
+		return len(d.issue.IssueLinks)
+	case TabHistory:
+		return len(d.issue.Changelog)
+	case TabInfo:
+		return d.infoFieldCount()
+	}
+	return 0
+}
+
+func (d *DetailView) infoFieldCount() int {
+	if d.issue == nil {
+		return 0
+	}
+	count := 6 // Status, Priority, Assignee, Reporter, Type, Sprint
+	if len(d.issue.Labels) > 0 {
+		count++
+	}
+	if len(d.issue.Components) > 0 {
+		count++
+	}
+	return count
+}
+
+func (d *DetailView) isListTab() bool {
+	return d.listTabItemCount() > 0
+}
+
 func (d *DetailView) Update(msg tea.Msg) (*DetailView, tea.Cmd) {
 	if !d.focused {
 		return d, nil
@@ -190,23 +231,49 @@ func (d *DetailView) Update(msg tea.Msg) (*DetailView, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "j", "down":
-			d.scrollY++
+			if count := d.listTabItemCount(); count > 0 {
+				if d.listCursor < count-1 {
+					d.listCursor++
+				}
+			} else {
+				d.scrollY++
+			}
 		case "k", "up":
-			if d.scrollY > 0 {
+			if d.listTabItemCount() > 0 {
+				if d.listCursor > 0 {
+					d.listCursor--
+				}
+			} else if d.scrollY > 0 {
 				d.scrollY--
 			}
 		case "tab":
 			d.activeTab = (d.activeTab + 1) % tabCount
 			d.scrollY = 0
+			d.listCursor = 0
 		case "i":
 			d.activeTab = TabInfo
 			d.scrollY = 0
+			d.listCursor = 0
 		case "ctrl+d":
-			d.scrollY += d.visibleRows() / 2
+			if count := d.listTabItemCount(); count > 0 {
+				d.listCursor += d.visibleRows() / 2
+				if d.listCursor >= count {
+					d.listCursor = count - 1
+				}
+			} else {
+				d.scrollY += d.visibleRows() / 2
+			}
 		case "ctrl+u":
-			d.scrollY -= d.visibleRows() / 2
-			if d.scrollY < 0 {
-				d.scrollY = 0
+			if d.listTabItemCount() > 0 {
+				d.listCursor -= d.visibleRows() / 2
+				if d.listCursor < 0 {
+					d.listCursor = 0
+				}
+			} else {
+				d.scrollY -= d.visibleRows() / 2
+				if d.scrollY < 0 {
+					d.scrollY = 0
+				}
 			}
 		}
 	}
@@ -254,24 +321,72 @@ func (d *DetailView) View() string {
 	// Build title: [0] KEY - Tab - Tab - Tab
 	title := d.buildTitle(contentWidth)
 
-	// Content lines.
+	// Content: list tabs return blocks per item, text tabs return flat lines.
 	var contentLines []string
-	switch d.activeTab {
-	case TabDetails:
-		contentLines = d.renderDescription(contentWidth)
-	case TabSubtasks:
-		contentLines = d.renderSubtasks(contentWidth)
-	case TabComments:
-		contentLines = d.renderComments(contentWidth)
-	case TabLinks:
-		contentLines = d.renderLinks(contentWidth)
-	case TabInfo:
-		contentLines = d.renderInfo(contentWidth)
-	case TabHistory:
-		contentLines = d.renderHistory(contentWidth)
+
+	if count := d.listTabItemCount(); count > 0 {
+		// List tab — render blocks, highlight selected.
+		var blocks [][]string
+		switch d.activeTab {
+		case TabSubtasks:
+			blocks = d.renderSubtaskBlocks(contentWidth)
+		case TabComments:
+			blocks = d.renderCommentBlocks(contentWidth)
+		case TabLinks:
+			blocks = d.renderLinkBlocks(contentWidth)
+		case TabHistory:
+			blocks = d.renderHistoryBlocks(contentWidth)
+		case TabInfo:
+			blocks = d.renderInfoBlocks(contentWidth)
+		}
+
+		// Clamp cursor.
+		if d.listCursor >= len(blocks) {
+			d.listCursor = len(blocks) - 1
+		}
+		if d.listCursor < 0 {
+			d.listCursor = 0
+		}
+
+		// Flatten blocks with highlight on selected.
+		selectedBg := lipgloss.NewStyle().Background(lipgloss.Color("0")) // subtle highlight
+		sep := strings.Repeat("─", contentWidth-2)
+		for i, block := range blocks {
+			for _, line := range block {
+				if i == d.listCursor {
+					// Highlight: render with subtle bg.
+					contentLines = append(contentLines, selectedBg.Width(contentWidth).Render(line))
+				} else {
+					contentLines = append(contentLines, line)
+				}
+			}
+			if i < len(blocks)-1 {
+				contentLines = append(contentLines, " "+sep)
+			}
+		}
+
+		// Auto-scroll: find the line range of cursor block and ensure visible.
+		lineStart := 0
+		for i := 0; i < d.listCursor && i < len(blocks); i++ {
+			lineStart += len(blocks[i]) + 1 // +1 for separator
+		}
+		if lineStart < d.scrollY {
+			d.scrollY = lineStart
+		}
+		blockEnd := lineStart + len(blocks[d.listCursor])
+		if blockEnd > d.scrollY+visible {
+			d.scrollY = blockEnd - visible
+		}
+	} else {
+		switch d.activeTab {
+		case TabDetails:
+			contentLines = d.renderDescription(contentWidth)
+		default:
+			contentLines = []string{" No content."}
+		}
 	}
 
-	// Apply scroll.
+	// Apply scroll for text tabs.
 	if d.scrollY > len(contentLines) {
 		d.scrollY = len(contentLines)
 	}
@@ -290,7 +405,11 @@ func (d *DetailView) View() string {
 
 	body := strings.Join(scrolled, "\n")
 
-	return components.RenderPanel(title, body, d.width, innerH, d.focused)
+	footer := ""
+	if count := d.listTabItemCount(); count > 0 {
+		footer = fmt.Sprintf("%d of %d", d.listCursor+1, count)
+	}
+	return components.RenderPanelWithFooter(title, footer, body, d.width, innerH, d.focused)
 }
 
 type tabLabel struct {
@@ -302,19 +421,19 @@ func (d *DetailView) tabLabels() []tabLabel {
 	var tabs []tabLabel
 	tabs = append(tabs, tabLabel{TabDetails, "Body"})
 	if d.issue != nil {
-		if n := len(d.issue.Subtasks); n > 0 {
-			tabs = append(tabs, tabLabel{TabSubtasks, fmt.Sprintf("Sub(%d)", n)})
+		if len(d.issue.Subtasks) > 0 {
+			tabs = append(tabs, tabLabel{TabSubtasks, "Sub"})
 		}
-		if n := len(d.issue.Comments); n > 0 {
-			tabs = append(tabs, tabLabel{TabComments, fmt.Sprintf("Cmt(%d)", n)})
+		if len(d.issue.Comments) > 0 {
+			tabs = append(tabs, tabLabel{TabComments, "Cmt"})
 		}
-		if n := len(d.issue.IssueLinks); n > 0 {
-			tabs = append(tabs, tabLabel{TabLinks, fmt.Sprintf("Lnk(%d)", n)})
+		if len(d.issue.IssueLinks) > 0 {
+			tabs = append(tabs, tabLabel{TabLinks, "Lnk"})
 		}
 	}
 	tabs = append(tabs, tabLabel{TabInfo, "Info"})
 	if d.issue != nil && len(d.issue.Changelog) > 0 {
-		tabs = append(tabs, tabLabel{TabHistory, fmt.Sprintf("Hist(%d)", len(d.issue.Changelog))})
+		tabs = append(tabs, tabLabel{TabHistory, "Hist"})
 	}
 	return tabs
 }
@@ -377,59 +496,58 @@ func colorMentions(s string) string {
 	return result
 }
 
-func (d *DetailView) renderSubtasks(width int) []string {
-	if d.issue == nil || len(d.issue.Subtasks) == 0 {
-		return []string{" No subtasks."}
-	}
-	var lines []string
+func (d *DetailView) renderSubtaskBlocks(width int) [][]string {
+	var blocks [][]string
 	for _, sub := range d.issue.Subtasks {
 		emoji := statusEmoji(sub.Status)
-		lines = append(lines, fmt.Sprintf(" %s %s: %s", emoji, sub.Key, sub.Summary))
+		blocks = append(blocks, []string{fmt.Sprintf(" %s %s: %s", emoji, sub.Key, sub.Summary)})
 	}
-	return lines
+	return blocks
 }
 
-func (d *DetailView) renderInfo(width int) []string {
+func (d *DetailView) renderInfoBlocks(width int) [][]string {
 	issue := d.issue
 	valStyle := d.theme.ValueStyle
-
-	var lines []string
+	var blocks [][]string
 
 	statusName := "Unknown"
 	if issue.Status != nil {
 		statusName = theme.StatusColor(issue.Status.CategoryKey).Render(issue.Status.Name)
 	}
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Status:", statusName)})
+
 	priorityName := "None"
 	if issue.Priority != nil {
 		priorityName = d.priorityStyled(issue.Priority.Name)
 	}
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Status:", statusName))
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Priority:", priorityName))
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Priority:", priorityName)})
 
 	assignee := "Unassigned"
 	if issue.Assignee != nil {
 		assignee = theme.AuthorRender(issue.Assignee.DisplayName)
 	}
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Assignee:", assignee)})
+
 	reporter := "Unknown"
 	if issue.Reporter != nil {
 		reporter = theme.AuthorRender(issue.Reporter.DisplayName)
 	}
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Assignee:", assignee))
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Reporter:", reporter))
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Reporter:", reporter)})
 
 	typeName := "Unknown"
 	if issue.IssueType != nil {
 		typeName = issue.IssueType.Name
 	}
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Type:", valStyle.Render(typeName))})
+
 	sprintName := "None"
 	if issue.Sprint != nil {
 		sprintName = issue.Sprint.Name
 	}
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Type:", valStyle.Render(typeName)))
-	lines = append(lines, fmt.Sprintf(" %-11s %s", "Sprint:", valStyle.Render(sprintName)))
+	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Sprint:", valStyle.Render(sprintName))})
 
 	if len(issue.Labels) > 0 {
-		lines = append(lines, fmt.Sprintf(" %-11s %s", "Labels:", valStyle.Render(strings.Join(issue.Labels, ", "))))
+		blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Labels:", valStyle.Render(strings.Join(issue.Labels, ", ")))})
 	}
 
 	if len(issue.Components) > 0 {
@@ -437,31 +555,17 @@ func (d *DetailView) renderInfo(width int) []string {
 		for _, c := range issue.Components {
 			names = append(names, c.Name)
 		}
-		lines = append(lines, fmt.Sprintf(" %-11s %s", "Components:", valStyle.Render(strings.Join(names, ", "))))
+		blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Components:", valStyle.Render(strings.Join(names, ", ")))})
 	}
 
-	return lines
+	return blocks
 }
 
 // renderEntry renders a single author+time header + content block + separator.
-func renderEntry(author string, created time.Time, content []string, width int, last bool) []string {
-	gray := lipgloss.NewStyle().Foreground(theme.ColorGray)
-	var lines []string
-	lines = append(lines, " "+theme.AuthorRender(author)+" "+gray.Render(timeAgo(created)))
-	lines = append(lines, content...)
-	if !last {
-		lines = append(lines, " "+strings.Repeat("─", width-2))
-	}
-	return lines
-}
 
-func (d *DetailView) renderHistory(width int) []string {
-	if d.issue == nil || len(d.issue.Changelog) == 0 {
-		return []string{" No history."}
-	}
-
+func (d *DetailView) renderHistoryBlocks(width int) [][]string {
 	gray := lipgloss.NewStyle().Foreground(theme.ColorGray)
-	var lines []string
+	var blocks [][]string
 
 	// Reverse order: newest first.
 	for i := len(d.issue.Changelog) - 1; i >= 0; i-- {
@@ -471,7 +575,9 @@ func (d *DetailView) renderHistory(width int) []string {
 			author = entry.Author.DisplayName
 		}
 
-		var content []string
+		var block []string
+		block = append(block, " "+theme.AuthorRender(author)+" "+gray.Render(timeAgo(entry.Created)))
+
 		for _, item := range entry.Items {
 			from := cleanWikiMarkup(item.FromString)
 			to := cleanWikiMarkup(item.ToString)
@@ -485,8 +591,8 @@ func (d *DetailView) renderHistory(width int) []string {
 			field := strings.ToLower(item.Field)
 
 			if field == "description" || field == "comment" || field == "environment" {
-				content = append(content, "   "+gray.Render(item.Field)+gray.Render(":"))
-				content = append(content, renderDiff(from, to, width-4)...)
+				block = append(block, "   "+gray.Render(item.Field)+gray.Render(":"))
+				block = append(block, renderDiff(from, to, width-4)...)
 				continue
 			}
 
@@ -500,71 +606,58 @@ func (d *DetailView) renderHistory(width int) []string {
 			}
 			changeLine := fmt.Sprintf("   %s: %s → %s", gray.Render(item.Field), from, to)
 			for _, wl := range wrapText(changeLine, width-2) {
-				content = append(content, wl)
+				block = append(block, wl)
 			}
 		}
 
-		lines = append(lines, renderEntry(author, entry.Created, content, width, i == 0)...)
+		blocks = append(blocks, block)
 	}
-	return lines
+	return blocks
 }
 
-func (d *DetailView) renderComments(width int) []string {
-	if d.issue == nil {
-		return []string{" No issue selected."}
-	}
-	if len(d.issue.Comments) == 0 {
-		return []string{" No comments."}
-	}
-
+func (d *DetailView) renderCommentBlocks(width int) [][]string {
+	gray := lipgloss.NewStyle().Foreground(theme.ColorGray)
 	valStyle := d.theme.ValueStyle
-	var lines []string
-	for i, c := range d.issue.Comments {
+	var blocks [][]string
+	for _, c := range d.issue.Comments {
 		author := "Unknown"
 		if c.Author != nil {
 			author = c.Author.DisplayName
 		}
-
-		var content []string
+		var block []string
+		block = append(block, " "+theme.AuthorRender(author)+" "+gray.Render(timeAgo(c.Created)))
 		for _, wl := range wrapText(c.Body, width-2) {
-			content = append(content, " "+colorMentions(valStyle.Render(wl)))
+			block = append(block, " "+colorMentions(valStyle.Render(wl)))
 		}
-
-		lines = append(lines, renderEntry(author, c.Created, content, width, i == len(d.issue.Comments)-1)...)
+		blocks = append(blocks, block)
 	}
-	return lines
+	return blocks
 }
 
-func (d *DetailView) renderLinks(width int) []string {
-	if d.issue == nil {
-		return []string{" No issue selected."}
-	}
-	if len(d.issue.IssueLinks) == 0 {
-		return []string{" No links."}
-	}
-
+func (d *DetailView) renderLinkBlocks(width int) [][]string {
 	keyStyle := d.theme.KeyStyle
 	valStyle := d.theme.ValueStyle
-	var lines []string
+	var blocks [][]string
 	for _, link := range d.issue.IssueLinks {
 		if link.Type == nil {
 			continue
 		}
+		var block []string
 		if link.OutwardIssue != nil {
-			lines = append(lines, " "+
+			block = append(block, " "+
 				keyStyle.Render(link.Type.Outward)+" "+
 				valStyle.Render(fmt.Sprintf("%s: %s", link.OutwardIssue.Key, link.OutwardIssue.Summary)))
 		}
 		if link.InwardIssue != nil {
-			lines = append(lines, " "+
+			block = append(block, " "+
 				keyStyle.Render(link.Type.Inward)+" "+
 				valStyle.Render(fmt.Sprintf("%s: %s", link.InwardIssue.Key, link.InwardIssue.Summary)))
 		}
+		if len(block) > 0 {
+			blocks = append(blocks, block)
+		}
 	}
-	if len(lines) == 0 {
-		lines = append(lines, " No links.")
-	}
-	return lines
+	return blocks
 }
 
 func (d *DetailView) renderSplash(contentWidth, innerH int) string {
@@ -609,12 +702,16 @@ func (d *DetailView) renderSplash(contentWidth, innerH int) string {
 func (d *DetailView) renderProjectView(contentWidth, innerH int) string {
 	p := d.project
 	valStyle := d.theme.ValueStyle
+	gray := lipgloss.NewStyle().Foreground(theme.ColorGray)
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf(" %-11s %s", "Key:", valStyle.Render(p.Key)))
 	lines = append(lines, fmt.Sprintf(" %-11s %s", "Name:", valStyle.Render(p.Name)))
 	if p.Lead != nil {
-		lines = append(lines, fmt.Sprintf(" %-11s %s", "Lead:", valStyle.Render(p.Lead.DisplayName)))
+		lines = append(lines, fmt.Sprintf(" %-11s %s", "Lead:", theme.AuthorRender(p.Lead.DisplayName)))
+	}
+	if p.ID != "" {
+		lines = append(lines, fmt.Sprintf(" %-11s %s", "ID:", gray.Render(p.ID)))
 	}
 
 	content := strings.Join(lines, "\n")
@@ -685,6 +782,62 @@ func renderDiff(from, to string, maxWidth int) []string {
 	}
 
 	return lines
+}
+
+// ExtractURLs returns all URLs found in the issue (description, comments, links).
+func ExtractURLs(issue *jira.Issue, host string) []string {
+	if issue == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var urls []string
+	add := func(u string) {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			urls = append(urls, u)
+		}
+	}
+
+	// Skip the issue's own URL — it's already open.
+	selfURL := host + "/browse/" + issue.Key
+	seen[selfURL] = true
+
+	// URLs from description.
+	for _, u := range findURLs(issue.Description) {
+		add(u)
+	}
+
+	// URLs from comments.
+	for _, c := range issue.Comments {
+		for _, u := range findURLs(c.Body) {
+			add(u)
+		}
+	}
+
+	// Linked issue URLs.
+	for _, link := range issue.IssueLinks {
+		if link.OutwardIssue != nil {
+			add(host + "/browse/" + link.OutwardIssue.Key)
+		}
+		if link.InwardIssue != nil {
+			add(host + "/browse/" + link.InwardIssue.Key)
+		}
+	}
+
+	return urls
+}
+
+// findURLs extracts http/https URLs from text.
+func findURLs(text string) []string {
+	var urls []string
+	for _, word := range strings.Fields(text) {
+		// Strip trailing punctuation.
+		word = strings.TrimRight(word, ".,;:!?)")
+		if strings.HasPrefix(word, "http://") || strings.HasPrefix(word, "https://") {
+			urls = append(urls, word)
+		}
+	}
+	return urls
 }
 
 // cleanWikiMarkup strips Jira wiki markup from changelog values.

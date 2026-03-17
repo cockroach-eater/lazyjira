@@ -268,14 +268,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 
-		case "h", "left":
+		case "h", "left", "esc":
 			if a.side == sideRight {
 				a.side = sideLeft
 				a.updateFocusState()
 				return a, nil
 			}
 
-		case "enter":
+		case "enter", " ":
 			if a.side == sideLeft && a.leftFocus == focusIssues {
 				a.side = sideRight
 				a.updateFocusState()
@@ -329,12 +329,38 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.updateFocusState()
 			return a, nil
 
+		case "y":
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				copyToClipboard(a.cfg.Jira.Host + "/browse/" + sel.Key)
+			}
+			return a, nil
+
 		case "o":
-			// Open issue in browser.
-			if a.side == sideLeft && a.leftFocus == focusIssues {
-				if sel := a.issuesList.SelectedIssue(); sel != nil {
-					url := a.cfg.Jira.Host + "/browse/" + sel.Key
-					openBrowser(url)
+			if sel := a.issuesList.SelectedIssue(); sel != nil && (a.leftFocus == focusIssues || a.side == sideRight) {
+				openBrowser(a.cfg.Jira.Host + "/browse/" + sel.Key)
+			}
+			return a, nil
+
+		case "u":
+			// URL picker modal.
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				cached := sel
+				if c, ok := a.issueCache[sel.Key]; ok {
+					cached = c
+				}
+				urls := views.ExtractURLs(cached, a.cfg.Jira.Host)
+				if len(urls) > 0 {
+					var items []components.ModalItem
+					for _, u := range urls {
+						if key := a.extractIssueKey(u); key != "" {
+							// Jira issue — show key with marker.
+							items = append(items, components.ModalItem{ID: u, Label: key, Internal: true})
+						} else {
+							items = append(items, components.ModalItem{ID: u, Label: ellipsisMiddle(u, 50)})
+						}
+					}
+					a.modal.SetSize(a.width, a.height)
+					a.modal.Show("URLs", items)
 				}
 			}
 			return a, nil
@@ -436,9 +462,21 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case components.ModalSelectedMsg:
-		// Execute transition.
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			return a, doTransition(a.client, sel.Key, msg.Item.ID)
+		id := msg.Item.ID
+		if strings.HasPrefix(id, "http") {
+			// Check if it's a Jira issue URL on our host.
+			if issueKey := a.extractIssueKey(id); issueKey != "" {
+				// Navigate to the issue in [2].
+				a.navigateToIssue(issueKey)
+				return a, nil
+			}
+			// External URL — open in browser.
+			openBrowser(id)
+		} else {
+			// Transition picker — execute transition.
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return a, doTransition(a.client, sel.Key, id)
+			}
 		}
 		return a, nil
 
@@ -463,9 +501,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case projectsLoadedMsg:
-		a.projectList.SetProjects(msg.projects)
-		if a.projectKey == "" && len(msg.projects) > 0 {
-			a.projectKey = msg.projects[0].Key
+		projects := msg.projects
+		// Move last-used project to top.
+		if creds, err := config.LoadCredentials(); err == nil && creds != nil && creds.LastProject != "" {
+			for i, p := range projects {
+				if p.Key == creds.LastProject {
+					// Swap to front.
+					projects[0], projects[i] = projects[i], projects[0]
+					break
+				}
+			}
+		}
+		a.projectList.SetProjects(projects)
+		if a.projectKey == "" && len(projects) > 0 {
+			a.projectKey = projects[0].Key
 			a.statusPanel.SetProject(a.projectKey)
 			return a, fetchIssues(a.client, a.projectKey)
 		}
@@ -482,6 +531,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusPanel.SetProject(msg.ProjectKey)
 		a.leftFocus = focusIssues
 		a.updateFocusState()
+		// Save last project for next launch.
+		go saveLastProject(msg.ProjectKey)
 		return a, fetchIssues(a.client, a.projectKey)
 	}
 
@@ -519,14 +570,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	// Determine which panel was clicked based on x/y coordinates.
-	sideW := a.cfg.GUI.SidePanelWidth
-	if sideW <= 0 {
-		sideW = 40
-	}
-	if sideW > a.width/2 {
-		sideW = a.width / 2
-	}
+	sideW := a.sideWidth()
 
 	x, y := msg.X, msg.Y
 
@@ -625,41 +669,60 @@ func (a *App) View() string {
 		return "Loading..."
 	}
 
-	leftCol := lipgloss.JoinVertical(lipgloss.Left,
-		a.statusPanel.View(),
-		a.issuesList.View(),
-		a.projectList.View(),
-	)
+	var content string
 
-	// Right column: show modal in detail area when visible, otherwise detail view.
-	var detailArea string
-	if a.modal.IsVisible() {
-		sideW := a.cfg.GUI.SidePanelWidth
-		if sideW <= 0 {
-			sideW = 40
+	if a.isVerticalLayout() {
+		// Vertical: all stacked.
+		var detailArea string
+		if a.modal.IsVisible() {
+			detailH := a.height - 1 - 3 - 5 - 3 - 5 // rough: total - status - issues - projects - log
+			if detailH < 5 {
+				detailH = 5
+			}
+			detailArea = lipgloss.Place(a.width, detailH,
+				lipgloss.Center, lipgloss.Center,
+				a.modal.View(),
+			)
+		} else {
+			detailArea = a.detailView.View()
 		}
-		if sideW > a.width/2 {
-			sideW = a.width / 2
-		}
-		mainW := a.width - sideW
-		detailH := a.height - 1 - 8
-		if detailH < 5 {
-			detailH = 5
-		}
-		popup := a.modal.View()
-		detailArea = lipgloss.Place(mainW, detailH,
-			lipgloss.Center, lipgloss.Center,
-			popup,
+		content = lipgloss.JoinVertical(lipgloss.Left,
+			a.statusPanel.View(),
+			a.issuesList.View(),
+			a.projectList.View(),
+			detailArea,
+			a.logPanel.View(),
 		)
 	} else {
-		detailArea = a.detailView.View()
-	}
-	rightCol := lipgloss.JoinVertical(lipgloss.Left,
-		detailArea,
-		a.logPanel.View(),
-	)
+		leftCol := lipgloss.JoinVertical(lipgloss.Left,
+			a.statusPanel.View(),
+			a.issuesList.View(),
+			a.projectList.View(),
+		)
 
-	content := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
+		var detailArea string
+		if a.modal.IsVisible() {
+			sideW := a.sideWidth()
+			mainW := a.width - sideW
+			detailH := a.height - 1 - 8
+			if detailH < 5 {
+				detailH = 5
+			}
+			popup := a.modal.View()
+			detailArea = lipgloss.Place(mainW, detailH,
+				lipgloss.Center, lipgloss.Center,
+				popup,
+			)
+		} else {
+			detailArea = a.detailView.View()
+		}
+		rightCol := lipgloss.JoinVertical(lipgloss.Left,
+			detailArea,
+			a.logPanel.View(),
+		)
+
+		content = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
+	}
 
 	if a.err != nil {
 		errLine := lipgloss.NewStyle().
@@ -738,6 +801,90 @@ func (a *App) renderHelpOverlay(base string) string {
 	)
 }
 
+// extractIssueKey checks if a URL points to our Jira and extracts the issue key.
+// e.g. https://didlogic.atlassian.net/browse/DR-13819 → "DR-13819"
+func (a *App) extractIssueKey(url string) string {
+	host := strings.TrimRight(a.cfg.Jira.Host, "/")
+	prefix := host + "/browse/"
+	if strings.HasPrefix(url, prefix) {
+		key := strings.TrimPrefix(url, prefix)
+		// Strip any trailing query params or fragments.
+		if idx := strings.IndexAny(key, "?#&/"); idx != -1 {
+			key = key[:idx]
+		}
+		if key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+// navigateToIssue switches to the issue in the issues list.
+// If found in current tab (All/Assigned), selects it there.
+// If not, switches to All tab and tries again.
+func (a *App) navigateToIssue(key string) {
+	// Try current tab first.
+	if a.issuesList.SelectByKey(key) {
+		a.side = sideLeft
+		a.leftFocus = focusIssues
+		a.updateFocusState()
+		if cached, ok := a.issueCache[key]; ok {
+			a.detailView.SetIssue(cached)
+		}
+		return
+	}
+	// Switch to All tab and try again.
+	if a.issuesList.GetTab() != views.IssueTabAll {
+		a.issuesList.SetTab(views.IssueTabAll)
+		if a.issuesList.SelectByKey(key) {
+			a.side = sideLeft
+			a.leftFocus = focusIssues
+			a.updateFocusState()
+			if cached, ok := a.issueCache[key]; ok {
+				a.detailView.SetIssue(cached)
+			}
+			return
+		}
+	}
+	// Not in our list — open in browser as fallback.
+	openBrowser(a.cfg.Jira.Host + "/browse/" + key)
+}
+
+func saveLastProject(projectKey string) {
+	creds, err := config.LoadCredentials()
+	if err != nil || creds == nil {
+		return
+	}
+	creds.LastProject = projectKey
+	config.SaveCredentials(creds)
+}
+
+// ellipsisMiddle truncates a string keeping start and end visible: "abcdef...xyz"
+func ellipsisMiddle(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen < 5 {
+		return s[:maxLen]
+	}
+	side := (maxLen - 3) / 2
+	return s[:side+1] + "..." + s[len(s)-side:]
+}
+
+func copyToClipboard(text string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	case "windows":
+		cmd = exec.Command("clip")
+	default:
+		cmd = exec.Command("xclip", "-selection", "clipboard")
+	}
+	cmd.Stdin = strings.NewReader(text)
+	cmd.Run()
+}
+
 func openBrowser(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -751,16 +898,88 @@ func openBrowser(url string) {
 	cmd.Start()
 }
 
-func (a *App) layoutPanels() {
+// isVerticalLayout returns true when terminal is too narrow for side-by-side.
+func (a *App) isVerticalLayout() bool {
+	return a.width < 80
+}
+
+// sideWidth calculates the left panel width, shrinking for narrow terminals.
+func (a *App) sideWidth() int {
+	if a.isVerticalLayout() {
+		return a.width
+	}
 	sideW := a.cfg.GUI.SidePanelWidth
 	if sideW <= 0 {
 		sideW = 40
 	}
+	// Shrink side panel for medium terminals to fit [0] tabs.
+	if a.width < 120 && sideW > a.width*35/100 {
+		sideW = a.width * 35 / 100
+	}
 	if sideW > a.width/2 {
 		sideW = a.width / 2
 	}
-	mainW := a.width - sideW
+	if sideW < 25 {
+		sideW = 25
+	}
+	return sideW
+}
+
+func (a *App) layoutPanels() {
 	totalH := a.height - 1
+
+	if a.isVerticalLayout() {
+		// Vertical: all panels stacked, full width. Accordion-style.
+		w := a.width
+		statusH := 3
+		logH := 5
+		remaining := totalH - statusH - logH
+
+		var issuesH, projectsH, detailH int
+		collapsed := 3
+
+		if a.side == sideRight {
+			// Detail focused — issues and projects collapse.
+			issuesH = collapsed
+			projectsH = collapsed
+			detailH = remaining - issuesH - projectsH
+		} else {
+			switch a.leftFocus {
+			case focusIssues:
+				projectsH = collapsed
+				detailH = 6
+				issuesH = remaining - projectsH - detailH
+			case focusProjects:
+				issuesH = collapsed
+				detailH = 6
+				projectsH = remaining - issuesH - detailH
+			default:
+				issuesH = remaining / 3
+				projectsH = remaining / 3
+				detailH = remaining - issuesH - projectsH
+			}
+		}
+
+		if issuesH < collapsed {
+			issuesH = collapsed
+		}
+		if projectsH < collapsed {
+			projectsH = collapsed
+		}
+		if detailH < collapsed {
+			detailH = collapsed
+		}
+
+		a.statusPanel.SetSize(w, statusH)
+		a.issuesList.SetSize(w, issuesH)
+		a.projectList.SetSize(w, projectsH)
+		a.detailView.SetSize(w, detailH)
+		a.logPanel.SetSize(w, logH)
+		return
+	}
+
+	sideW := a.sideWidth()
+	mainW := a.width - sideW
 
 	statusH := 3
 	remaining := totalH - statusH

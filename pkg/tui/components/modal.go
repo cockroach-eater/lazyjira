@@ -1,7 +1,6 @@
 package components
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,8 +9,9 @@ import (
 
 // ModalItem is one option in the modal.
 type ModalItem struct {
-	ID    string
-	Label string
+	ID       string
+	Label    string
+	Internal bool // true = handled in-app (e.g. Jira issue), styled differently
 }
 
 // ModalSelectedMsg is sent when user picks an item.
@@ -66,7 +66,7 @@ func (m *Modal) Update(msg tea.Msg) (Modal, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "enter":
+		case "enter", " ":
 			if m.cursor >= 0 && m.cursor < len(m.items) {
 				selected := m.items[m.cursor]
 				m.visible = false
@@ -89,42 +89,51 @@ func (m *Modal) View() string {
 		Foreground(lipgloss.Color("2")).
 		Bold(true)
 
-	selectedStyle := lipgloss.NewStyle().
-		Bold(true).
-		Background(lipgloss.Color("4"))
-
-	normalStyle := lipgloss.NewStyle()
-
 	dimStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8"))
 
+	internalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+
+	// Calculate content width from longest item.
+	contentW := lipgloss.Width(m.title) + 2
+	hint := "enter: select | esc: cancel"
+	if w := len(hint) + 2; w > contentW {
+		contentW = w
+	}
+	for _, item := range m.items {
+		if w := lipgloss.Width(item.Label) + 2; w > contentW {
+			contentW = w
+		}
+	}
+	maxW := 55
+	if maxW > m.width-6 {
+		maxW = m.width - 6
+	}
+	if contentW > maxW {
+		contentW = maxW
+	}
+
+	// Build lines with items padded to full width.
 	var lines []string
 	lines = append(lines, " "+titleStyle.Render(m.title))
 	lines = append(lines, "")
 
 	for i, item := range m.items {
-		label := fmt.Sprintf(" %s", item.Label)
+		label := " " + item.Label
 		if i == m.cursor {
-			lines = append(lines, selectedStyle.Render(label))
+			lines = append(lines, lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("4")).Width(contentW).Render(label))
+		} else if item.Internal {
+			lines = append(lines, internalStyle.Width(contentW).Render(label))
 		} else {
-			lines = append(lines, normalStyle.Render(label))
+			lines = append(lines, lipgloss.NewStyle().Width(contentW).Render(label))
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, " "+dimStyle.Render("enter: select | esc: cancel"))
+	lines = append(lines, " "+dimStyle.Render(hint))
 
 	content := strings.Join(lines, "\n")
 
-	popupW := 40
-	for _, item := range m.items {
-		if len(item.Label)+4 > popupW {
-			popupW = len(item.Label) + 4
-		}
-	}
-	if popupW > m.width-4 {
-		popupW = m.width - 4
-	}
 	popupH := len(lines)
 	if popupH > m.height-4 {
 		popupH = m.height - 4
@@ -133,7 +142,7 @@ func (m *Modal) View() string {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("2")).
-		Width(popupW).
+		Width(contentW).
 		Height(popupH).
 		Render(content)
 }

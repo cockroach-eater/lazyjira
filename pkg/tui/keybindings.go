@@ -33,7 +33,8 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"l", "open issue detail (right panel)"},
 			Binding{"t", "transition issue status"},
 			Binding{"o", "open issue in browser"},
-			Binding{"y", "copy issue key to clipboard"},
+			Binding{"u", "open URL picker"},
+			Binding{"[/]", "switch All/Assigned"},
 		)
 
 	case a.side == sideLeft && a.leftFocus == focusProjects:
@@ -55,7 +56,8 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"[/]", "previous/next tab"},
 			Binding{"h", "back to left panel"},
 			Binding{"i", "jump to info tab"},
-			Binding{"tab", "next tab"},
+			Binding{"o", "open in browser"},
+			Binding{"u", "open URL picker"},
 		)
 	}
 
