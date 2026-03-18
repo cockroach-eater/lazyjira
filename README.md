@@ -1,22 +1,14 @@
 # lazyjira
 
-A terminal UI for Jira. Like [lazygit](https://github.com/jesseduffield/lazygit) but for Jira.
-
-Navigate issues, switch projects, read descriptions and comments, all without leaving the terminal.
+Terminal UI for Jira. Like [lazygit](https://github.com/jesseduffield/lazygit) but for Jira.
 
 ## Install
 
-### Homebrew (macOS/Linux)
+### Homebrew
 
 ```
 brew tap cockroach-eater/tap
-brew install --HEAD lazyjira
-```
-
-To update:
-
-```
-brew upgrade --fetch-HEAD lazyjira
+brew install lazyjira
 ```
 
 ### Go
@@ -35,71 +27,24 @@ go build -o lazyjira ./cmd/lazyjira
 
 ## Setup
 
-Run `lazyjira`. On first launch it will ask for your Jira host, email, and API token.
+Run `lazyjira`. On first launch it asks for your Jira host, email, and API token.
 
-You can create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
+Create an API token at https://id.atlassian.com/manage-profile/security/api-tokens
 
-Credentials are saved to `~/.config/lazyjira/auth.json` (or `$XDG_CONFIG_HOME/lazyjira/`).
-
-To re-authenticate: `lazyjira auth`
-
-To logout: `lazyjira logout`
+Credentials saved to `~/.config/lazyjira/auth.json`.
 
 ## Usage
 
 ```
-lazyjira              # start the TUI
-lazyjira --log app.log   # log API requests to file
-lazyjira --dry-run       # read-only mode, no write requests
+lazyjira                 # start
+lazyjira auth            # re-authenticate
+lazyjira logout          # clear credentials
+lazyjira --version       # show version
+lazyjira --log app.log   # log API requests
+lazyjira --dry-run       # read-only mode
 ```
 
-### Layout
-
-Left side has three panels stacked vertically:
-- `[1]` Status - connection info
-- `[2]` Issues - issue list for current project
-- `[3]` Projects - project switcher
-
-Right side:
-- Detail panel with tabs (description, subtasks, comments, links, info)
-- Command log showing API requests
-
-### Keybindings
-
-| Key | Action |
-|-----|--------|
-| `1` `2` `3` | focus left panel |
-| `0` | focus right panel |
-| `tab` | switch left/right |
-| `j/k` | navigate or scroll |
-| `enter` `l` | open issue / select project |
-| `h` | back to left panel |
-| `[` `]` | switch detail tabs |
-| `i` | jump to info tab |
-| `/` | search / filter |
-| `r` | refresh |
-| `?` | show all keybindings |
-| `q` | quit |
-
-Press `?` in any context for the full list.
-
-## Config
-
-Optional config file at `~/.config/lazyjira/config.yml`:
-
-```yaml
-gui:
-  sidePanelWidth: 40
-  mouse: true
-
-cache:
-  enabled: true
-  ttl: 5m
-
-refresh:
-  autoRefresh: true
-  interval: 30s
-```
+Press `?` inside the app for all keybindings.
 
 ## License
 
