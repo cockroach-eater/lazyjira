@@ -28,6 +28,7 @@ brews:
   - repository:
       owner: textfuel
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/textfuel/lazyjira"
     description: "Terminal UI for Jira"
