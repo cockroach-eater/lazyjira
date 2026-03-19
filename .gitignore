@@ -21,5 +21,9 @@ config.yml
 # Nix
 /result
 
+# Generated tapes (source: .tape.sh → .tape via e2e/tape.sh)
+e2e/tapes/00_preview.tape
+e2e/tapes/00_preview_vertical.tape
+
 # OS
 .DS_Store

@@ -52,7 +52,7 @@ type transitionsLoadedMsg struct {
 
 type App struct {
 	cfg        *config.Config
-	client     *jira.Client
+	client     jira.ClientInterface
 	splashInfo views.SplashInfo
 
 	statusPanel *views.StatusPanel
@@ -71,6 +71,7 @@ type App struct {
 	projectKey  string
 	showHelp    bool
 	logFlag     *bool
+	demoMode    bool
 	issueCache  map[string]*jira.Issue
 
 	// Cached panel sizes for mouse hit-testing.
@@ -90,16 +91,17 @@ type App struct {
 type AuthMethod string
 
 const (
-	AuthSaved AuthMethod = "Saved credentials (auth.json)"
-	AuthEnv   AuthMethod = "Environment variables"
+	AuthSaved  AuthMethod = "Saved credentials (auth.json)"
+	AuthEnv    AuthMethod = "Environment variables"
 	AuthWizard AuthMethod = "Setup wizard"
+	AuthDemo   AuthMethod = "Demo mode"
 )
 
-func NewApp(cfg *config.Config, client *jira.Client) *App {
+func NewApp(cfg *config.Config, client jira.ClientInterface) *App {
 	return NewAppWithAuth(cfg, client, AuthEnv)
 }
 
-func NewAppWithAuth(cfg *config.Config, client *jira.Client, authMethod AuthMethod) *App {
+func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod AuthMethod) *App {
 	projectKey := ""
 	if len(cfg.Projects) > 0 {
 		projectKey = cfg.Projects[0].Key
@@ -166,6 +168,7 @@ func NewAppWithAuth(cfg *config.Config, client *jira.Client, authMethod AuthMeth
 		side:        sideLeft,
 		leftFocus:   focusIssues,
 		projectKey:  projectKey,
+		demoMode:    authMethod == AuthDemo,
 		logFlag:     logFlag,
 		issueCache:  make(map[string]*jira.Issue),
 	}
@@ -331,7 +334,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.issueCache = make(map[string]*jira.Issue)
 					a.leftFocus = focusIssues
 					a.updateFocusState()
-					go saveLastProject(p.Key)
+					if !a.demoMode {
+						go saveLastProject(p.Key)
+					}
 					return a, a.fetchActiveTab()
 				}
 				return a, nil
@@ -433,7 +438,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							if key := a.extractIssueKey(u); key != "" {
 								items = append(items, components.ModalItem{ID: u, Label: key, Internal: true})
 							} else {
-								items = append(items, components.ModalItem{ID: u, Label: components.TruncateMiddle(u, 50)})
+								items = append(items, components.ModalItem{ID: u, Label: u})
 							}
 						}
 					}
@@ -599,13 +604,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case projectsLoadedMsg:
 		projects := msg.projects
-		// Move last-used project to top.
-		if creds, err := config.LoadCredentials(); err == nil && creds != nil && creds.LastProject != "" {
-			for i, p := range projects {
-				if p.Key == creds.LastProject {
-					// Swap to front.
-					projects[0], projects[i] = projects[i], projects[0]
-					break
+		// Move last-used project to top (skip in demo mode — no credentials).
+		if !a.demoMode {
+			if creds, err := config.LoadCredentials(); err == nil && creds != nil && creds.LastProject != "" {
+				for i, p := range projects {
+					if p.Key == creds.LastProject {
+						// Swap to front.
+						projects[0], projects[i] = projects[i], projects[0]
+						break
+					}
 				}
 			}
 		}
@@ -747,24 +754,25 @@ func (a *App) renderHelpOverlay(base string) string {
 		}
 	}
 
+	popupW := min(maxKey+40, a.width-4)
+
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
-	descStyle := lipgloss.NewStyle()
 
 	lines := make([]string, 0, len(bindings)+3)
 	lines = append(lines, "")
+	descMaxW := popupW - maxKey - 6 // 2 left pad + 2 gap + 2 border
 	for _, b := range bindings {
 		padded := b.Key
 		for len(padded) < maxKey {
 			padded += " "
 		}
-		lines = append(lines, "  "+keyStyle.Render(padded)+"  "+descStyle.Render(b.Description))
+		desc := components.TruncateEnd(b.Description, descMaxW)
+		lines = append(lines, "  "+keyStyle.Render(padded)+"  "+desc)
 	}
 	lines = append(lines, "")
 	lines = append(lines, "  "+lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("press any key to close"))
 
 	popupContent := strings.Join(lines, "\n")
-
-	popupW := min(maxKey+40, a.width-4)
 	popupH := min(len(lines), a.height-4)
 
 	popup := lipgloss.NewStyle().

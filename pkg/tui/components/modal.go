@@ -176,28 +176,31 @@ func (m *Modal) View() string {
 		Foreground(lipgloss.Color("2")).
 		Bold(true)
 
-	internalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-
 	if m.readOnly {
-		// Collect item lines only.
-		var lines []string
-		for _, item := range m.items {
-			lines = append(lines, " "+item.Label)
-		}
-
 		// Auto-size width: fit content, max 70% of available width.
-		contentW := lipgloss.Width(m.title) + 2
-		for _, line := range lines {
-			if w := lipgloss.Width(line) + 2; w > contentW {
-				contentW = w
-			}
-		}
 		maxW := m.width * 7 / 10
 		if maxW < 40 {
 			maxW = min(m.width-4, 40)
 		}
+		contentW := lipgloss.Width(m.title) + 2
+		for _, item := range m.items {
+			if w := lipgloss.Width(item.Label) + 3; w > contentW {
+				contentW = w
+			}
+		}
 		if contentW > maxW {
 			contentW = maxW
+		}
+
+		// Collect item lines, word-wrapped to fit (preserves ANSI colors).
+		innerW := contentW - 3 // border (2) + leading space (1)
+		wrapStyle := lipgloss.NewStyle().Width(innerW)
+		var lines []string
+		for _, item := range m.items {
+			wrapped := wrapStyle.Render(item.Label)
+			for _, w := range strings.Split(wrapped, "\n") {
+				lines = append(lines, " "+w)
+			}
 		}
 
 		totalLines := len(lines)
@@ -231,25 +234,22 @@ func (m *Modal) View() string {
 	for i, item := range m.items {
 		if item.Separator {
 			// Centered gray header: "── Label ──"
-			pad := contentW - lipgloss.Width(item.Label) - 4
-			left := pad / 2
-			right := pad - left
-			if left < 1 {
-				left, right = 0, 0
-			}
-			line := sepStyle.Render(strings.Repeat("─", left) + " " + item.Label + " " + strings.Repeat("─", right))
-			lines = append(lines, line)
+			label := TruncateEnd(item.Label, contentW-4)
+			pad := contentW - lipgloss.Width(label) - 4
+			left := max(pad/2, 0)
+			right := max(pad-left, 0)
+			lines = append(lines, sepStyle.Render(strings.Repeat("─", left)+" "+label+" "+strings.Repeat("─", right)))
 			continue
 		}
-		label := " " + item.Label
+		label := " " + TruncateMiddle(item.Label, contentW-3)
+		style := lipgloss.NewStyle().Width(contentW)
 		switch {
 		case i == m.cursor:
-			lines = append(lines, lipgloss.NewStyle().Bold(true).Background(lipgloss.Color("4")).Width(contentW).Render(label))
+			style = style.Bold(true).Background(lipgloss.Color("4"))
 		case item.Internal:
-			lines = append(lines, internalStyle.Width(contentW).Render(label))
-		default:
-			lines = append(lines, lipgloss.NewStyle().Width(contentW).Render(label))
+			style = style.Foreground(lipgloss.Color("2"))
 		}
+		lines = append(lines, style.Render(label))
 	}
 
 	popupH := len(lines)

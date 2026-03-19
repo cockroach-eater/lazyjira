@@ -49,36 +49,56 @@ func main() {
 func run() error {
 	dryRun := flag.Bool("dry-run", false, "Log API requests without making write operations")
 	logFile := flag.String("log", "", "Log API requests to file")
+	demo := flag.Bool("demo", false, "Run with demo data (no Jira account needed)")
 	flag.Parse()
 
 	cfg, _ := config.Load()
 
-	client, authMethod, err := resolveClient(cfg)
-	if err != nil {
-		return err
-	}
+	var client jira.ClientInterface
+	var authMethod tui.AuthMethod
 
-	if *dryRun {
-		client.SetDryRun(true)
-		if *logFile == "" {
-			*logFile = "lazyjira.log"
-		}
-	}
-
-	if *logFile != "" {
-		f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if *demo {
+		var cleanup func()
+		var err error
+		client, authMethod, cleanup, err = startDemo(cfg)
 		if err != nil {
-			return fmt.Errorf("opening log file: %w", err)
+			return fmt.Errorf("demo: %w", err)
 		}
-		defer func() { _ = f.Close() }()
-		client.SetLogger(f)
+		if cleanup != nil {
+			defer cleanup()
+		}
+	} else {
+		var err error
+		var jiraClient *jira.Client
+		jiraClient, authMethod, err = resolveClient(cfg)
+		if err != nil {
+			return err
+		}
+
+		if *dryRun {
+			jiraClient.SetDryRun(true)
+			if *logFile == "" {
+				*logFile = "lazyjira.log"
+			}
+		}
+
+		if *logFile != "" {
+			f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err != nil {
+				return fmt.Errorf("opening log file: %w", err)
+			}
+			defer func() { _ = f.Close() }()
+			jiraClient.SetLogger(f)
+		}
+
+		client = jiraClient
 	}
 
 	tui.Version = version
 	app := tui.NewAppWithAuth(cfg, client, authMethod)
 
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	_, err = p.Run()
+	_, err := p.Run()
 	return err
 }
 

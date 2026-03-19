@@ -32,16 +32,17 @@ func RenderCollapsedBar(title, footer string, width int, focused bool) string {
 	}
 
 	titleLen := lipgloss.Width(styledTitle)
-	inner := max(width-2, 1) // space between ╶─ and ─╴
 
 	if footer == "" {
-		padding := max(inner-titleLen, 0)
-		return borderStyle.Render("╶─") + styledTitle + borderStyle.Render(strings.Repeat("─", padding)+"─╴")
+		// ╶─ title ───╴  = 2 + titleLen + padding + 1 = width
+		padding := max(width-3-titleLen, 0)
+		return borderStyle.Render("╶─") + styledTitle + borderStyle.Render(strings.Repeat("─", padding)+"╴")
 	}
 
 	styledFooter := borderStyle.Render(footer)
 	footerLen := lipgloss.Width(styledFooter)
-	padding := max(inner-titleLen-footerLen, 0)
+	// ╶─ title ── footer ─╴  = 2 + titleLen + padding + footerLen + 2 = width
+	padding := max(width-4-titleLen-footerLen, 0)
 	return borderStyle.Render("╶─") + styledTitle +
 		borderStyle.Render(strings.Repeat("─", padding)) +
 		styledFooter + borderStyle.Render("─╴")
@@ -74,8 +75,8 @@ func RenderPanelFull(title, footer, content string, width, innerHeight int, focu
 
 	// Top border.
 	titleLen := lipgloss.Width(styledTitle)
-	topPadding := max(contentWidth-titleLen, 0)
-	topLine := borderStyle.Render("╭") +
+	topPadding := max(contentWidth-titleLen-1, 0)
+	topLine := borderStyle.Render("╭─") +
 		styledTitle +
 		borderStyle.Render(strings.Repeat("─", topPadding)+"╮")
 
@@ -136,10 +137,10 @@ func RenderPanelFull(title, footer, content string, width, innerHeight int, focu
 	if footer != "" {
 		styledFooter := borderStyle.Render(footer)
 		footerLen := lipgloss.Width(styledFooter)
-		padding := max(contentWidth-footerLen, 0)
-		bottomLine = borderStyle.Render("╰"+strings.Repeat("─", padding)) +
+		padding := max(contentWidth-footerLen-1, 0)
+		bottomLine = borderStyle.Render("╰─") +
 			styledFooter +
-			borderStyle.Render("╯")
+			borderStyle.Render(strings.Repeat("─", padding)+"╯")
 	} else {
 		bottomLine = borderStyle.Render("╰" + strings.Repeat("─", contentWidth) + "╯")
 	}

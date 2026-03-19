@@ -30,6 +30,8 @@ type ClientInterface interface {
 	GetUsers(ctx context.Context, projectKey string) ([]User, error)
 	GetSprints(ctx context.Context, boardID int) ([]Sprint, error)
 	GetChangelog(ctx context.Context, issueKey string) ([]ChangelogEntry, error)
+	SetOnRequest(fn func(RequestLog))
+	SetCustomFields(ids []string)
 }
 
 // RequestLog contains info about a completed API request.
