@@ -377,7 +377,7 @@ func (d *DemoClient) initDemoData() {
 		},
 		{
 			ID: "203", Key: "PLAT-3", Summary: "Rate limiter returns 500 instead of 429",
-			Description:    "When rate limit is exceeded, the API returns 500 Internal Server Error.\nShould return 429 Too Many Requests with Retry-After header.",
+			Description:    extractADFText(plat3ADF()),
 			DescriptionADF: plat3ADF(),
 			Status: inReview, Priority: high, Assignee: demo, Reporter: dave,
 			IssueType: bug,
@@ -535,20 +535,16 @@ func (d *DemoClient) initDemoData() {
 	}
 	d.comments["PLAT-3"] = []Comment{
 		{ID: "c10", Author: dave,
-			Body:    "Reproduced in staging — sending 50 req/s to /api/users, after threshold we get 500 with generic error body.",
-			BodyADF: plat3Comment1ADF(),
+			Body: extractADFText(plat3Comment1ADF()), BodyADF: plat3Comment1ADF(),
 			Created: now.Add(-3 * day), Updated: now.Add(-3 * day)},
 		{ID: "c16", Author: demo,
-			Body:    "Found the root cause. The middleware catches RateLimitExceeded but re-throws as InternalError.",
-			BodyADF: plat3Comment2ADF(),
+			Body: extractADFText(plat3Comment2ADF()), BodyADF: plat3Comment2ADF(),
 			Created: now.Add(-2 * day), Updated: now.Add(-2 * day)},
 		{ID: "c17", Author: bob,
-			Body:    "Good catch. Make sure the Retry-After header uses the actual reset time from the rate limiter.",
-			BodyADF: plat3Comment3ADF(),
+			Body: extractADFText(plat3Comment3ADF()), BodyADF: plat3Comment3ADF(),
 			Created: now.Add(-36 * time.Hour), Updated: now.Add(-36 * time.Hour)},
 		{ID: "c18", Author: demo,
-			Body:    "Done — PR is up, added all three headers. Integration tests pass on staging.",
-			BodyADF: plat3Comment4ADF(),
+			Body: extractADFText(plat3Comment4ADF()), BodyADF: plat3Comment4ADF(),
 			Created: now.Add(-12 * time.Hour), Updated: now.Add(-12 * time.Hour)},
 	}
 	d.comments["PLAT-5"] = []Comment{

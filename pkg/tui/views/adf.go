@@ -11,6 +11,7 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/textfuel/lazyjira/pkg/tui/components"
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
@@ -146,7 +147,8 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 
 		switch childType {
 		case "paragraph":
-			text := r.collectInline(childBlock["content"].([]any))
+			childContent, _ := childBlock["content"].([]any)
+			text := r.collectInline(childContent)
 			if first {
 				r.appendWrapped(text, indent, marker)
 				first = false
@@ -384,7 +386,7 @@ func (r *adfRenderer) renderTable(rows []any) {
 	colWidths := make([]int, colCount)
 	for _, row := range table {
 		for i, cell := range row {
-			if w := len(cell); w > colWidths[i] {
+			if w := lipgloss.Width(cell); w > colWidths[i] {
 				colWidths[i] = w
 			}
 		}
@@ -404,10 +406,16 @@ func (r *adfRenderer) renderTable(rows []any) {
 			if i < len(row) {
 				cell = row[i]
 			}
-			if len(cell) > colWidths[i] {
-				cell = cell[:colWidths[i]-1] + "…"
+			cellW := lipgloss.Width(cell)
+			if cellW > colWidths[i] {
+				cell = components.TruncateEnd(cell, colWidths[i])
+				cellW = lipgloss.Width(cell)
 			}
-			parts = append(parts, fmt.Sprintf("%-*s", colWidths[i], cell))
+			// Pad to column width using display width.
+			if cellW < colWidths[i] {
+				cell += strings.Repeat(" ", colWidths[i]-cellW)
+			}
+			parts = append(parts, cell)
 		}
 		line := "  " + strings.Join(parts, " │ ")
 		if ri == 0 {
