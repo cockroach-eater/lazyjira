@@ -47,7 +47,7 @@ func (a *App) layoutPanels() {
 		statusH := 1 // always collapsed in vertical
 		issuesH := 1
 		projectsH := 1
-		detailH := 1
+		var detailH int
 
 		avail := totalH - statusH - logH // space for detail + issues + projects
 

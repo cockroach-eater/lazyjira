@@ -79,7 +79,8 @@ func (m *Modal) selectionContentW() int {
 			contentW = w
 		}
 	}
-	return min(contentW, min(55, m.width-6))
+	maxW := max(m.width*7/10, 30)
+	return min(contentW, maxW)
 }
 
 func (m *Modal) Hide()          { m.visible = false }
