@@ -69,6 +69,15 @@ sudo apk add --allow-untrusted lazyjira_*.apk
 </details>
 
 <details>
+<summary><b>Windows</b></summary>
+
+Download `.zip` from [Releases](https://github.com/textfuel/lazyjira/releases), extract `lazyjira.exe`, and add it to your `PATH`.
+
+Use [Windows Terminal](https://aka.ms/terminal) for best rendering.
+
+</details>
+
+<details>
 <summary><b>Go / From source</b></summary>
 
 ```
