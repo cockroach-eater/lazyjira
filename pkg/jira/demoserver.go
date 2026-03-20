@@ -221,8 +221,8 @@ func issueToJSON(iss *Issue) map[string]any {
 	}
 
 	fields := map[string]any{
-		"summary":     iss.Summary,
-		"description": textToADF(iss.Description),
+		"summary": iss.Summary,
+		"description": descriptionADF(iss),
 		"labels":      labels,
 		"components":  componentsToJSON(iss.Components),
 		"created":     formatJiraTime(iss.Created),
@@ -267,7 +267,7 @@ func issueToJSON(iss *Issue) map[string]any {
 func commentToJSON(c *Comment) map[string]any {
 	m := map[string]any{
 		"id":      c.ID,
-		"body":    textToADF(c.Body),
+		"body":    commentBodyADF(c),
 		"created": formatJiraTime(c.Created),
 		"updated": formatJiraTime(c.Updated),
 	}
@@ -333,6 +333,22 @@ func issueLinksToJSON(links []IssueLink) []any {
 		result[i] = l
 	}
 	return result
+}
+
+// descriptionADF returns raw ADF if available, otherwise converts plain text.
+func descriptionADF(iss *Issue) any {
+	if iss.DescriptionADF != nil {
+		return iss.DescriptionADF
+	}
+	return textToADF(iss.Description)
+}
+
+// commentBodyADF returns raw ADF if available, otherwise converts plain text.
+func commentBodyADF(c *Comment) any {
+	if c.BodyADF != nil {
+		return c.BodyADF
+	}
+	return textToADF(c.Body)
 }
 
 // textToADF converts plain text to Atlassian Document Format.

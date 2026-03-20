@@ -377,7 +377,8 @@ func (d *DemoClient) initDemoData() {
 		},
 		{
 			ID: "203", Key: "PLAT-3", Summary: "Rate limiter returns 500 instead of 429",
-			Description: "When rate limit is exceeded, the API returns 500 Internal Server Error.\nShould return 429 Too Many Requests with Retry-After header.\n\nSee RFC 6585 https://datatracker.ietf.org/doc/html/rfc6585#section-4\nRelated PR: https://github.com/acme/platform/pull/847\nGrafana dashboard: https://grafana.internal/d/api-errors",
+			Description:    extractADFText(plat3ADF()),
+			DescriptionADF: plat3ADF(),
 			Status: inReview, Priority: high, Assignee: demo, Reporter: dave,
 			IssueType: bug,
 			Labels: []string{"bug", "api"},
@@ -533,10 +534,18 @@ func (d *DemoClient) initDemoData() {
 		{ID: "c9", Author: bob, Body: "Yes, implementing rotation with replay detection. If a stolen refresh token is used, all tokens for that session get revoked.", Created: now.Add(-3 * day), Updated: now.Add(-3 * day)},
 	}
 	d.comments["PLAT-3"] = []Comment{
-		{ID: "c10", Author: dave, Body: "Reproduced in staging — sending 50 req/s to /api/users, after threshold we get 500 with generic error body. No Retry-After header at all. Logs: https://kibana.internal/app/discover#/plat-3-repro", Created: now.Add(-3 * day), Updated: now.Add(-3 * day)},
-		{ID: "c16", Author: demo, Body: "Found the root cause. The middleware catches RateLimitExceeded but re-throws as InternalError. The error handler in error_handler.go doesn't have a case for rate limit errors, so it falls through to the default 500.", Created: now.Add(-2 * day), Updated: now.Add(-2 * day)},
-		{ID: "c17", Author: bob, Body: "Good catch. Make sure the Retry-After header uses the actual reset time from the rate limiter, not a hardcoded value. Also add X-RateLimit-Remaining for client-side backoff. See https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After for spec.", Created: now.Add(-36 * time.Hour), Updated: now.Add(-36 * time.Hour)},
-		{ID: "c18", Author: demo, Body: "Done — PR is up https://github.com/acme/platform/pull/847 — added all three headers. Integration tests pass on staging.", Created: now.Add(-12 * time.Hour), Updated: now.Add(-12 * time.Hour)},
+		{ID: "c10", Author: dave,
+			Body: extractADFText(plat3Comment1ADF()), BodyADF: plat3Comment1ADF(),
+			Created: now.Add(-3 * day), Updated: now.Add(-3 * day)},
+		{ID: "c16", Author: demo,
+			Body: extractADFText(plat3Comment2ADF()), BodyADF: plat3Comment2ADF(),
+			Created: now.Add(-2 * day), Updated: now.Add(-2 * day)},
+		{ID: "c17", Author: bob,
+			Body: extractADFText(plat3Comment3ADF()), BodyADF: plat3Comment3ADF(),
+			Created: now.Add(-36 * time.Hour), Updated: now.Add(-36 * time.Hour)},
+		{ID: "c18", Author: demo,
+			Body: extractADFText(plat3Comment4ADF()), BodyADF: plat3Comment4ADF(),
+			Created: now.Add(-12 * time.Hour), Updated: now.Add(-12 * time.Hour)},
 	}
 	d.comments["PLAT-5"] = []Comment{
 		{ID: "c11", Author: eve, Body: "Added PgBouncer to the staging environment. Connection usage dropped from 200 to 15 under the same load. Preparing production rollout.", Created: now.Add(-2 * day), Updated: now.Add(-2 * day)},
@@ -622,4 +631,286 @@ func (d *DemoClient) initDemoData() {
 func (d *DemoClient) addIssue(projectKey string, iss *Issue) {
 	d.issues[projectKey] = append(d.issues[projectKey], iss)
 	d.issueIndex[iss.Key] = iss
+}
+
+// --- ADF helpers for demo comments ---
+
+func adfDoc(content ...any) any {
+	return map[string]any{"type": "doc", "version": float64(1), "content": content}
+}
+
+func adfPara(content ...any) map[string]any {
+	return map[string]any{"type": "paragraph", "content": content}
+}
+
+func adfText(t string) map[string]any {
+	return map[string]any{"type": "text", "text": t}
+}
+
+func adfBold(t string) map[string]any {
+	return map[string]any{"type": "text", "text": t, "marks": []any{map[string]any{"type": "strong"}}}
+}
+
+func adfCode(t string) map[string]any {
+	return map[string]any{"type": "text", "text": t, "marks": []any{map[string]any{"type": "code"}}}
+}
+
+func adfLink(t, href string) map[string]any {
+	return map[string]any{"type": "text", "text": t, "marks": []any{
+		map[string]any{"type": "link", "attrs": map[string]any{"href": href}},
+	}}
+}
+
+func adfCodeBlock(lang, body string) map[string]any {
+	return map[string]any{
+		"type": "codeBlock", "attrs": map[string]any{"language": lang},
+		"content": []any{adfText(body)},
+	}
+}
+
+func plat3Comment1ADF() any {
+	return adfDoc(
+		adfPara(
+			adfText("Reproduced in staging — sending "),
+			adfBold("50 req/s"),
+			adfText(" to "),
+			adfCode("/api/users"),
+			adfText(", after threshold we get "),
+			adfBold("500"),
+			adfText(" with generic error body. No "),
+			adfCode("Retry-After"),
+			adfText(" header at all."),
+		),
+		adfPara(
+			adfText("Response body:"),
+		),
+		adfCodeBlock("json", `{
+  "error": "internal_server_error",
+  "message": "An unexpected error occurred"
+}`),
+		adfPara(
+			adfText("Logs: "),
+			adfLink("Kibana — plat-3-repro", "https://kibana.internal/app/discover#/plat-3-repro"),
+		),
+	)
+}
+
+func plat3Comment2ADF() any {
+	return adfDoc(
+		adfPara(
+			adfText("Found the root cause. The middleware catches "),
+			adfCode("RateLimitExceeded"),
+			adfText(" but re-throws as "),
+			adfCode("InternalError"),
+			adfText(". The error handler in "),
+			adfCode("error_handler.go"),
+			adfText(" doesn't have a case for rate limit errors, so it falls through to the default 500."),
+		),
+		adfPara(
+			adfText("The fix is in "),
+			adfCode("mapErrorToStatus()"),
+			adfText(":"),
+		),
+		adfCodeBlock("go", `case *errors.RateLimitError:
+    w.Header().Set("Retry-After", strconv.Itoa(e.RetryAfter))
+    w.Header().Set("X-RateLimit-Remaining", "0")
+    writeJSON(w, 429, errorResponse{
+        Error:   "rate_limit_exceeded",
+        Message: e.Error(),
+    })`),
+	)
+}
+
+func plat3Comment3ADF() any {
+	return adfDoc(
+		adfPara(
+			adfText("Good catch. Make sure the "),
+			adfCode("Retry-After"),
+			adfText(" header uses the "),
+			adfBold("actual reset time"),
+			adfText(" from the rate limiter, not a hardcoded value. Also add "),
+			adfCode("X-RateLimit-Remaining"),
+			adfText(" for client-side backoff."),
+		),
+		adfPara(
+			adfText("See "),
+			adfLink("MDN — Retry-After", "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"),
+			adfText(" for spec."),
+		),
+	)
+}
+
+func plat3Comment4ADF() any {
+	return adfDoc(
+		adfPara(
+			adfText("Done — PR is up "),
+			adfLink("acme/platform#847", "https://github.com/acme/platform/pull/847"),
+			adfText(" — added all three headers. Integration tests pass on staging."),
+		),
+		adfPara(
+			adfText("Response now:"),
+		),
+		adfCodeBlock("http", `HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+Content-Type: application/json
+
+{"error": "rate_limit_exceeded", "retry_after": 30}`),
+	)
+}
+
+// plat3ADF returns a rich ADF document for the PLAT-3 demo issue.
+// Showcases headings, bold, code blocks, lists, blockquote, rule, inline code, links.
+//
+//nolint:funlen // demo data generator
+func plat3ADF() any {
+	text := func(t string) map[string]any {
+		return map[string]any{"type": "text", "text": t}
+	}
+	bold := func(t string) map[string]any {
+		return map[string]any{"type": "text", "text": t, "marks": []any{
+			map[string]any{"type": "strong"},
+		}}
+	}
+	code := func(t string) map[string]any {
+		return map[string]any{"type": "text", "text": t, "marks": []any{
+			map[string]any{"type": "code"},
+		}}
+	}
+	italic := func(t string) map[string]any {
+		return map[string]any{"type": "text", "text": t, "marks": []any{
+			map[string]any{"type": "em"},
+		}}
+	}
+	link := func(t, href string) map[string]any {
+		return map[string]any{"type": "text", "text": t, "marks": []any{
+			map[string]any{"type": "link", "attrs": map[string]any{"href": href}},
+		}}
+	}
+	heading := func(level int, t string) map[string]any {
+		return map[string]any{
+			"type":    "heading",
+			"attrs":   map[string]any{"level": float64(level)},
+			"content": []any{text(t)},
+		}
+	}
+	para := func(content ...any) map[string]any {
+		return map[string]any{"type": "paragraph", "content": content}
+	}
+	bullet := func(items ...any) map[string]any {
+		listItems := make([]any, len(items))
+		for i, item := range items {
+			listItems[i] = map[string]any{
+				"type": "listItem",
+				"content": []any{
+					item,
+				},
+			}
+		}
+		return map[string]any{"type": "bulletList", "content": listItems}
+	}
+	ordered := func(items ...any) map[string]any {
+		listItems := make([]any, len(items))
+		for i, item := range items {
+			listItems[i] = map[string]any{
+				"type": "listItem",
+				"content": []any{
+					item,
+				},
+			}
+		}
+		return map[string]any{"type": "orderedList", "content": listItems}
+	}
+	codeBlock := func(lang, body string) map[string]any {
+		return map[string]any{
+			"type":    "codeBlock",
+			"attrs":   map[string]any{"language": lang},
+			"content": []any{text(body)},
+		}
+	}
+	blockquote := func(content ...any) map[string]any {
+		return map[string]any{"type": "blockquote", "content": content}
+	}
+	rule := map[string]any{"type": "rule"}
+
+	return map[string]any{
+		"type":    "doc",
+		"version": float64(1),
+		"content": []any{
+			// Problem
+			heading(2, "Problem"),
+			para(
+				text("When the rate limit is exceeded, the API returns "),
+				bold("500 Internal Server Error"),
+				text(" instead of the correct "),
+				code("429 Too Many Requests"),
+				text(" response. Clients cannot distinguish rate limiting from real server errors."),
+			),
+
+			// Root Cause
+			heading(2, "Root Cause"),
+			para(
+				text("The rate limiter middleware catches "),
+				code("RateLimitExceeded"),
+				text(" but re-throws it as a generic "),
+				code("InternalError"),
+				text(". The error mapping in "),
+				code("error_handler.go"),
+				text(" only handles:"),
+			),
+			bullet(
+				para(code("AuthError"), text(" → 401")),
+				para(code("ValidationError"), text(" → 400")),
+				para(code("NotFoundError"), text(" → 404")),
+			),
+			para(
+				italic("Everything else falls through to 500."),
+			),
+
+			rule,
+
+			// Fix
+			heading(2, "Fix"),
+			ordered(
+				para(text("Add "), code("RateLimitError"), text(" to the error type enum in "), code("pkg/errors/types.go")),
+				para(text("Map "), code("RateLimitError"), text(" → "), bold("429"), text(" in "), code("error_handler.go")),
+				para(text("Set "), code("Retry-After"), text(" header from the limiter's reset timestamp")),
+				para(text("Add "), code("X-RateLimit-Remaining"), text(" and "), code("X-RateLimit-Limit"), text(" headers")),
+			),
+
+			// Response format
+			heading(3, "Expected response format"),
+			codeBlock("json", `{
+  "error": "rate_limit_exceeded",
+  "message": "API rate limit exceeded",
+  "retry_after": 30
+}`),
+
+			// Testing
+			heading(2, "Testing"),
+			bullet(
+				para(bold("Unit test:"), text(" verify 429 status and headers when limit exceeded")),
+				para(bold("Integration test:"), text(" hit endpoint 100 times, confirm 429 after threshold")),
+				para(bold("Load test:"), text(" confirm Retry-After values are accurate under sustained load")),
+			),
+
+			// Blockquote
+			blockquote(
+				para(
+					text("See "), link("RFC 6585 §4", "https://datatracker.ietf.org/doc/html/rfc6585#section-4"),
+					text(" for the 429 status code specification."),
+				),
+			),
+
+			rule,
+
+			// References
+			heading(3, "References"),
+			bullet(
+				para(text("PR: "), link("acme/platform#847", "https://github.com/acme/platform/pull/847")),
+				para(text("Dashboard: "), link("Grafana API Errors", "https://grafana.internal/d/api-errors")),
+			),
+		},
+	}
 }

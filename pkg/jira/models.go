@@ -45,7 +45,8 @@ type Issue struct {
 	ID          string      `json:"id"`
 	Key         string      `json:"key"`
 	Summary     string      `json:"-"`
-	Description string      `json:"-"`
+	Description    string `json:"-"`
+	DescriptionADF any    `json:"-"` // raw ADF document from API
 	Status      *Status     `json:"-"`
 	Priority    *Priority   `json:"-"`
 	Assignee    *User       `json:"-"`
@@ -126,7 +127,8 @@ type Project struct {
 type Comment struct {
 	ID      string    `json:"id"`
 	Author  *User     `json:"-"`
-	Body    string    `json:"-"`
+	Body    string `json:"-"`
+	BodyADF any    `json:"-"` // raw ADF document from API
 	Created time.Time `json:"-"`
 	Updated time.Time `json:"-"`
 }

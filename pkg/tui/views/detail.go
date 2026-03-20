@@ -252,18 +252,18 @@ func (d *DetailView) ClickItem(relY int) tea.Cmd {
 
 	// Walk blocks to find which one contains the clicked line.
 	var blocks [][]string
-	contentWidth := max(d.width-2, 10)
+	blockWidth := max(d.width-2, 10) - 1 // -1 for list bar prefix
 	switch d.activeTab {
 	case TabSubtasks:
-		blocks = d.renderSubtaskBlocks(contentWidth)
+		blocks = d.renderSubtaskBlocks(blockWidth)
 	case TabComments:
-		blocks = d.renderCommentBlocks(contentWidth)
+		blocks = d.renderCommentBlocks(blockWidth)
 	case TabLinks:
-		blocks = d.renderLinkBlocks(contentWidth)
+		blocks = d.renderLinkBlocks(blockWidth)
 	case TabHistory:
-		blocks = d.renderHistoryBlocks(contentWidth)
+		blocks = d.renderHistoryBlocks(blockWidth)
 	case TabInfo:
-		blocks = d.renderInfoBlocks(contentWidth)
+		blocks = d.renderInfoBlocks(blockWidth)
 	default:
 		return nil
 	}
@@ -456,18 +456,20 @@ func (d *DetailView) View() string {
 
 	if count := d.listTabItemCount(); count > 0 {
 		// List tab — render blocks, highlight selected.
+		// Subtract 1 for the list bar/space prefix added below.
+		blockWidth := contentWidth - 1
 		var blocks [][]string
 		switch d.activeTab {
 		case TabSubtasks:
-			blocks = d.renderSubtaskBlocks(contentWidth)
+			blocks = d.renderSubtaskBlocks(blockWidth)
 		case TabComments:
-			blocks = d.renderCommentBlocks(contentWidth)
+			blocks = d.renderCommentBlocks(blockWidth)
 		case TabLinks:
-			blocks = d.renderLinkBlocks(contentWidth)
+			blocks = d.renderLinkBlocks(blockWidth)
 		case TabHistory:
-			blocks = d.renderHistoryBlocks(contentWidth)
+			blocks = d.renderHistoryBlocks(blockWidth)
 		case TabInfo:
-			blocks = d.renderInfoBlocks(contentWidth)
+			blocks = d.renderInfoBlocks(blockWidth)
 		default:
 			// TabDetails handled by else branch (text tab)
 		}
@@ -487,7 +489,7 @@ func (d *DetailView) View() string {
 		// Flatten blocks — truncate long ones, blue bar on selected.
 		bar := lipgloss.NewStyle().Foreground(theme.ColorBlue).Render("▎")
 		ellipsis := lipgloss.NewStyle().Foreground(theme.ColorGray).Render("    ...")
-		sep := strings.Repeat("─", contentWidth-2)
+		sep := strings.Repeat("─", blockWidth)
 		for i, block := range blocks {
 			// Truncate long blocks.
 			displayBlock := block
@@ -625,8 +627,19 @@ func (d *DetailView) buildTitle(maxWidth int) string {
 }
 
 func (d *DetailView) renderDescription(width int) []string {
-	valStyle := d.theme.ValueStyle
+	// Try rich ADF rendering first.
+	if d.issue.DescriptionADF != nil {
+		if lines := renderADF(d.issue.DescriptionADF, width-1); len(lines) > 0 {
+			result := make([]string, len(lines))
+			for i, l := range lines {
+				result[i] = " " + l
+			}
+			return result
+		}
+	}
 
+	// Fallback: plain text.
+	valStyle := d.theme.ValueStyle
 	desc := d.issue.Description
 	if desc == "" {
 		desc = "(no description)"
@@ -922,11 +935,23 @@ func (d *DetailView) renderCommentBlocks(width int) [][]string {
 		if c.Author != nil {
 			author = c.Author.DisplayName
 		}
-		wrapped := colorURLsWrapped(wrapText(c.Body, width-2))
-		block := make([]string, 0, 1+len(wrapped))
-		block = append(block, " "+theme.AuthorRender(author)+" "+gray.Render(timeAgo(c.Created)))
-		for _, wl := range wrapped {
-			block = append(block, " "+colorMentions(valStyle.Render(wl)))
+		block := []string{" " + theme.AuthorRender(author) + " " + gray.Render(timeAgo(c.Created))}
+
+		// Try rich ADF rendering first.
+		var bodyLines []string
+		if c.BodyADF != nil {
+			bodyLines = renderADF(c.BodyADF, width-1)
+		}
+		if len(bodyLines) > 0 {
+			for _, l := range bodyLines {
+				block = append(block, " "+l)
+			}
+		} else {
+			// Fallback: plain text.
+			wrapped := colorURLsWrapped(wrapText(c.Body, width-2))
+			for _, wl := range wrapped {
+				block = append(block, " "+colorMentions(valStyle.Render(wl)))
+			}
 		}
 		blocks = append(blocks, block)
 	}
@@ -1107,20 +1132,32 @@ func ExtractURLs(issue *jira.Issue, host string) []URLGroup {
 
 	var groups []URLGroup
 
-	// Body (description).
+	// Body (description): prefer ADF, fallback to plain text.
 	var body []string
-	for _, u := range findURLs(issue.Description) {
-		add(&body, u)
+	if issue.DescriptionADF != nil {
+		for _, u := range extractADFURLs(issue.DescriptionADF) {
+			add(&body, u)
+		}
+	} else {
+		for _, u := range findURLs(issue.Description) {
+			add(&body, u)
+		}
 	}
 	if len(body) > 0 {
 		groups = append(groups, URLGroup{"Body", body})
 	}
 
-	// Comments.
+	// Comments: prefer ADF, fallback to plain text.
 	var comments []string
 	for _, c := range issue.Comments {
-		for _, u := range findURLs(c.Body) {
-			add(&comments, u)
+		if c.BodyADF != nil {
+			for _, u := range extractADFURLs(c.BodyADF) {
+				add(&comments, u)
+			}
+		} else {
+			for _, u := range findURLs(c.Body) {
+				add(&comments, u)
+			}
 		}
 	}
 	if len(comments) > 0 {

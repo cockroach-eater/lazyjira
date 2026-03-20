@@ -481,8 +481,9 @@ func (r *issueResponse) toIssue() Issue {
 		issue.Status = r.Fields.Status.toStatus()
 	}
 
-	// Description in API v3 is ADF (JSON document); extract plain text.
+	// Description in API v3 is ADF (JSON document); store raw + extract plain text fallback.
 	if r.Fields.Description != nil {
+		issue.DescriptionADF = r.Fields.Description
 		issue.Description = extractADFText(r.Fields.Description)
 	}
 
@@ -661,8 +662,9 @@ func (r *commentResponse) toComment() Comment {
 		u := r.Author.toUser()
 		c.Author = &u
 	}
-	// Body in API v3 is ADF; extract plain text.
+	// Body in API v3 is ADF; store raw + extract plain text fallback.
 	if r.Body != nil {
+		c.BodyADF = r.Body
 		c.Body = extractADFText(r.Body)
 	}
 	return c

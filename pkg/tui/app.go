@@ -435,10 +435,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							items = append(items, components.ModalItem{Label: g.Section, Separator: true})
 						}
 						for _, u := range g.URLs {
+							display := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
 							if key := a.extractIssueKey(u); key != "" {
-								items = append(items, components.ModalItem{ID: u, Label: key, Internal: true})
+								items = append(items, components.ModalItem{ID: u, Label: key + " " + display, Internal: true})
 							} else {
-								items = append(items, components.ModalItem{ID: u, Label: u})
+								items = append(items, components.ModalItem{ID: u, Label: display})
 							}
 						}
 					}
