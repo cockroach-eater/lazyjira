@@ -34,30 +34,54 @@ func (a *App) layoutPanels() {
 		w := a.width
 		logH := 5
 
-		// Collapsed panels get 1 line; focused panel gets remaining space.
-		statusH := 1  // status always collapsed in vertical
-		issuesH := 1  // collapsed by default
-		projectsH := 1 // collapsed by default
-		var detailH int
+		// Priority-based accordion for vertical layout.
+		// Priority: detail(0) > issues(2) > projects(3).
+		// Non-focused left panels are collapsed (1 line).
+		// Detail always gets its target first, then remaining
+		// space goes to the focused left panel.
+		const (
+			detailTarget = 12 // enough for issue description
+			projectsCap  = 8  // hard cap for projects
+		)
+
+		statusH := 1 // always collapsed in vertical
+		issuesH := 1
+		projectsH := 1
+		detailH := 1
+
+		avail := totalH - statusH - logH // space for detail + issues + projects
 
 		switch {
 		case a.side == sideRight:
 			// Detail focused: all left panels collapsed.
-			detailH = totalH - statusH - issuesH - projectsH - logH
+			detailH = avail - issuesH - projectsH
+
 		case a.leftFocus == focusIssues:
-			// Issues focused: expand issues, collapse others.
-			detailH = 6
-			issuesH = totalH - statusH - projectsH - logH - detailH
+			// Issues focused: projects collapsed.
+			// Detail gets its target first (priority), issues gets the rest.
+			remaining := avail - projectsH
+			detailH = min(detailTarget, max(remaining-1, 1))
+			issuesH = remaining - detailH
+
 		case a.leftFocus == focusProjects:
-			// Projects focused: expand projects, collapse others.
-			detailH = 6
-			projectsH = totalH - statusH - issuesH - logH - detailH
+			// Projects focused: issues collapsed.
+			// Detail gets priority, projects gets rest (capped),
+			// excess above cap goes back to detail.
+			remaining := avail - issuesH
+			detailH = min(detailTarget, max(remaining-1, 1))
+			projectsH = min(remaining-detailH, projectsCap)
+			detailH = remaining - projectsH // give cap excess back to detail
+
 		case a.leftFocus == focusStatus:
 			statusH = 3
-			detailH = 6
-			issuesH = totalH - statusH - projectsH - logH - detailH
+			avail -= 2 // status took 2 extra
+			// Same as issues focused.
+			remaining := avail - projectsH
+			detailH = min(detailTarget, max(remaining-1, 1))
+			issuesH = remaining - detailH
+
 		default:
-			detailH = totalH - statusH - issuesH - projectsH - logH
+			detailH = avail - issuesH - projectsH
 		}
 
 		if issuesH < 1 {

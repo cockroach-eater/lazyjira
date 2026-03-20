@@ -138,9 +138,9 @@ func RenderPanelFull(title, footer, content string, width, innerHeight int, focu
 		styledFooter := borderStyle.Render(footer)
 		footerLen := lipgloss.Width(styledFooter)
 		padding := max(contentWidth-footerLen-1, 0)
-		bottomLine = borderStyle.Render("╰─") +
+		bottomLine = borderStyle.Render("╰"+strings.Repeat("─", padding)) +
 			styledFooter +
-			borderStyle.Render(strings.Repeat("─", padding)+"╯")
+			borderStyle.Render("─╯")
 	} else {
 		bottomLine = borderStyle.Render("╰" + strings.Repeat("─", contentWidth) + "╯")
 	}

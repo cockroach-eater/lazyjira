@@ -258,7 +258,7 @@ func (m *IssuesList) View() string {
 	if m.Height <= 1 {
 		footer := ""
 		if n := len(m.issues); n > 0 {
-			footer = fmt.Sprintf("%d issues", n)
+			footer = fmt.Sprintf("%d of %d", m.Cursor+1, n)
 		}
 		return components.RenderCollapsedBar(m.buildTitle(), footer, m.Width, m.Focused)
 	}

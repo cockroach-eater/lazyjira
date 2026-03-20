@@ -97,7 +97,7 @@ func (p *ProjectList) View() string {
 	if p.Height <= 1 {
 		footer := ""
 		if n := len(p.projects); n > 0 {
-			footer = fmt.Sprintf("%d projects", n)
+			footer = fmt.Sprintf("%d of %d", p.Cursor+1, n)
 		}
 		return components.RenderCollapsedBar("[3] Projects", footer, p.Width, p.Focused)
 	}
