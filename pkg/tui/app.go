@@ -32,6 +32,24 @@ const (
 	sideRight
 )
 
+// editCtx tracks what edit operation is in progress.
+type editCtx struct {
+	kind      string // "description", "comment-new", "comment-edit", "summary", "field", "field-text"
+	issueKey  string
+	commentID string // for "comment-edit"
+	fieldID   string // for "field" / "field-text" (e.g. "customfield_10015")
+}
+
+// Modal kind constants for ModalSelectedMsg dispatch.
+const (
+	modalPriority  = "priority"
+	modalAssignee  = "assignee"
+	modalReporter  = "reporter"
+	modalIssueType = "issuetype"
+	modalLabels    = "labels"
+	modalComps     = "components"
+)
+
 // Async messages.
 type issuesLoadedMsg struct {
 	issues []jira.Issue
@@ -65,11 +83,20 @@ type App struct {
 	helpBar   components.HelpBar
 	searchBar components.SearchBar
 	modal     components.Modal
+	diffView   components.DiffView
+	inputModal components.InputModal
+
+	// Edit session state.
+	editTempPath string // temp file path for cleanup
+	editContext  editCtx
+	modalKind    string // modal* constants
 
 	side        focusSide
 	leftFocus   focusPanel
 	projectKey  string
+	projectID   string
 	showHelp    bool
+	helpCursor  int
 	logFlag     *bool
 	demoMode    bool
 	issueCache  map[string]*jira.Issue
@@ -121,6 +148,8 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	helpBar := components.NewHelpBar(nil)
 	searchBar := components.NewSearchBar()
 	modal := components.NewModal()
+	diffView := components.NewDiffView()
+	inputModal := components.NewInputModal()
 
 	logFlag := new(bool) // shared with closure, set via app.logRequests
 	client.SetOnRequest(func(rl jira.RequestLog) {
@@ -165,6 +194,8 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		helpBar:     helpBar,
 		searchBar:   searchBar,
 		modal:       modal,
+		diffView:    diffView,
+		inputModal:  inputModal,
 		side:        sideLeft,
 		leftFocus:   focusIssues,
 		projectKey:  projectKey,
@@ -205,6 +236,31 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Input modal intercepts keys when visible.
+	if a.inputModal.IsVisible() {
+		if _, ok := msg.(tea.KeyMsg); ok {
+			updated, cmd := a.inputModal.Update(msg)
+			a.inputModal = updated
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return a, tea.Batch(cmds...)
+		}
+	}
+
+	// Diff view intercepts keys when visible.
+	if a.diffView.IsVisible() {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			updated, cmd := a.diffView.Update(msg)
+			a.diffView = updated
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	// Modal intercepts keys and mouse when visible.
 	if a.modal.IsVisible() {
 		switch msg.(type) {
@@ -223,6 +279,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 		a.modal.SetSize(msg.Width, msg.Height)
+		a.diffView.SetSize(msg.Width, msg.Height)
+		a.inputModal.SetSize(msg.Width, msg.Height)
 		a.layoutPanels()
 		a.helpBar.SetWidth(msg.Width)
 		a.searchBar.SetWidth(msg.Width)
@@ -250,9 +308,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, fetchIssueDetail(a.client, selectedIssue.Key))
 			}
 		} else if a.side == sideLeft && a.leftFocus == focusProjects {
-			updated, c := a.projectList.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			a.projectList = updated
-			cmd = c
+			// Select top filtered project and load its issues.
+			if p := a.projectList.SelectedProject(); p != nil {
+				a.projectKey = p.Key
+				a.projectID = p.ID
+				a.statusPanel.SetProject(p.Key)
+				a.projectList.SetActiveKey(p.Key)
+				a.issuesList.ClearActiveKey()
+				a.issuesList.InvalidateTabCache()
+				a.issueCache = make(map[string]*jira.Issue)
+				if !a.demoMode {
+					go saveLastProject(p.Key)
+				}
+				cmds = append(cmds, a.fetchActiveTab())
+			}
 			a.projectList.SetFilter("")
 		}
 		if cmd != nil {
@@ -266,15 +335,27 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
-		// Help popup: any key closes it (except / for search).
+		// Help popup: j/k navigate, esc/q close, other keys ignored.
 		if a.showHelp {
-			if msg.String() == "/" {
+			bindings := a.ContextBindings()
+			switch msg.String() {
+			case "j", "down":
+				if a.helpCursor < len(bindings)-1 {
+					a.helpCursor++
+				}
+				return a, nil
+			case "k", "up":
+				if a.helpCursor > 0 {
+					a.helpCursor--
+				}
+				return a, nil
+			case "esc", "q", "?":
 				a.showHelp = false
-				a.searchBar.Activate()
+				return a, nil
+			default:
+				// Ignore other keys — keep help open.
 				return a, nil
 			}
-			a.showHelp = false
-			return a, nil
 		}
 
 		action := a.keymap.Match(msg.String())
@@ -284,6 +365,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case ActHelp:
 			a.showHelp = true
+			a.helpCursor = 0
 			return a, nil
 
 		case ActSearch:
@@ -458,6 +540,87 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 
+		case ActComments:
+			sel := a.issuesList.SelectedIssue()
+			if sel == nil {
+				return a, nil
+			}
+			a.side = sideRight
+			a.detailView.SetActiveTab(views.TabComments)
+			a.updateFocusState()
+			if _, ok := a.issueCache[sel.Key]; !ok {
+				return a, fetchIssueDetail(a.client, sel.Key)
+			}
+			return a, nil
+
+		case ActAddComment:
+			sel := a.issuesList.SelectedIssue()
+			if sel == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
+				return a, nil
+			}
+			a.editContext = editCtx{kind: "comment-new", issueKey: sel.Key}
+			return a, launchEditor("", ".md")
+
+		case ActEdit:
+			sel := a.issuesList.SelectedIssue()
+			if sel == nil {
+				return a, nil
+			}
+			if a.side == sideLeft && a.leftFocus == focusIssues {
+				// Issues panel → edit summary (inline input).
+				a.inputModal.SetSize(a.width, a.height)
+				a.inputModal.Show("Edit Summary", sel.Summary)
+				a.editContext = editCtx{kind: "summary", issueKey: sel.Key}
+				return a, nil
+			}
+			// Detail panel — context-aware by tab.
+			if a.side == sideRight && a.detailView.ActiveTab() == views.TabComments {
+				// Cmt tab → edit comment under cursor.
+				cmt := a.detailView.SelectedComment()
+				if cmt == nil {
+					return a, nil
+				}
+				md := ""
+				if cmt.BodyADF != nil {
+					md = views.ADFToMarkdown(cmt.BodyADF)
+				} else if cmt.Body != "" {
+					md = cmt.Body
+				}
+				a.editContext = editCtx{kind: "comment-edit", issueKey: sel.Key, commentID: cmt.ID}
+				return a, launchEditor(md, ".md")
+			}
+			// Info tab → type-aware field editing.
+			if a.side == sideRight && a.detailView.ActiveTab() == views.TabInfo {
+				return a.editInfoField(sel)
+			}
+			// Detail panel (Body tab) → edit description ($EDITOR).
+			cached := sel
+			if c, ok := a.issueCache[sel.Key]; ok {
+				cached = c
+			}
+			md := ""
+			if cached.DescriptionADF != nil {
+				md = views.ADFToMarkdown(cached.DescriptionADF)
+			} else if cached.Description != "" {
+				md = cached.Description
+			}
+			a.editContext = editCtx{kind: "description", issueKey: sel.Key}
+			return a, launchEditor(md, ".md")
+
+		case ActEditPriority:
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				*a.logFlag = true
+				return a, fetchPriorities(a.client)
+			}
+			return a, nil
+
+		case ActEditAssignee:
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				*a.logFlag = true
+				return a, fetchUsers(a.client, a.projectKey, sel.Key)
+			}
+			return a, nil
+
 		case ActRefresh:
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
 				*a.logFlag = true
@@ -550,30 +713,230 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items = append(items, components.ModalItem{ID: t.ID, Label: label, Hint: hint})
 		}
 		a.modal.SetSize(a.width, a.height)
+		a.modalKind = ""
 		a.modal.Show("Transition: "+msg.issueKey, items)
 		return a, nil
 
-	case components.ModalSelectedMsg:
-		id := msg.Item.ID
-		if strings.HasPrefix(id, "http") {
-			// Check if it's a Jira issue URL on our host.
-			if issueKey := a.extractIssueKey(id); issueKey != "" {
-				// Navigate to the issue in [2].
-				a.navigateToIssue(issueKey)
-				return a, nil
+	case prioritiesLoadedMsg:
+		if len(msg.priorities) == 0 {
+			return a, nil
+		}
+		var items []components.ModalItem
+		for _, p := range msg.priorities {
+			items = append(items, components.ModalItem{ID: p.ID, Label: p.Name})
+		}
+		a.modal.SetSize(a.width, a.height)
+		a.modalKind = modalPriority
+		a.modal.Show("Priority", items)
+		return a, nil
+
+	case usersLoadedMsg:
+		sel := a.issuesList.SelectedIssue()
+		if sel == nil {
+			return a, nil
+		}
+		// Build assignee list: Unassigned, self, then others.
+		var items []components.ModalItem
+		items = append(items, components.ModalItem{ID: "", Label: "Unassigned"})
+		email := a.cfg.Jira.Email
+		for _, u := range msg.users {
+			if u.Email == email {
+				items = append(items, components.ModalItem{ID: u.AccountID, Label: "→ " + u.DisplayName})
+				break
 			}
-			// External URL — open in browser.
-			openBrowser(id)
-		} else {
-			// Transition picker — execute transition.
+		}
+		for _, u := range msg.users {
+			if u.Email != email {
+				items = append(items, components.ModalItem{ID: u.AccountID, Label: u.DisplayName})
+			}
+		}
+		a.modal.SetSize(a.width, a.height)
+		a.modalKind = modalAssignee
+		a.modal.Show("Assignee: "+sel.Key, items)
+		return a, nil
+
+	case labelsLoadedMsg:
+		sel := a.issuesList.SelectedIssue()
+		if sel == nil {
+			return a, nil
+		}
+		cached := sel
+		if c, ok := a.issueCache[sel.Key]; ok {
+			cached = c
+		}
+		// Build items and selected map from current labels.
+		selected := make(map[string]bool)
+		for _, l := range cached.Labels {
+			selected[l] = true
+		}
+		var items []components.ModalItem
+		for _, l := range msg.labels {
+			items = append(items, components.ModalItem{ID: l, Label: l})
+		}
+		a.modal.SetSize(a.width, a.height)
+		a.modal.ShowChecklist("Labels: "+sel.Key, items, selected)
+		return a, nil
+
+	case componentsLoadedMsg:
+		sel := a.issuesList.SelectedIssue()
+		if sel == nil {
+			return a, nil
+		}
+		cached := sel
+		if c, ok := a.issueCache[sel.Key]; ok {
+			cached = c
+		}
+		selected := make(map[string]bool)
+		for _, c := range cached.Components {
+			selected[c.ID] = true
+		}
+		var items []components.ModalItem
+		for _, c := range msg.components {
+			items = append(items, components.ModalItem{ID: c.ID, Label: c.Name})
+		}
+		a.modal.SetSize(a.width, a.height)
+		a.modal.ShowChecklist("Components: "+sel.Key, items, selected)
+		return a, nil
+
+	case issueTypesLoadedMsg:
+		var items []components.ModalItem
+		for _, t := range msg.issueTypes {
+			items = append(items, components.ModalItem{ID: t.ID, Label: t.Name})
+		}
+		a.modal.SetSize(a.width, a.height)
+		a.modal.Show("Issue Type", items)
+		return a, nil
+
+	case components.ChecklistConfirmedMsg:
+		kind := a.modalKind
+		a.modalKind = ""
+		sel := a.issuesList.SelectedIssue()
+		if sel == nil {
+			return a, nil
+		}
+		switch kind {
+		case modalLabels:
+			var labels []string
+			for _, item := range msg.Selected {
+				labels = append(labels, item.ID)
+			}
+			return a, updateIssueField(a.client, sel.Key, "labels", labels)
+		case modalComps:
+			var comps []map[string]string
+			for _, item := range msg.Selected {
+				comps = append(comps, map[string]string{"id": item.ID})
+			}
+			return a, updateIssueField(a.client, sel.Key, "components", comps)
+		}
+		return a, nil
+
+	case components.ModalSelectedMsg:
+		kind := a.modalKind
+		a.modalKind = ""
+		id := msg.Item.ID
+		switch kind {
+		case modalPriority:
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				return a, doTransition(a.client, sel.Key, id)
+				return a, updateIssueField(a.client, sel.Key, "priority", map[string]string{"id": id})
+			}
+		case modalAssignee, modalReporter:
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				fieldName := kind
+				if id == "" {
+					return a, updateIssueField(a.client, sel.Key, fieldName, nil)
+				}
+				return a, updateIssueField(a.client, sel.Key, fieldName, map[string]string{"accountId": id})
+			}
+		case modalIssueType:
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return a, updateIssueField(a.client, sel.Key, "issuetype", map[string]string{"id": id})
+			}
+		default:
+			// Transition or URL picker.
+			if strings.HasPrefix(id, "http") {
+				if issueKey := a.extractIssueKey(id); issueKey != "" {
+					a.navigateToIssue(issueKey)
+					return a, nil
+				}
+				openBrowser(id)
+			} else {
+				if sel := a.issuesList.SelectedIssue(); sel != nil {
+					return a, doTransition(a.client, sel.Key, id)
+				}
 			}
 		}
 		return a, nil
 
 	case components.ModalCancelledMsg:
+		a.modalKind = ""
 		return a, nil
+
+	case editorFinishedMsg:
+		// Re-enable mouse after editor exits (tea.ExecProcess may disable it).
+		cmds = append(cmds, tea.EnableMouseCellMotion)
+		content, changed, err := readAndCheckEditor(msg)
+		if err != nil {
+			cleanupEditor(msg.tempPath)
+			a.editTempPath = ""
+			a.err = err
+			return a, tea.Batch(cmds...)
+		}
+		if !changed {
+			cleanupEditor(msg.tempPath)
+			a.editTempPath = ""
+			return a, tea.Batch(cmds...)
+		}
+		// Store temp path for cleanup after diff decision.
+		a.editTempPath = msg.tempPath
+		a.diffView.SetSize(a.width, a.height)
+		original := msg.original
+		a.diffView.Show("Confirm changes", original, content)
+		return a, tea.Batch(cmds...)
+
+	case components.DiffConfirmedMsg:
+		cleanupEditor(a.editTempPath)
+		a.editTempPath = ""
+		cmd := a.applyEdit(msg.Content)
+		return a, cmd
+
+	case components.InputConfirmedMsg:
+		ctx := a.editContext
+		a.editContext = editCtx{}
+		switch ctx.kind {
+		case "summary":
+			if msg.Text != "" {
+				return a, updateIssueField(a.client, ctx.issueKey, "summary", msg.Text)
+			}
+		case "field":
+			if msg.Text != "" {
+				return a, updateIssueField(a.client, ctx.issueKey, ctx.fieldID, msg.Text)
+			}
+		}
+		return a, nil
+
+	case components.InputCancelledMsg:
+		a.editContext = editCtx{}
+		return a, nil
+
+	case components.DiffCancelledMsg:
+		cleanupEditor(a.editTempPath)
+		a.editTempPath = ""
+		return a, nil
+
+	case issueUpdatedMsg:
+		// Re-fetch both the issue detail and the issue list to reflect changes.
+		return a, tea.Batch(
+			fetchIssueDetail(a.client, msg.issueKey),
+			a.fetchActiveTab(),
+		)
+
+	case commentAddedMsg:
+		// Re-fetch the issue to show new comment.
+		return a, fetchIssueDetail(a.client, msg.issueKey)
+
+	case commentUpdatedMsg:
+		// Re-fetch the issue to show updated comment.
+		return a, fetchIssueDetail(a.client, msg.issueKey)
 
 	case views.NavigateIssueMsg:
 		a.navigateToIssue(msg.Key)
@@ -620,6 +983,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.projectList.SetProjects(projects)
 		if a.projectKey == "" && len(projects) > 0 {
 			a.projectKey = projects[0].Key
+			a.projectID = projects[0].ID
 			a.statusPanel.SetProject(a.projectKey)
 			a.projectList.SetActiveKey(a.projectKey)
 			return a, a.fetchActiveTab()
@@ -707,24 +1071,118 @@ func (a *App) View() string {
 		content = lipgloss.JoinVertical(lipgloss.Left, content, errLine)
 	}
 
+	// Refresh help bar hints for current context (overlays, panels).
+	a.helpBar.SetItems(a.helpBarItems())
+
 	var bottomBar string
-	if a.searchBar.IsActive() {
+	switch {
+	case a.searchBar.IsActive():
 		bottomBar = a.searchBar.View()
-	} else {
+	case a.modal.IsVisible() && a.modal.IsSearching():
+		bottomBar = a.modal.SearchView(a.width)
+	default:
 		bottomBar = a.helpBar.View()
 	}
 
 	full := lipgloss.JoinVertical(lipgloss.Left, content, bottomBar)
 
-	// Overlays.
-	if a.modal.IsVisible() {
+	// Overlays (mutually exclusive — only one shown at a time).
+	switch {
+	case a.inputModal.IsVisible():
+		popup := a.inputModal.View()
+		popupW := lipgloss.Width(popup)
+		popupH := len(strings.Split(popup, "\n"))
+		x := (a.width - popupW) / 2
+		y := (a.height - popupH) / 2
+		full = components.OverlayAt(full, popup, x, y, a.width, a.height)
+	case a.diffView.IsVisible():
+		diff := a.diffView.View()
+		diffW := lipgloss.Width(diff)
+		diffH := len(strings.Split(diff, "\n"))
+		x := (a.width - diffW) / 2
+		y := (a.height - diffH) / 2
+		full = components.OverlayAt(full, diff, x, y, a.width, a.height)
+	case a.modal.IsVisible():
 		full = a.renderModalOverlay(full)
 	}
 	if a.showHelp {
 		full = a.renderHelpOverlay(full)
 	}
-
 	return full
+}
+
+// editInfoField dispatches field editing by type when `e` is pressed on the Info tab.
+func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
+	field := a.detailView.SelectedInfoField()
+	if field == nil {
+		return a, nil
+	}
+	*a.logFlag = true
+	switch field.Type {
+	case views.FieldSingleSelect:
+		switch field.FieldID {
+		case "status":
+			// Reuse transition flow.
+			return a, fetchTransitions(a.client, sel.Key)
+		case "priority":
+			return a, fetchPriorities(a.client)
+		case "issuetype":
+			if a.projectID != "" {
+				a.modalKind = modalIssueType
+				return a, fetchIssueTypes(a.client, a.projectID)
+			}
+		}
+	case views.FieldPerson:
+		switch field.FieldID {
+		case "assignee":
+			a.modalKind = modalAssignee
+			return a, fetchUsers(a.client, a.projectKey, sel.Key)
+		case "reporter":
+			a.modalKind = modalReporter
+			return a, fetchUsers(a.client, a.projectKey, sel.Key)
+		}
+	case views.FieldMultiSelect:
+		switch field.FieldID {
+		case "labels":
+			a.modalKind = modalLabels
+			return a, fetchLabels(a.client)
+		case "components":
+			a.modalKind = modalComps
+			return a, fetchComponents(a.client, a.projectKey)
+		}
+	case views.FieldSingleText:
+		// InputModal for single-line text (summary, custom fields).
+		a.inputModal.SetSize(a.width, a.height)
+		a.inputModal.Show("Edit "+field.Name, field.Value)
+		a.editContext = editCtx{kind: "field", issueKey: sel.Key, fieldID: field.FieldID}
+		return a, nil
+	case views.FieldMultiText:
+		// $EDITOR for multi-line text.
+		a.editContext = editCtx{kind: "field-text", issueKey: sel.Key, fieldID: field.FieldID}
+		return a, launchEditor(field.Value, ".md")
+	}
+	return a, nil
+}
+
+// applyEdit sends the edited content to the Jira API based on editContext.
+func (a *App) applyEdit(mdContent string) tea.Cmd {
+	ctx := a.editContext
+	a.editContext = editCtx{} // clear
+
+	switch ctx.kind {
+	case "description":
+		adf := views.MarkdownToADF(mdContent)
+		return updateIssueField(a.client, ctx.issueKey, "description", adf)
+	case "comment-new":
+		adf := views.MarkdownToADF(mdContent)
+		return addComment(a.client, ctx.issueKey, adf)
+	case "comment-edit":
+		adf := views.MarkdownToADF(mdContent)
+		return updateComment(a.client, ctx.issueKey, ctx.commentID, adf)
+	case "field-text":
+		return updateIssueField(a.client, ctx.issueKey, ctx.fieldID, mdContent)
+	}
+	return nil
 }
 
 func (a *App) renderModalOverlay(base string) string {
@@ -748,6 +1206,14 @@ func (a *App) renderModalOverlay(base string) string {
 func (a *App) renderHelpOverlay(base string) string {
 	bindings := a.ContextBindings()
 
+	// Clamp cursor.
+	if a.helpCursor >= len(bindings) {
+		a.helpCursor = len(bindings) - 1
+	}
+	if a.helpCursor < 0 {
+		a.helpCursor = 0
+	}
+
 	maxKey := 0
 	for _, b := range bindings {
 		if len(b.Key) > maxKey {
@@ -757,34 +1223,41 @@ func (a *App) renderHelpOverlay(base string) string {
 
 	popupW := min(maxKey+40, a.width-4)
 
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	keyNormal := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	keySel := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Background(lipgloss.Color("4"))
+	descSel := lipgloss.NewStyle().Background(lipgloss.Color("4"))
 
-	lines := make([]string, 0, len(bindings)+3)
+	lines := make([]string, 0, len(bindings)+2)
 	lines = append(lines, "")
 	descMaxW := popupW - maxKey - 6 // 2 left pad + 2 gap + 2 border
-	for _, b := range bindings {
+	for i, b := range bindings {
 		padded := b.Key
 		for len(padded) < maxKey {
 			padded += " "
 		}
 		desc := components.TruncateEnd(b.Description, descMaxW)
-		lines = append(lines, "  "+keyStyle.Render(padded)+"  "+desc)
+		// Pad desc to fill remaining width.
+		for len(desc) < descMaxW {
+			desc += " "
+		}
+		var line string
+		if i == a.helpCursor {
+			line = descSel.Render("  ") + keySel.Render(padded) + descSel.Render("  "+desc)
+		} else {
+			line = "  " + keyNormal.Render(padded) + "  " + desc
+		}
+		lines = append(lines, line)
 	}
 	lines = append(lines, "")
-	lines = append(lines, "  "+lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("press any key to close"))
+
+	popupH := min(len(lines), a.height-4)
+	footer := fmt.Sprintf("%d of %d", a.helpCursor+1, len(bindings))
 
 	popupContent := strings.Join(lines, "\n")
-	popupH := min(len(lines), a.height-4)
-
-	popup := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("2")).
-		Width(popupW).
-		Height(popupH).
-		Render(popupContent)
+	content := components.RenderPanelFull("Keybindings", footer, popupContent, popupW, popupH, true, nil)
 
 	// Center the popup over background.
-	return components.Overlay(base, popup, a.width, a.height)
+	return components.Overlay(base, content, a.width, a.height)
 }
 
 // fetchActiveTab returns a command to fetch issues for the current active tab's JQL.

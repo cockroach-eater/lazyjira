@@ -19,17 +19,22 @@ type ClientInterface interface {
 	GetMyIssues(ctx context.Context) ([]Issue, error)
 	GetTransitions(ctx context.Context, issueKey string) ([]Transition, error)
 	DoTransition(ctx context.Context, issueKey, transitionID string) error
-	AddComment(ctx context.Context, issueKey, body string) (*Comment, error)
+	AddComment(ctx context.Context, issueKey string, body any) (*Comment, error)
+	UpdateComment(ctx context.Context, issueKey, commentID string, body any) error
 	AssignIssue(ctx context.Context, issueKey, accountID string) error
 	GetProjects(ctx context.Context) ([]Project, error)
 	GetBoards(ctx context.Context) ([]Board, error)
 	GetBoardIssues(ctx context.Context, boardID int, jql string) ([]Issue, error)
 	UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error
+	GetPriorities(ctx context.Context) ([]Priority, error)
 	CreateIssue(ctx context.Context, projectKey, issueTypeID, summary, description string) (*Issue, error)
 	GetComments(ctx context.Context, issueKey string) ([]Comment, error)
 	GetUsers(ctx context.Context, projectKey string) ([]User, error)
 	GetSprints(ctx context.Context, boardID int) ([]Sprint, error)
 	GetChangelog(ctx context.Context, issueKey string) ([]ChangelogEntry, error)
+	GetLabels(ctx context.Context) ([]string, error)
+	GetComponents(ctx context.Context, projectKey string) ([]Component, error)
+	GetIssueTypes(ctx context.Context, projectID string) ([]IssueType, error)
 	SetOnRequest(fn func(RequestLog))
 	SetCustomFields(ids []string)
 }
@@ -239,7 +244,7 @@ func (c *Client) DoTransition(ctx context.Context, issueKey, transitionID string
 	return nil
 }
 
-func (c *Client) AddComment(ctx context.Context, issueKey, body string) (*Comment, error) {
+func (c *Client) AddComment(ctx context.Context, issueKey string, body any) (*Comment, error) {
 	reqBody := map[string]any{
 		"body": body,
 	}
@@ -250,6 +255,15 @@ func (c *Client) AddComment(ctx context.Context, issueKey, body string) (*Commen
 	}
 	comment := raw.toComment()
 	return &comment, nil
+}
+
+func (c *Client) UpdateComment(ctx context.Context, issueKey, commentID string, body any) error {
+	reqBody := map[string]any{"body": body}
+	err := c.do(ctx, http.MethodPut, "/issue/"+issueKey+"/comment/"+commentID, reqBody, nil)
+	if err != nil {
+		return fmt.Errorf("update comment %s on %s: %w", commentID, issueKey, err)
+	}
+	return nil
 }
 
 func (c *Client) AssignIssue(ctx context.Context, issueKey, accountID string) error {
@@ -327,6 +341,15 @@ func (c *Client) UpdateIssue(ctx context.Context, issueKey string, fields map[st
 	return nil
 }
 
+func (c *Client) GetPriorities(ctx context.Context) ([]Priority, error) {
+	var raw []Priority
+	err := c.do(ctx, http.MethodGet, "/priority", nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get priorities: %w", err)
+	}
+	return raw, nil
+}
+
 func (c *Client) CreateIssue(ctx context.Context, projectKey, issueTypeID, summary, description string) (*Issue, error) {
 	body := map[string]any{
 		"fields": map[string]any{
@@ -398,6 +421,35 @@ func (c *Client) GetSprints(ctx context.Context, boardID int) ([]Sprint, error) 
 		return nil, fmt.Errorf("get sprints for board %d: %w", boardID, err)
 	}
 	return raw.Values, nil
+}
+
+func (c *Client) GetLabels(ctx context.Context) ([]string, error) {
+	var raw struct {
+		Values []string `json:"values"`
+	}
+	err := c.do(ctx, http.MethodGet, "/label?maxResults=1000", nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get labels: %w", err)
+	}
+	return raw.Values, nil
+}
+
+func (c *Client) GetComponents(ctx context.Context, projectKey string) ([]Component, error) {
+	var raw []Component
+	err := c.do(ctx, http.MethodGet, "/project/"+projectKey+"/components", nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get components for project %s: %w", projectKey, err)
+	}
+	return raw, nil
+}
+
+func (c *Client) GetIssueTypes(ctx context.Context, projectID string) ([]IssueType, error) {
+	var raw []IssueType
+	err := c.do(ctx, http.MethodGet, "/issuetype/project?projectId="+projectID, nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get issue types for project %s: %w", projectID, err)
+	}
+	return raw, nil
 }
 
 // Internal response types for proper JSON unmarshalling from Jira REST API v3.

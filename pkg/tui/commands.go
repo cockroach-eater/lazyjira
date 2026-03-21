@@ -106,6 +106,99 @@ func doTransition(client jira.ClientInterface, key, transitionID string) tea.Cmd
 	}
 }
 
+type issueUpdatedMsg struct{ issueKey string }
+type commentAddedMsg struct{ issueKey string }
+type commentUpdatedMsg struct{ issueKey string }
+type prioritiesLoadedMsg struct{ priorities []jira.Priority }
+type usersLoadedMsg struct {
+	users    []jira.User
+	issueKey string
+}
+type labelsLoadedMsg struct{ labels []string }
+type componentsLoadedMsg struct{ components []jira.Component }
+type issueTypesLoadedMsg struct{ issueTypes []jira.IssueType }
+
+func updateIssueField(client jira.ClientInterface, issueKey, field string, value any) tea.Cmd {
+	return func() tea.Msg {
+		fields := map[string]any{field: value}
+		err := client.UpdateIssue(context.Background(), issueKey, fields)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return issueUpdatedMsg{issueKey: issueKey}
+	}
+}
+
+func addComment(client jira.ClientInterface, issueKey string, body any) tea.Cmd {
+	return func() tea.Msg {
+		_, err := client.AddComment(context.Background(), issueKey, body)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return commentAddedMsg{issueKey: issueKey}
+	}
+}
+
+func updateComment(client jira.ClientInterface, issueKey, commentID string, body any) tea.Cmd {
+	return func() tea.Msg {
+		err := client.UpdateComment(context.Background(), issueKey, commentID, body)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return commentUpdatedMsg{issueKey: issueKey}
+	}
+}
+
+func fetchPriorities(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		priorities, err := client.GetPriorities(context.Background())
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return prioritiesLoadedMsg{priorities: priorities}
+	}
+}
+
+func fetchUsers(client jira.ClientInterface, projectKey, issueKey string) tea.Cmd {
+	return func() tea.Msg {
+		users, err := client.GetUsers(context.Background(), projectKey)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return usersLoadedMsg{users: users, issueKey: issueKey}
+	}
+}
+
+func fetchLabels(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		labels, err := client.GetLabels(context.Background())
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return labelsLoadedMsg{labels: labels}
+	}
+}
+
+func fetchComponents(client jira.ClientInterface, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		comps, err := client.GetComponents(context.Background(), projectKey)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return componentsLoadedMsg{components: comps}
+	}
+}
+
+func fetchIssueTypes(client jira.ClientInterface, projectID string) tea.Cmd {
+	return func() tea.Msg {
+		types, err := client.GetIssueTypes(context.Background(), projectID)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return issueTypesLoadedMsg{issueTypes: types}
+	}
+}
+
 func saveLastProject(projectKey string) {
 	creds, err := config.LoadCredentials()
 	if err != nil || creds == nil {

@@ -31,7 +31,12 @@ const (
 	ActTransition  Action = "transition"
 	ActRefresh     Action = "refresh"
 	ActRefreshAll  Action = "refreshAll"
-	ActInfoTab     Action = "infoTab"
+	ActInfoTab         Action = "infoTab"
+	ActEdit        Action = "edit"
+	ActComments    Action = "comments"
+	ActAddComment  Action = "addComment"
+	ActEditPriority Action = "editPriority"
+	ActEditAssignee Action = "editAssignee"
 )
 
 // Keymap maps actions to key strings. Multiple keys can trigger the same action.
@@ -60,7 +65,12 @@ func DefaultKeymap() Keymap {
 		ActTransition:  {"t"},
 		ActRefresh:     {"r"},
 		ActRefreshAll:  {"R"},
-		ActInfoTab:     {"i"},
+		ActInfoTab:         {"i"},
+		ActEdit:        {"e"},
+		ActComments:    {"c"},
+		ActAddComment:  {"n"},
+		ActEditPriority: {"p"},
+		ActEditAssignee: {"a"},
 	}
 }
 

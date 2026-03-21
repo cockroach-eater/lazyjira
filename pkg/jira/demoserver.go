@@ -65,15 +65,38 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.handleGetTransitions(w, key)
 		}
+	case strings.Contains(path, "/comment/"):
+		// PUT /issue/{key}/comment/{id}
+		s.handleUpdateComment(w, r, path)
 	case strings.HasSuffix(path, "/comment"):
 		key := extractKeyFromPath(path, "/comment")
-		s.handleComments(w, key)
+		if r.Method == http.MethodPost {
+			s.handleAddComment(w, r, key)
+		} else {
+			s.handleComments(w, key)
+		}
 	case strings.HasSuffix(path, "/changelog"):
 		key := extractKeyFromPath(path, "/changelog")
 		s.handleChangelog(w, key)
 	case strings.HasPrefix(path, "/issue/"):
 		key := strings.TrimPrefix(path, "/issue/")
-		s.handleIssue(w, key)
+		if r.Method == http.MethodPut {
+			s.handleUpdateIssue(w, r, key)
+		} else {
+			s.handleIssue(w, key)
+		}
+	case path == "/priority":
+		s.handlePriorities(w)
+	case strings.HasPrefix(path, "/user/assignable/search"):
+		s.handleUsers(w)
+	case path == "/label":
+		s.handleLabels(w)
+	case strings.HasSuffix(path, "/components") && strings.HasPrefix(path, "/project/"):
+		key := strings.TrimPrefix(path, "/project/")
+		key = strings.TrimSuffix(key, "/components")
+		s.handleComponents(w, key)
+	case path == "/issuetype/project":
+		s.handleIssueTypes(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -210,6 +233,159 @@ func (s *DemoServer) handleDoTransition(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *DemoServer) handleUpdateIssue(w http.ResponseWriter, r *http.Request, key string) {
+	iss, ok := s.data.issueIndex[key]
+	if !ok {
+		http.Error(w, fmt.Sprintf("issue %s not found", key), http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Fields map[string]any `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if summary, ok := body.Fields["summary"].(string); ok {
+		iss.Summary = summary
+	}
+	if desc, ok := body.Fields["description"]; ok && desc != nil {
+		iss.DescriptionADF = desc
+		iss.Description = extractADFText(desc)
+	}
+	if p, ok := body.Fields["priority"].(map[string]any); ok {
+		if iss.Priority == nil {
+			iss.Priority = &Priority{}
+		}
+		if id, ok := p["id"].(string); ok {
+			iss.Priority.ID = id
+		}
+	}
+	if v, exists := body.Fields["assignee"]; exists {
+		if v == nil {
+			iss.Assignee = nil
+		} else if m, ok := v.(map[string]any); ok {
+			if id, ok := m["accountId"].(string); ok {
+				iss.Assignee = &User{AccountID: id}
+			}
+		}
+	}
+	if labels, ok := body.Fields["labels"].([]any); ok {
+		iss.Labels = make([]string, 0, len(labels))
+		for _, l := range labels {
+			if s, ok := l.(string); ok {
+				iss.Labels = append(iss.Labels, s)
+			}
+		}
+	}
+	if comps, ok := body.Fields["components"].([]any); ok {
+		demoComps, _ := s.data.GetComponents(context.Background(), "")
+		nameMap := make(map[string]string)
+		for _, dc := range demoComps {
+			nameMap[dc.ID] = dc.Name
+		}
+		iss.Components = make([]Component, 0, len(comps))
+		for _, c := range comps {
+			if m, ok := c.(map[string]any); ok {
+				if id, ok := m["id"].(string); ok {
+					iss.Components = append(iss.Components, Component{ID: id, Name: nameMap[id]})
+				}
+			}
+		}
+	}
+	if it, ok := body.Fields["issuetype"].(map[string]any); ok {
+		if iss.IssueType == nil {
+			iss.IssueType = &IssueType{}
+		}
+		if id, ok := it["id"].(string); ok {
+			iss.IssueType.ID = id
+		}
+	}
+	iss.Updated = time.Now()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *DemoServer) handleUpdateComment(w http.ResponseWriter, r *http.Request, path string) {
+	// path: /issue/{key}/comment/{id}
+	parts := strings.Split(strings.TrimPrefix(path, "/issue/"), "/")
+	if len(parts) < 3 || r.Method != http.MethodPut {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	key := parts[0]
+	commentID := parts[2]
+	var body struct {
+		Body any `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := s.data.UpdateComment(context.Background(), key, commentID, body.Body); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *DemoServer) handleAddComment(w http.ResponseWriter, r *http.Request, key string) {
+	var body struct {
+		Body any `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	comment, err := s.data.AddComment(context.Background(), key, body.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, commentToJSON(comment))
+}
+
+func (s *DemoServer) handlePriorities(w http.ResponseWriter) {
+	priorities, _ := s.data.GetPriorities(context.Background())
+	result := make([]any, len(priorities))
+	for i, p := range priorities {
+		result[i] = map[string]any{"id": p.ID, "name": p.Name, "iconUrl": p.IconURL}
+	}
+	writeJSON(w, result)
+}
+
+func (s *DemoServer) handleUsers(w http.ResponseWriter) {
+	users, _ := s.data.GetUsers(context.Background(), "")
+	result := make([]any, len(users))
+	for i, u := range users {
+		result[i] = userToJSON(&u)
+	}
+	writeJSON(w, result)
+}
+
+func (s *DemoServer) handleLabels(w http.ResponseWriter) {
+	labels, _ := s.data.GetLabels(context.Background())
+	writeJSON(w, map[string]any{"values": labels})
+}
+
+func (s *DemoServer) handleComponents(w http.ResponseWriter, projectKey string) {
+	components, _ := s.data.GetComponents(context.Background(), projectKey)
+	result := make([]any, len(components))
+	for i, c := range components {
+		result[i] = map[string]any{"id": c.ID, "name": c.Name}
+	}
+	writeJSON(w, result)
+}
+
+func (s *DemoServer) handleIssueTypes(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("projectId")
+	types, _ := s.data.GetIssueTypes(context.Background(), projectID)
+	result := make([]any, len(types))
+	for i, t := range types {
+		result[i] = map[string]any{"id": t.ID, "name": t.Name}
+	}
+	writeJSON(w, result)
 }
 
 // --- JSON serialization helpers ---

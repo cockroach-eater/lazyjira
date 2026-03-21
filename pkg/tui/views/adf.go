@@ -50,7 +50,7 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 	content, _ := block["content"].([]any)
 
 	switch nodeType {
-	case "paragraph":
+	case adfParagraph:
 		text := r.collectInline(content)
 		if text == "" {
 			r.lines = append(r.lines, "")
@@ -58,7 +58,7 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 		}
 		r.appendWrapped(text, indent, "")
 
-	case "heading":
+	case adfHeading:
 		level := 1
 		if attrs, ok := block["attrs"].(map[string]any); ok {
 			if l, ok := attrs["level"].(float64); ok {
@@ -71,17 +71,17 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 		prefix := strings.Repeat(" ", indent)
 		r.lines = append(r.lines, prefix+style.Render(text))
 
-	case "bulletList":
+	case adfBulletList:
 		for _, item := range content {
 			r.renderListItem(item, indent, "• ")
 		}
 
-	case "orderedList":
+	case adfOrderedList:
 		for i, item := range content {
 			r.renderListItem(item, indent, fmt.Sprintf("%d. ", i+1))
 		}
 
-	case "codeBlock":
+	case adfCodeBlock:
 		lang := ""
 		if attrs, ok := block["attrs"].(map[string]any); ok {
 			lang, _ = attrs["language"].(string)
@@ -99,7 +99,7 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 			r.lines = append(r.lines, borderStyle.Render("  └"))
 		}
 
-	case "blockquote":
+	case adfBlockquote:
 		quoteStyle := lipgloss.NewStyle().Foreground(theme.ColorGray)
 		bar := quoteStyle.Render("│ ")
 		for _, child := range content {
@@ -111,15 +111,15 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 			}
 		}
 
-	case "rule":
+	case adfRule:
 		w := max(r.width-4, 10)
 		ruleStyle := lipgloss.NewStyle().Foreground(theme.ColorGray)
 		r.lines = append(r.lines, ruleStyle.Render("  "+strings.Repeat("─", w)))
 
-	case "table":
+	case adfTable:
 		r.renderTable(content)
 
-	case "mediaSingle", "mediaGroup":
+	case "mediaSingle", "mediaGroup": //nolint:goconst // rare node types not worth constants
 		r.lines = append(r.lines, lipgloss.NewStyle().Foreground(theme.ColorGray).Render("  [media]"))
 
 	default:
@@ -146,7 +146,7 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 		childType, _ := childBlock["type"].(string)
 
 		switch childType {
-		case "paragraph":
+		case adfParagraph:
 			childContent, _ := childBlock["content"].([]any)
 			text := r.collectInline(childContent)
 			if first {
@@ -155,7 +155,7 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 			} else {
 				r.appendWrapped(text, indent+len(marker), "")
 			}
-		case "bulletList", "orderedList":
+		case adfBulletList, adfOrderedList:
 			// Nested list — increase indent.
 			r.renderBlock(child, indent+2)
 		default:
@@ -195,29 +195,29 @@ func (r *adfRenderer) renderInline(node any) string {
 	nodeType, _ := inline["type"].(string)
 
 	switch nodeType {
-	case "text":
+	case adfText:
 		text, _ := inline["text"].(string)
 		marks, _ := inline["marks"].([]any)
 		return applyMarks(text, marks)
 
-	case "mention":
+	case adfMention:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if text, ok := attrs["text"].(string); ok {
 				return "\x00MENTION:" + text + "\x00"
 			}
 		}
 
-	case "emoji":
+	case adfEmoji:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if shortName, ok := attrs["shortName"].(string); ok {
 				return shortName
 			}
 		}
 
-	case "hardBreak":
+	case adfHardBreak:
 		return "\n"
 
-	case "inlineCard":
+	case adfInlineCard:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if url, ok := attrs["url"].(string); ok {
 				return urlStyle.Render(url)
@@ -236,24 +236,24 @@ func (r *adfRenderer) renderInlinePlain(node any) string {
 	nodeType, _ := inline["type"].(string)
 
 	switch nodeType {
-	case "text":
+	case adfText:
 		text, _ := inline["text"].(string)
 		return text
-	case "mention":
+	case adfMention:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if text, ok := attrs["text"].(string); ok {
 				return text
 			}
 		}
-	case "emoji":
+	case adfEmoji:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if shortName, ok := attrs["shortName"].(string); ok {
 				return shortName
 			}
 		}
-	case "hardBreak":
+	case adfHardBreak:
 		return "\n"
-	case "inlineCard":
+	case adfInlineCard:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if url, ok := attrs["url"].(string); ok {
 				return url

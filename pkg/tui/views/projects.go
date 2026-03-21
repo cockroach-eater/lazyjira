@@ -45,7 +45,7 @@ func (p *ProjectList) SetFilter(query string) {
 
 func (p *ProjectList) applyFilter() {
 	if p.filter == "" {
-		p.projects = p.allProjects
+		p.projects = p.pinActive(p.allProjects)
 	} else {
 		q := strings.ToLower(p.filter)
 		var filtered []jira.Project
@@ -60,6 +60,23 @@ func (p *ProjectList) applyFilter() {
 	p.Cursor = 0
 	p.Offset = 0
 	p.SetItemCount(len(p.projects))
+}
+
+// pinActive moves the active project to the top of the list.
+func (p *ProjectList) pinActive(projects []jira.Project) []jira.Project {
+	if p.activeKey == "" {
+		return projects
+	}
+	result := make([]jira.Project, 0, len(projects))
+	for i, proj := range projects {
+		if proj.Key == p.activeKey {
+			result = append(result, proj)
+			result = append(result, projects[:i]...)
+			result = append(result, projects[i+1:]...)
+			return result
+		}
+	}
+	return projects
 }
 
 func (p *ProjectList) SetActiveKey(key string) { p.activeKey = key }

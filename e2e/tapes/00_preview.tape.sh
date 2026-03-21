@@ -26,7 +26,7 @@ Output e2e/golden/00_preview.gif
 @tab_next 5
 @wait 600
 
-# Navigate to description rewrite (4th block, index 3)
+# Navigate history — description rewrite (4th block)
 @down 3
 @wait 400
 
@@ -40,7 +40,36 @@ Output e2e/golden/00_preview.gif
 # Close modal
 @close
 
-# Back to issues for URL picker
+# Jump to Comments tab via 'c'
+@comments
+@wait 600
+
+# Scroll through comments
+@down 2
+@wait 400
+
+# Go to Info tab (from Cmt: Cmt→Lnk→Info = 2 tabs)
+@tab_next 2
+@wait 600
+
+# Navigate to Labels field (Status,Priority,Assignee,Reporter,Type,Sprint,Labels = 6 down)
+@down 6
+@wait 400
+
+# Edit labels — opens checklist modal
+@edit
+@wait 800
+
+# Toggle a label (add "frontend")
+@down 3
+@toggle
+@wait 400
+
+# Confirm labels
+@confirm
+@wait 800
+
+# Back to issues panel
 @switch_tab
 
 # URL picker — shows URLs grouped by Body/Comments/Links with separators
@@ -62,5 +91,8 @@ Sleep 800ms
 @down
 Enter
 Sleep 1000ms
+
+# Edit the issue summary (rename task) — already on issues panel after navigateToIssue
+@edit_type [UPDATED] API auth refactor
 
 @quit

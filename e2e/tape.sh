@@ -20,6 +20,12 @@
 #   @quit                 → Type "q" + Sleep
 #   @wait [MS]            → Sleep Nms (default 500)
 #   @switch_tab           → Tab + Sleep (switch left/right panel)
+#   @edit                 → Type "e" + Sleep (context-aware edit)
+#   @edit_type TEXT       → Type "e" + Sleep + type TEXT (50ms) + Enter + Sleep
+#   @toggle [N]           → Space + Sleep (toggle checklist item, repeated N times)
+#   @confirm              → Enter + Sleep (confirm modal/input)
+#   @comments             → Type "c" + Sleep (jump to comments tab)
+#   @priority             → Type "p" + Sleep (open priority picker)
 #
 # Run: ./e2e/tape.sh e2e/tapes/foo.tape | vhs -
 
@@ -121,6 +127,30 @@ process_line() {
             ;;
         @switch_tab)
             printf 'Tab\nSleep %sms\n' "$DEFAULT_SLEEP"
+            ;;
+        @edit_type\ *)
+            local text="${line#@edit_type }"
+            printf 'Type "e"\nSleep %sms\n' "$LONG_SLEEP"
+            # Clear existing text: Home + Ctrl+K, then type new text
+            printf 'Ctrl+a\nCtrl+k\n'
+            printf 'Set TypingSpeed 50ms\nType "%s"\nSet TypingSpeed 0ms\n' "$text"
+            printf 'Sleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "1000"
+            ;;
+        @edit)
+            printf 'Type "e"\nSleep %sms\n' "$LONG_SLEEP"
+            ;;
+        @toggle*)
+            local n="${line#@toggle}"; n="${n// /}"; n="${n:-1}"
+            repeat "$n" printf 'Space\nSleep %sms\n' "$DEFAULT_SLEEP"
+            ;;
+        @confirm)
+            printf 'Enter\nSleep %sms\n' "1000"
+            ;;
+        @comments)
+            printf 'Type "c"\nSleep %sms\n' "$LONG_SLEEP"
+            ;;
+        @priority)
+            printf 'Type "p"\nSleep %sms\n' "$LONG_SLEEP"
             ;;
         @*)
             echo "# WARNING: unknown directive: $line" >&2

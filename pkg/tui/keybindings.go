@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/textfuel/lazyjira/pkg/tui/components"
+import (
+	"github.com/textfuel/lazyjira/pkg/tui/components"
+	"github.com/textfuel/lazyjira/pkg/tui/views"
+)
 
 // Binding represents a single keybinding with context.
 type Binding struct {
@@ -36,6 +39,10 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActOpen, "open issue detail"),
 			a.bind(ActFocusRight, "open issue detail"),
 			a.bind(ActTransition, "transition issue status"),
+			a.bind(ActEdit, "edit summary"),
+			a.bind(ActComments, "go to comments"),
+			a.bind(ActEditPriority, "change priority"),
+			a.bind(ActEditAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
 			Binding{"[/]", "switch tab"},
@@ -57,29 +64,82 @@ func (a *App) ContextBindings() []Binding {
 		)
 
 	case a.side == sideRight:
-		return append(global,
+		bindings := make([]Binding, len(global))
+		copy(bindings, global)
+		bindings = append(bindings,
 			Binding{"j/k", "scroll up/down"},
 			Binding{"ctrl+d/u", "half-page down/up"},
 			Binding{"[/]", "previous/next tab"},
 			a.bind(ActFocusLeft, "back to left panel"),
 			a.bind(ActInfoTab, "jump to info tab"),
+			a.bind(ActEditPriority, "change priority"),
+			a.bind(ActEditAssignee, "change assignee"),
 			a.bind(ActBrowser, "open in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
 		)
+		if a.detailView.ActiveTab() == views.TabComments {
+			bindings = append(bindings,
+				a.bind(ActEdit, "edit comment"),
+				a.bind(ActAddComment, "new comment"),
+			)
+		} else {
+			bindings = append(bindings,
+				a.bind(ActEdit, "edit description"),
+			)
+		}
+		return bindings
 	}
 
 	return global
 }
 
 func (a *App) helpBarItems() []components.HelpItem {
+	// Overlay-specific hints take priority over panel hints.
+	switch {
+	case a.showHelp:
+		return []components.HelpItem{
+			{Key: "j/k", Description: "navigate"},
+			{Key: "esc", Description: "close"},
+		}
+	case a.diffView.IsVisible():
+		return []components.HelpItem{
+			{Key: "enter", Description: "confirm"},
+			{Key: "esc", Description: "cancel"},
+			{Key: "j/k", Description: "scroll"},
+		}
+	case a.inputModal.IsVisible():
+		return []components.HelpItem{
+			{Key: "enter", Description: "confirm"},
+			{Key: "esc", Description: "cancel"},
+		}
+	case a.modal.IsVisible() && a.modal.IsChecklist():
+		return []components.HelpItem{
+			{Key: "j/k", Description: "navigate"},
+			{Key: "space", Description: "toggle"},
+			{Key: "/", Description: "search"},
+			{Key: "enter", Description: "confirm"},
+			{Key: "esc", Description: "cancel"},
+		}
+	case a.modal.IsVisible():
+		return []components.HelpItem{
+			{Key: "j/k", Description: "navigate"},
+			{Key: "/", Description: "search"},
+			{Key: "enter", Description: "select"},
+			{Key: "esc", Description: "cancel"},
+		}
+	}
+
 	km := a.keymap
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
 		return []components.HelpItem{
 			{Key: "j/k", Description: "navigate"},
 			{Key: km.Keys(ActSelect), Description: "select"},
-			{Key: km.Keys(ActOpen), Description: "open"},
+			{Key: km.Keys(ActEdit), Description: "edit"},
+			{Key: km.Keys(ActComments), Description: "comments"},
 			{Key: km.Keys(ActTransition), Description: "transition"},
+			{Key: km.Keys(ActEditPriority), Description: "priority"},
+			{Key: km.Keys(ActEditAssignee), Description: "assignee"},
 			{Key: km.Keys(ActHelp), Description: "help"},
 		}
 	case a.side == sideLeft && a.leftFocus == focusProjects:
@@ -95,13 +155,32 @@ func (a *App) helpBarItems() []components.HelpItem {
 			{Key: km.Keys(ActHelp), Description: "help"},
 		}
 	case a.side == sideRight:
-		return []components.HelpItem{
+		items := []components.HelpItem{
 			{Key: "j/k", Description: "scroll"},
 			{Key: "[/]", Description: "tabs"},
-			{Key: km.Keys(ActFocusLeft), Description: "back"},
-			{Key: km.Keys(ActInfoTab), Description: "info"},
-			{Key: km.Keys(ActHelp), Description: "help"},
 		}
+		switch a.detailView.ActiveTab() {
+		case views.TabComments:
+			items = append(items,
+				components.HelpItem{Key: km.Keys(ActEdit), Description: "edit comment"},
+				components.HelpItem{Key: km.Keys(ActAddComment), Description: "new comment"},
+			)
+		case views.TabInfo:
+			items = append(items,
+				components.HelpItem{Key: km.Keys(ActEdit), Description: "edit field"},
+			)
+		default:
+			items = append(items,
+				components.HelpItem{Key: km.Keys(ActEdit), Description: "edit"},
+			)
+		}
+		items = append(items,
+			components.HelpItem{Key: km.Keys(ActEditPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActEditAssignee), Description: "assignee"},
+			components.HelpItem{Key: km.Keys(ActFocusLeft), Description: "back"},
+			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
+		)
+		return items
 	}
 	return nil
 }

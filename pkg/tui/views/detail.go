@@ -49,6 +49,7 @@ const (
 	maxBlockLines   = 8 // max visible lines per entry before collapsing
 	unknownLabel    = "Unknown"
 	noneLabel       = "none"
+	noneLabelUpper  = "None"
 )
 
 // ExpandBlockMsg is sent when user wants to expand a collapsed block.
@@ -134,6 +135,120 @@ func (d *DetailView) SetFocused(focused bool) {
 	}
 	d.focused = focused
 }
+
+func (d *DetailView) ActiveTab() DetailTab { return d.activeTab }
+
+func (d *DetailView) SetActiveTab(tab DetailTab) {
+	d.activeTab = tab
+	d.scrollY = 0
+	d.listCursor = 0
+}
+
+func (d *DetailView) SelectedComment() *jira.Comment {
+	if d.issue == nil || d.activeTab != TabComments {
+		return nil
+	}
+	if d.listCursor >= 0 && d.listCursor < len(d.issue.Comments) {
+		return &d.issue.Comments[d.listCursor]
+	}
+	return nil
+}
+
+// InfoFieldType determines which editor to use for a field.
+type InfoFieldType int
+
+const (
+	FieldSingleSelect InfoFieldType = iota // priority, status, issue type, sprint
+	FieldMultiSelect                       // labels, components
+	FieldPerson                            // assignee, reporter
+	FieldSingleText                        // summary, single-line custom fields
+	FieldMultiText                         // environment, multi-line custom fields
+)
+
+// InfoField represents an editable field in the Info tab.
+type InfoField struct {
+	Name    string        // display label (e.g. "Priority")
+	FieldID string        // API field name (e.g. "priority", "labels", "customfield_10015")
+	Type    InfoFieldType // determines which modal/editor to open
+	Value   string        // current display value
+}
+
+// infoFields returns the list of info fields in the same order as renderInfoBlocks.
+func (d *DetailView) infoFields() []InfoField {
+	if d.issue == nil {
+		return nil
+	}
+	issue := d.issue
+	var fields []InfoField
+
+	statusName := unknownLabel
+	if issue.Status != nil {
+		statusName = issue.Status.Name
+	}
+	fields = append(fields, InfoField{Name: "Status", FieldID: "status", Type: FieldSingleSelect, Value: statusName})
+
+	priorityName := noneLabelUpper
+	if issue.Priority != nil {
+		priorityName = issue.Priority.Name
+	}
+	fields = append(fields, InfoField{Name: "Priority", FieldID: "priority", Type: FieldSingleSelect, Value: priorityName})
+
+	assignee := "Unassigned"
+	if issue.Assignee != nil {
+		assignee = issue.Assignee.DisplayName
+	}
+	fields = append(fields, InfoField{Name: "Assignee", FieldID: "assignee", Type: FieldPerson, Value: assignee})
+
+	reporter := "Unknown"
+	if issue.Reporter != nil {
+		reporter = issue.Reporter.DisplayName
+	}
+	fields = append(fields, InfoField{Name: "Reporter", FieldID: "reporter", Type: FieldPerson, Value: reporter})
+
+	typeName := unknownLabel
+	if issue.IssueType != nil {
+		typeName = issue.IssueType.Name
+	}
+	fields = append(fields, InfoField{Name: "Type", FieldID: "issuetype", Type: FieldSingleSelect, Value: typeName})
+
+	sprintName := noneLabelUpper
+	if issue.Sprint != nil {
+		sprintName = issue.Sprint.Name
+	}
+	fields = append(fields, InfoField{Name: "Sprint", FieldID: "sprint", Type: FieldSingleSelect, Value: sprintName})
+
+	if len(issue.Labels) > 0 {
+		fields = append(fields, InfoField{Name: "Labels", FieldID: "labels", Type: FieldMultiSelect, Value: strings.Join(issue.Labels, ", ")})
+	}
+
+	if len(issue.Components) > 0 {
+		names := make([]string, 0, len(issue.Components))
+		for _, c := range issue.Components {
+			names = append(names, c.Name)
+		}
+		fields = append(fields, InfoField{Name: "Components", FieldID: "components", Type: FieldMultiSelect, Value: strings.Join(names, ", ")})
+	}
+
+	for _, cf := range d.customFields {
+		val := formatCustomFieldValue(issue.CustomFields[cf.ID])
+		fields = append(fields, InfoField{Name: cf.Name, FieldID: cf.ID, Type: FieldSingleText, Value: val})
+	}
+
+	return fields
+}
+
+// SelectedInfoField returns the info field under the cursor, or nil.
+func (d *DetailView) SelectedInfoField() *InfoField {
+	if d.issue == nil || d.activeTab != TabInfo {
+		return nil
+	}
+	fields := d.infoFields()
+	if d.listCursor >= 0 && d.listCursor < len(fields) {
+		return &fields[d.listCursor]
+	}
+	return nil
+}
+
 func (d *DetailView) Init() tea.Cmd           { return nil }
 
 func (d *DetailView) NextTab() {
@@ -590,9 +705,7 @@ func (d *DetailView) tabLabels() []tabLabel {
 		if len(d.issue.Subtasks) > 0 {
 			tabs = append(tabs, tabLabel{TabSubtasks, "Sub"})
 		}
-		if len(d.issue.Comments) > 0 {
-			tabs = append(tabs, tabLabel{TabComments, "Cmt"})
-		}
+		tabs = append(tabs, tabLabel{TabComments, "Cmt"})
 		if len(d.issue.IssueLinks) > 0 {
 			tabs = append(tabs, tabLabel{TabLinks, "Lnk"})
 		}
@@ -787,7 +900,7 @@ func (d *DetailView) renderInfoBlocks(width int) [][]string {
 	}
 	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Status:", statusName)})
 
-	priorityName := "None"
+	priorityName := noneLabelUpper
 	if issue.Priority != nil {
 		priorityName = d.priorityStyled(issue.Priority.Name)
 	}
@@ -811,7 +924,7 @@ func (d *DetailView) renderInfoBlocks(width int) [][]string {
 	}
 	blocks = append(blocks, []string{fmt.Sprintf(" %-11s %s", "Type:", valStyle.Render(typeName))})
 
-	sprintName := "None"
+	sprintName := noneLabelUpper
 	if issue.Sprint != nil {
 		sprintName = issue.Sprint.Name
 	}
@@ -840,7 +953,7 @@ func (d *DetailView) renderInfoBlocks(width int) [][]string {
 
 func formatCustomFieldValue(v any) string {
 	if v == nil {
-		return "None"
+		return noneLabelUpper
 	}
 	switch val := v.(type) {
 	case string:
@@ -907,16 +1020,34 @@ func (d *DetailView) renderHistoryBlocks(width int) [][]string {
 				continue
 			}
 
-			if field == "assignee" || field == "reviewer" || field == "reporter" {
-				if from != noneLabel {
-					from = theme.AuthorRender(from)
-				}
-				if to != noneLabel {
-					to = theme.AuthorRender(to)
-				}
+			if isMultiSelectField(field) {
+				block = append(block, "   "+gray.Render(item.Field)+":")
+				block = append(block, renderMultiSelectDiff(from, to)...)
+				continue
 			}
-			changeLine := fmt.Sprintf("   %s: %s → %s", gray.Render(item.Field), from, to)
-			for _, wl := range wrapText(changeLine, width-2) {
+
+			// Build plain-text line first, wrap, then apply styling.
+			plainLine := fmt.Sprintf("   %s: %s → %s", item.Field, from, to)
+			wrapped := wrapText(plainLine, width-2)
+			for _, wl := range wrapped {
+				// Apply field-name gray.
+				wl = strings.Replace(wl, item.Field+":", gray.Render(item.Field)+":", 1)
+				// Apply value coloring.
+				if field == "status" {
+					if from != noneLabel {
+						wl = strings.Replace(wl, from, statusNameStyle(from).Render(from), 1)
+					}
+					if to != noneLabel {
+						wl = strings.Replace(wl, to, statusNameStyle(to).Render(to), 1)
+					}
+				} else if isPersonField(field) {
+					if from != noneLabel {
+						wl = strings.Replace(wl, from, theme.AuthorRender(from), 1)
+					}
+					if to != noneLabel {
+						wl = strings.Replace(wl, to, theme.AuthorRender(to), 1)
+					}
+				}
 				block = append(block, colorURLs(wl))
 			}
 		}
@@ -924,6 +1055,101 @@ func (d *DetailView) renderHistoryBlocks(width int) [][]string {
 		blocks = append(blocks, block)
 	}
 	return blocks
+}
+
+// statusNameStyle returns a color style based on status name heuristics.
+func statusNameStyle(name string) lipgloss.Style {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, "done") || strings.Contains(lower, "resolved") ||
+		strings.Contains(lower, "closed") || strings.Contains(lower, "complete"):
+		return lipgloss.NewStyle().Foreground(theme.ColorGreen)
+	case strings.Contains(lower, "progress") || strings.Contains(lower, "development") ||
+		strings.Contains(lower, "review") || strings.Contains(lower, "testing"):
+		return lipgloss.NewStyle().Foreground(theme.ColorYellow)
+	case strings.Contains(lower, "todo") || strings.Contains(lower, "open") ||
+		strings.Contains(lower, "new") || strings.Contains(lower, "backlog") ||
+		strings.Contains(lower, "ready"):
+		return lipgloss.NewStyle().Foreground(theme.ColorCyan)
+	default:
+		return lipgloss.NewStyle().Foreground(theme.ColorWhite)
+	}
+}
+
+// isPersonField returns true if the field name likely contains a person value.
+func isPersonField(field string) bool {
+	personFields := []string{
+		"assignee", "reviewer", "reporter", "creator", "tester",
+		"qa", "developer", "lead", "owner", "approver",
+	}
+	lower := strings.ToLower(field)
+	for _, pf := range personFields {
+		if lower == pf || strings.Contains(lower, pf) {
+			return true
+		}
+	}
+	return false
+}
+
+func isMultiSelectField(field string) bool {
+	switch field {
+	case "labels", "components", "fix versions", "affects versions", "tags", "component":
+		return true
+	}
+	return false
+}
+
+func renderMultiSelectDiff(from, to string) []string {
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	green := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+
+	parseSet := func(s string) map[string]struct{} {
+		m := make(map[string]struct{})
+		if s == "" || s == noneLabel {
+			return m
+		}
+		for _, v := range strings.Split(s, ",") {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				m[v] = struct{}{}
+			}
+		}
+		return m
+	}
+
+	parseList := func(s string) []string {
+		if s == "" || s == noneLabel {
+			return nil
+		}
+		var out []string
+		for _, v := range strings.Split(s, ",") {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+
+	fromSet := parseSet(from)
+	toSet := parseSet(to)
+	fromList := parseList(from)
+	toList := parseList(to)
+
+	var lines []string
+	// Removed items (in from but not in to), preserve original order.
+	for _, v := range fromList {
+		if _, ok := toSet[v]; !ok {
+			lines = append(lines, red.Render("   - "+v))
+		}
+	}
+	// Added items (in to but not in from), preserve original order.
+	for _, v := range toList {
+		if _, ok := fromSet[v]; !ok {
+			lines = append(lines, green.Render("   + "+v))
+		}
+	}
+	return lines
 }
 
 func (d *DetailView) renderCommentBlocks(width int) [][]string {

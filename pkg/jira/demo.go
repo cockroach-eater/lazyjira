@@ -176,21 +176,150 @@ func (d *DemoClient) GetMyIssues(ctx context.Context) ([]Issue, error) {
 	return result.Issues, nil
 }
 
-func (d *DemoClient) AddComment(_ context.Context, _ string, _ string) (*Comment, error) {
-	return nil, nil
+func (d *DemoClient) AddComment(_ context.Context, issueKey string, body any) (*Comment, error) {
+	d.logRequest("POST", "/issue/"+issueKey+"/comment")
+	id := fmt.Sprintf("cmt-%d", time.Now().UnixNano())
+	c := Comment{
+		ID:      id,
+		Author:  &User{AccountID: "u0", DisplayName: "Demo User", Email: "demo@lazyjira.dev", Active: true},
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+	if body != nil {
+		c.BodyADF = body
+		c.Body = extractADFText(body)
+	}
+	d.comments[issueKey] = append(d.comments[issueKey], c)
+	return &c, nil
+}
+
+func (d *DemoClient) UpdateComment(_ context.Context, issueKey, commentID string, body any) error {
+	d.logRequest("PUT", "/issue/"+issueKey+"/comment/"+commentID)
+	comments := d.comments[issueKey]
+	for i := range comments {
+		if comments[i].ID == commentID {
+			if body != nil {
+				comments[i].BodyADF = body
+				comments[i].Body = extractADFText(body)
+			}
+			comments[i].Updated = time.Now()
+			d.comments[issueKey] = comments
+			return nil
+		}
+	}
+	return fmt.Errorf("comment %s not found on %s", commentID, issueKey)
 }
 func (d *DemoClient) AssignIssue(_ context.Context, _ string, _ string) error { return nil }
 func (d *DemoClient) GetBoards(_ context.Context) ([]Board, error)            { return nil, nil }
 func (d *DemoClient) GetBoardIssues(_ context.Context, _ int, _ string) ([]Issue, error) {
 	return nil, nil
 }
-func (d *DemoClient) UpdateIssue(_ context.Context, _ string, _ map[string]any) error { return nil }
+func (d *DemoClient) UpdateIssue(_ context.Context, issueKey string, fields map[string]any) error {
+	d.logRequest("PUT", "/issue/"+issueKey)
+	iss, ok := d.issueIndex[issueKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", issueKey)
+	}
+	if summary, ok := fields["summary"].(string); ok {
+		iss.Summary = summary
+	}
+	if desc, ok := fields["description"]; ok && desc != nil {
+		iss.DescriptionADF = desc
+		iss.Description = extractADFText(desc)
+	}
+	if p, ok := fields["priority"].(map[string]string); ok {
+		if iss.Priority == nil {
+			iss.Priority = &Priority{}
+		}
+		iss.Priority.ID = p["id"]
+	}
+	if v, ok := fields["assignee"]; ok {
+		if v == nil {
+			iss.Assignee = nil
+		} else if m, ok := v.(map[string]string); ok {
+			iss.Assignee = &User{AccountID: m["accountId"]}
+		}
+	}
+	if labels, ok := fields["labels"].([]string); ok {
+		iss.Labels = labels
+	}
+	if comps, ok := fields["components"].([]map[string]string); ok {
+		demoComps, _ := d.GetComponents(context.Background(), "")
+		nameMap := make(map[string]string)
+		for _, dc := range demoComps {
+			nameMap[dc.ID] = dc.Name
+		}
+		iss.Components = make([]Component, len(comps))
+		for i, c := range comps {
+			id := c["id"]
+			iss.Components[i] = Component{ID: id, Name: nameMap[id]}
+		}
+	}
+	if it, ok := fields["issuetype"].(map[string]string); ok {
+		if iss.IssueType == nil {
+			iss.IssueType = &IssueType{}
+		}
+		iss.IssueType.ID = it["id"]
+	}
+	iss.Updated = time.Now()
+	return nil
+}
 func (d *DemoClient) CreateIssue(_ context.Context, _, _, _, _ string) (*Issue, error) {
 	return nil, nil
 }
-func (d *DemoClient) GetUsers(_ context.Context, _ string) ([]User, error) { return nil, nil }
+func (d *DemoClient) GetUsers(_ context.Context, _ string) ([]User, error) {
+	d.logRequest("GET", "/user/assignable/search")
+	return []User{
+		{AccountID: "u0", DisplayName: "Demo User", Email: "demo@lazyjira.dev", Active: true},
+		{AccountID: "u1", DisplayName: "Alice Chen", Email: "alice@example.com", Active: true},
+		{AccountID: "u2", DisplayName: "Bob Martinez", Email: "bob@example.com", Active: true},
+		{AccountID: "u3", DisplayName: "Carol Kim", Email: "carol@example.com", Active: true},
+		{AccountID: "u4", DisplayName: "Dave Patel", Email: "dave@example.com", Active: true},
+		{AccountID: "u5", DisplayName: "Eve Johnson", Email: "eve@example.com", Active: true},
+	}, nil
+}
+
+func (d *DemoClient) GetPriorities(_ context.Context) ([]Priority, error) {
+	d.logRequest("GET", "/priority")
+	return []Priority{
+		{ID: "1", Name: "Critical"},
+		{ID: "2", Name: "High"},
+		{ID: "3", Name: "Medium"},
+		{ID: "4", Name: "Low"},
+	}, nil
+}
 func (d *DemoClient) GetSprints(_ context.Context, _ int) ([]Sprint, error) {
 	return nil, nil
+}
+
+func (d *DemoClient) GetLabels(_ context.Context) ([]string, error) {
+	d.logRequest("GET", "/label")
+	return []string{
+		"api", "auth", "backend", "bug", "checkout", "core", "database",
+		"devops", "docs", "feature", "frontend", "infrastructure",
+		"integration", "ios", "mobile", "monitoring", "notifications",
+		"observability", "offline", "payments", "performance", "search",
+		"security", "theme", "ui", "ux",
+	}, nil
+}
+
+func (d *DemoClient) GetComponents(_ context.Context, _ string) ([]Component, error) {
+	d.logRequest("GET", "/project/components")
+	return []Component{
+		{ID: "1", Name: "API"},
+		{ID: "2", Name: "Frontend"},
+		{ID: "3", Name: "Backend"},
+	}, nil
+}
+
+func (d *DemoClient) GetIssueTypes(_ context.Context, _ string) ([]IssueType, error) {
+	d.logRequest("GET", "/issuetype/project")
+	return []IssueType{
+		{ID: "1", Name: "Bug"},
+		{ID: "2", Name: "Story"},
+		{ID: "3", Name: "Task"},
+		{ID: "4", Name: "Epic"},
+	}, nil
 }
 
 // --- Demo data ---

@@ -26,6 +26,7 @@ type IssueTabConfig struct {
 type CustomFieldConfig struct {
 	ID   string `yaml:"id"`   // e.g. "customfield_10015"
 	Name string `yaml:"name"` // display name, e.g. "Story Points"
+	Type string `yaml:"type"` // "select", "multiselect", "user", "text", "textarea" (default: "text")
 }
 
 type KeybindingConfig struct {
