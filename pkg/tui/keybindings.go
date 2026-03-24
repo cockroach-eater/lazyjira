@@ -26,6 +26,7 @@ func (a *App) ContextBindings() []Binding {
 		{km.Keys(ActFocusProj), "focus projects panel"},
 		{km.Keys(ActSearch), "search / filter current list"},
 		{km.Keys(ActRefresh), "refresh data from Jira"},
+		a.bind(ActJQLSearch, "JQL search"),
 		{km.Keys(ActHelp), "show all keybindings"},
 	}
 
@@ -45,6 +46,7 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActEditAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActCloseJQLTab, "close JQL tab"),
 			Binding{"[/]", "switch tab"},
 		)
 
@@ -96,6 +98,13 @@ func (a *App) ContextBindings() []Binding {
 func (a *App) helpBarItems() []components.HelpItem {
 	// Overlay-specific hints take priority over panel hints.
 	switch {
+	case a.jqlModal.IsVisible():
+		return []components.HelpItem{
+			{Key: "enter", Description: "search"},
+			{Key: "tab", Description: "switch focus"},
+			{Key: "esc", Description: "cancel"},
+			{Key: "j/k", Description: "navigate"},
+		}
 	case a.showHelp:
 		return []components.HelpItem{
 			{Key: "j/k", Description: "navigate"},
@@ -132,16 +141,21 @@ func (a *App) helpBarItems() []components.HelpItem {
 	km := a.keymap
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
-		return []components.HelpItem{
+		items := []components.HelpItem{
 			{Key: "j/k", Description: "navigate"},
 			{Key: km.Keys(ActSelect), Description: "select"},
-			{Key: km.Keys(ActEdit), Description: "edit"},
-			{Key: km.Keys(ActComments), Description: "comments"},
-			{Key: km.Keys(ActTransition), Description: "transition"},
-			{Key: km.Keys(ActEditPriority), Description: "priority"},
-			{Key: km.Keys(ActEditAssignee), Description: "assignee"},
-			{Key: km.Keys(ActHelp), Description: "help"},
 		}
+		if a.issuesList.IsJQLTab() {
+			items = append(items, components.HelpItem{Key: km.Keys(ActCloseJQLTab), Description: "close JQL"})
+		}
+		items = append(items,
+			components.HelpItem{Key: km.Keys(ActEdit), Description: "edit"},
+			components.HelpItem{Key: km.Keys(ActTransition), Description: "transition"},
+			components.HelpItem{Key: km.Keys(ActEditPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"},
+			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
+		)
+		return items
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		return []components.HelpItem{
 			{Key: "j/k", Description: "navigate"},

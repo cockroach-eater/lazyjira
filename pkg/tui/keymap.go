@@ -37,6 +37,8 @@ const (
 	ActAddComment  Action = "addComment"
 	ActEditPriority Action = "editPriority"
 	ActEditAssignee Action = "editAssignee"
+	ActJQLSearch    Action = "jqlSearch"
+	ActCloseJQLTab  Action = "closeJQLTab"
 )
 
 // Keymap maps actions to key strings. Multiple keys can trigger the same action.
@@ -71,6 +73,8 @@ func DefaultKeymap() Keymap {
 		ActAddComment:  {"n"},
 		ActEditPriority: {"p"},
 		ActEditAssignee: {"a"},
+		ActJQLSearch:    {"s"},
+		ActCloseJQLTab:  {"x"},
 	}
 }
 
@@ -96,6 +100,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActFocusStatus, kcfg.Universal.FocusStatus)
 	set(ActFocusIssues, kcfg.Universal.FocusIssues)
 	set(ActFocusProj, kcfg.Universal.FocusProj)
+	set(ActJQLSearch, kcfg.Universal.JQLSearch)
 	// Issues (Select, Open, FocusRight are shared with Projects panel)
 	set(ActSelect, kcfg.Issues.Select)
 	set(ActOpen, kcfg.Issues.Open)
@@ -104,6 +109,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActBrowser, kcfg.Issues.Browser)
 	set(ActURLPicker, kcfg.Issues.URLPicker)
 	set(ActCopyURL, kcfg.Issues.CopyURL)
+	set(ActCloseJQLTab, kcfg.Issues.CloseJQLTab)
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)

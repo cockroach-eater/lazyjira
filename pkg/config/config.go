@@ -49,6 +49,7 @@ type UniversalKeys struct {
 	FocusStatus string `yaml:"focusStatus"`
 	FocusIssues string `yaml:"focusIssues"`
 	FocusProj   string `yaml:"focusProjects"`
+	JQLSearch   string `yaml:"jqlSearch"`
 }
 
 type IssueKeys struct {
@@ -59,6 +60,7 @@ type IssueKeys struct {
 	Browser    string `yaml:"browser"`
 	URLPicker  string `yaml:"urlPicker"`
 	CopyURL    string `yaml:"copyURL"`
+	CloseJQLTab string `yaml:"closeJQLTab"`
 }
 
 type ProjectKeys struct {

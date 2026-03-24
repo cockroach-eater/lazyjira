@@ -1,4 +1,4 @@
-.PHONY: build build-version build-demo lint lint-fix vet clean check check-demo e2e e2e-gen e2e-update
+.PHONY: build build-version build-demo lint lint-fix vet clean check check-demo preview e2e-gen-preview e2e e2e-gen e2e-update
 
 build:
 	go build -o lazyjira ./cmd/lazyjira
@@ -27,6 +27,14 @@ check-demo:
 	golangci-lint run --build-tags demo ./...
 	go vet -tags demo ./...
 	go build -tags demo -o lazyjira ./cmd/lazyjira
+
+preview: build-demo e2e-gen-preview
+	@vhs -q e2e/tapes/00_preview.tape & vhs -q e2e/tapes/00_preview_vertical.tape & wait
+
+e2e-gen-preview:
+	@./e2e/tape.sh e2e/tapes/00_preview.tape.sh > e2e/tapes/00_preview.tape
+	@sed 's|Output e2e/golden/00_preview.gif|Output e2e/golden/00_preview_vertical.gif|;s|@start|@start_vertical|' \
+		e2e/tapes/00_preview.tape.sh | ./e2e/tape.sh - > e2e/tapes/00_preview_vertical.tape
 
 e2e: build-demo e2e-gen
 	@pids=""; fail=0; \

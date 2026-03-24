@@ -4,13 +4,13 @@ Output e2e/golden/00_preview.gif
 
 # Look around: detail panel
 @panel 0
-@wait 800
+@wait 400
 
 # Projects panel — pick Platform Services
 @panel 3
 @down
 @select
-@wait 600
+@wait 300
 
 # Issues — switch to Assigned tab
 @panel 2
@@ -24,75 +24,139 @@ Output e2e/golden/00_preview.gif
 
 # Fly through tabs: Body->Sub->Cmt->Lnk->Info->Hist
 @tab_next 5
-@wait 600
+@wait 300
 
 # Navigate history — description rewrite (4th block)
 @down 3
-@wait 400
+@wait 200
 
 # Expand the big diff
 @expand
 
 # Scroll the diff
 @down 5
-@wait 400
+@wait 200
 
 # Close modal
 @close
 
 # Jump to Comments tab via 'c'
 @comments
-@wait 600
+@wait 300
 
 # Scroll through comments
 @down 2
-@wait 400
+@wait 200
 
 # Go to Info tab (from Cmt: Cmt→Lnk→Info = 2 tabs)
 @tab_next 2
-@wait 600
+@wait 300
 
-# Navigate to Labels field (Status,Priority,Assignee,Reporter,Type,Sprint,Labels = 6 down)
+# Navigate to Labels field
 @down 6
-@wait 400
+@wait 200
 
 # Edit labels — opens checklist modal
 @edit
-@wait 800
+@wait 400
 
 # Toggle a label (add "frontend")
 @down 3
 @toggle
-@wait 400
+@wait 200
 
 # Confirm labels
 @confirm
-@wait 800
+@wait 400
 
 # Back to issues panel
 @switch_tab
 
-# URL picker — shows URLs grouped by Body/Comments/Links with separators
+# URL picker
 Type "u"
-Sleep 1500ms
+Sleep 600ms
 
-# Navigate down through the URL list to see separators and Jira links
+# Navigate URL list
 @down 6
-@wait 400
+@wait 200
 
-# Select a Jira internal link (PLAT-1) — navigates to that issue
+# Select a Jira internal link — navigates to that issue
 Enter
-Sleep 1000ms
+Sleep 500ms
 
-# Now on PLAT-1 — transition it to Done
+# Transition to Done
 Type "t"
-Sleep 800ms
-# Navigate to "Mark Done" (second option)
+Sleep 400ms
 @down
 Enter
-Sleep 1000ms
+Sleep 500ms
 
-# Edit the issue summary (rename task) — already on issues panel after navigateToIssue
+# Edit the issue summary
 @edit_type [UPDATED] API auth refactor
+
+# === JQL Search ===
+# Open JQL search modal
+Type "s"
+Sleep 400ms
+
+# Type field name with autocomplete
+Set TypingSpeed 40ms
+Type "status"
+Set TypingSpeed 0ms
+Sleep 300ms
+
+# Tab to auto-complete "status"
+Tab
+Sleep 200ms
+
+# Type operator — suggestions appear immediately
+Set TypingSpeed 40ms
+Type "in"
+Set TypingSpeed 0ms
+Sleep 300ms
+
+# Pick values for IN list
+Tab
+Sleep 200ms
+@down
+Enter
+Sleep 200ms
+
+# Pick another value
+@down
+Enter
+Sleep 200ms
+
+# Close the IN list
+Backspace
+Backspace
+Set TypingSpeed 40ms
+Type ")"
+Set TypingSpeed 0ms
+Sleep 300ms
+
+# Submit JQL search
+Enter
+Sleep 600ms
+@wait 400
+
+# Select first result — open detail
+@select
+
+# Open Info tab and change assignee
+Type "i"
+Sleep 300ms
+Type "a"
+Sleep 400ms
+@down
+Enter
+Sleep 500ms
+
+# Back to issues list
+@close
+
+# Close JQL tab
+Type "x"
+Sleep 300ms
 
 @quit

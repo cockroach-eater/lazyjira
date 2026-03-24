@@ -38,6 +38,46 @@ func NewDemoClient() *DemoClient {
 func (d *DemoClient) SetOnRequest(fn func(RequestLog)) { d.onRequest = fn }
 func (d *DemoClient) SetCustomFields(_ []string)       {}
 
+func (d *DemoClient) GetJQLAutocompleteData(_ context.Context) ([]AutocompleteField, error) {
+	return []AutocompleteField{
+		{Value: "status", DisplayName: "Status", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "assignee", DisplayName: "Assignee", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "priority", DisplayName: "Priority", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "project", DisplayName: "Project", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "issuetype", DisplayName: "Issue Type", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "summary", DisplayName: "Summary", Operators: []string{"~", "!~"}},
+		{Value: "description", DisplayName: "Description", Operators: []string{"~", "!~"}},
+		{Value: "reporter", DisplayName: "Reporter", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "created", DisplayName: "Created", Operators: []string{"=", "!=", ">", ">=", "<", "<="}},
+		{Value: "updated", DisplayName: "Updated", Operators: []string{"=", "!=", ">", ">=", "<", "<="}},
+		{Value: "labels", DisplayName: "Labels", Operators: []string{"=", "!=", "in", "not in"}},
+		{Value: "component", DisplayName: "Component", Operators: []string{"=", "!=", "in", "not in"}},
+	}, nil
+}
+
+func (d *DemoClient) GetJQLAutocompleteSuggestions(_ context.Context, fieldName, fieldValue string) ([]AutocompleteSuggestion, error) {
+	all := map[string][]AutocompleteSuggestion{
+		"status":    {{Value: "Open", DisplayName: "Open"}, {Value: "In Progress", DisplayName: "In Progress"}, {Value: "Done", DisplayName: "Done"}, {Value: "To Do", DisplayName: "To Do"}, {Value: "In Review", DisplayName: "In Review"}},
+		"priority":  {{Value: "Highest", DisplayName: "Highest"}, {Value: "High", DisplayName: "High"}, {Value: "Medium", DisplayName: "Medium"}, {Value: "Low", DisplayName: "Low"}, {Value: "Lowest", DisplayName: "Lowest"}},
+		"issuetype": {{Value: "Bug", DisplayName: "Bug"}, {Value: "Story", DisplayName: "Story"}, {Value: "Task", DisplayName: "Task"}, {Value: "Epic", DisplayName: "Epic"}, {Value: "Sub-task", DisplayName: "Sub-task"}},
+	}
+	vals, ok := all[fieldName]
+	if !ok {
+		return nil, nil
+	}
+	if fieldValue == "" {
+		return vals, nil
+	}
+	var filtered []AutocompleteSuggestion
+	lower := strings.ToLower(fieldValue)
+	for _, v := range vals {
+		if strings.Contains(strings.ToLower(v.DisplayName), lower) {
+			filtered = append(filtered, v)
+		}
+	}
+	return filtered, nil
+}
+
 func (d *DemoClient) logRequest(method, path string) {
 	if d.onRequest != nil {
 		d.onRequest(RequestLog{
@@ -56,39 +96,107 @@ func (d *DemoClient) GetProjects(_ context.Context) ([]Project, error) {
 
 var projectKeyRe = regexp.MustCompile(`(?i)project\s*=\s*"?(\w+)"?`)
 var assigneeCurrentRe = regexp.MustCompile(`(?i)assignee\s*=\s*currentUser\(\)`)
+var statusEqRe = regexp.MustCompile(`(?i)status\s*=\s*"?([^"]+?)"?\s*(?:AND|OR|ORDER|$)`)
+var statusInRe = regexp.MustCompile(`(?i)status\s+in\s*\(([^)]+)\)`)
+var priorityEqRe = regexp.MustCompile(`(?i)priority\s*=\s*"?([^"]+?)"?\s*(?:AND|OR|ORDER|$)`)
 
 func (d *DemoClient) SearchIssues(_ context.Context, jql string, startAt, maxResults int) (*SearchResult, error) {
 	d.logRequest("GET", "/search/jql?jql="+jql)
 
 	m := projectKeyRe.FindStringSubmatch(jql)
 	if m == nil {
-		return &SearchResult{}, nil
+		// No project filter — search all issues.
+		var all []*Issue
+		for _, issues := range d.issues {
+			all = append(all, issues...)
+		}
+		filtered := demoFilterIssues(all, jql)
+		return demoPageResults(filtered, startAt, maxResults), nil
 	}
 	projectKey := strings.ToUpper(m[1])
 	all := d.issues[projectKey]
+	filtered := demoFilterIssues(all, jql)
+	return demoPageResults(filtered, startAt, maxResults), nil
+}
 
-	// Filter by assignee=currentUser() → "demo@lazyjira.dev" user
-	var filtered []*Issue
+// demoFilterIssues applies basic JQL filters for demo mode.
+func demoFilterIssues(issues []*Issue, jql string) []*Issue {
+	result := issues
+
+	// Filter by assignee=currentUser()
 	if assigneeCurrentRe.MatchString(jql) {
-		for _, iss := range all {
+		var f []*Issue
+		for _, iss := range result {
 			if iss.Assignee != nil && iss.Assignee.Email == "demo@lazyjira.dev" {
-				filtered = append(filtered, iss)
+				f = append(f, iss)
 			}
 		}
-	} else {
-		filtered = all
+		result = f
 	}
 
+	// Filter by status = "value"
+	if m := statusEqRe.FindStringSubmatch(jql); m != nil {
+		want := strings.TrimSpace(m[1])
+		var f []*Issue
+		for _, iss := range result {
+			if iss.Status != nil && strings.EqualFold(iss.Status.Name, want) {
+				f = append(f, iss)
+			}
+		}
+		result = f
+	}
+
+	// Filter by status in (val1, val2)
+	if m := statusInRe.FindStringSubmatch(jql); m != nil {
+		vals := parseINValues(m[1])
+		var f []*Issue
+		for _, iss := range result {
+			if iss.Status != nil && vals[strings.ToLower(iss.Status.Name)] {
+				f = append(f, iss)
+			}
+		}
+		result = f
+	}
+
+	// Filter by priority = "value"
+	if m := priorityEqRe.FindStringSubmatch(jql); m != nil {
+		want := strings.TrimSpace(m[1])
+		var f []*Issue
+		for _, iss := range result {
+			if iss.Priority != nil && strings.EqualFold(iss.Priority.Name, want) {
+				f = append(f, iss)
+			}
+		}
+		result = f
+	}
+
+	return result
+}
+
+// parseINValues parses "val1, val2, val3" into a lowercase set.
+func parseINValues(s string) map[string]bool {
+	vals := make(map[string]bool)
+	for _, v := range strings.Split(s, ",") {
+		v = strings.TrimSpace(v)
+		v = strings.Trim(v, `"`)
+		if v != "" {
+			vals[strings.ToLower(v)] = true
+		}
+	}
+	return vals
+}
+
+func demoPageResults(filtered []*Issue, startAt, maxResults int) *SearchResult {
 	total := len(filtered)
 	if startAt >= total {
-		return &SearchResult{Total: total, MaxResults: maxResults, StartAt: startAt}, nil
+		return &SearchResult{Total: total, MaxResults: maxResults, StartAt: startAt}
 	}
 	end := min(startAt+maxResults, total)
 	issues := make([]Issue, end-startAt)
 	for i, iss := range filtered[startAt:end] {
 		issues[i] = *iss
 	}
-	return &SearchResult{Issues: issues, Total: total, MaxResults: maxResults, StartAt: startAt}, nil
+	return &SearchResult{Issues: issues, Total: total, MaxResults: maxResults, StartAt: startAt}
 }
 
 func (d *DemoClient) GetIssue(_ context.Context, issueKey string) (*Issue, error) {

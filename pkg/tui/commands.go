@@ -106,6 +106,47 @@ func doTransition(client jira.ClientInterface, key, transitionID string) tea.Cmd
 	}
 }
 
+// JQL search messages.
+type jqlSearchResultMsg struct {
+	issues []jira.Issue
+	jql    string
+}
+type jqlSearchErrorMsg struct{ err string }
+
+// JQL autocomplete messages.
+type jqlFieldsLoadedMsg struct{ fields []jira.AutocompleteField }
+type jqlSuggestionsMsg struct{ suggestions []jira.AutocompleteSuggestion }
+
+func fetchJQLSearch(client jira.ClientInterface, jql string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := client.SearchIssues(context.Background(), jql, 0, 50)
+		if err != nil {
+			return jqlSearchErrorMsg{err: err.Error()}
+		}
+		return jqlSearchResultMsg{issues: result.Issues, jql: jql}
+	}
+}
+
+func fetchJQLAutocompleteData(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		fields, err := client.GetJQLAutocompleteData(context.Background())
+		if err != nil {
+			return nil
+		}
+		return jqlFieldsLoadedMsg{fields: fields}
+	}
+}
+
+func fetchJQLSuggestions(client jira.ClientInterface, fieldName, partial string) tea.Cmd {
+	return func() tea.Msg {
+		suggestions, err := client.GetJQLAutocompleteSuggestions(context.Background(), fieldName, partial)
+		if err != nil {
+			return nil
+		}
+		return jqlSuggestionsMsg{suggestions: suggestions}
+	}
+}
+
 type issueUpdatedMsg struct{ issueKey string }
 type commentAddedMsg struct{ issueKey string }
 type commentUpdatedMsg struct{ issueKey string }

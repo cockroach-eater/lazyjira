@@ -37,10 +37,12 @@ type IssuesList struct {
 	keyColWidth int
 	fields      []string
 	theme       *theme.Theme
+	jqlQuery    string // raw JQL for the JQL tab (empty = no JQL tab)
+	jqlTabIdx   int    // index in tabs where JQL tab lives (-1 = none)
 }
 
 func NewIssuesList() *IssuesList {
-	return &IssuesList{theme: theme.Default}
+	return &IssuesList{theme: theme.Default, jqlTabIdx: -1}
 }
 
 func (m *IssuesList) SetFields(fields []string)             { m.fields = fields }
@@ -57,6 +59,54 @@ func (m *IssuesList) SetActiveKey(key string) {
 	m.applyFilterKeepCursor()
 }
 func (m *IssuesList) ClearActiveKey() { m.activeKey = "" }
+
+// AddJQLTab creates or replaces the JQL tab with the given query.
+// The JQL tab is always the last tab.
+func (m *IssuesList) AddJQLTab(jql string) {
+	if m.jqlTabIdx >= 0 {
+		// Replace existing JQL tab
+		m.jqlQuery = jql
+		m.tab = m.jqlTabIdx
+		return
+	}
+	// Append JQL tab
+	m.tabs = append(m.tabs, config.IssueTabConfig{Name: "JQL", JQL: ""})
+	m.jqlTabIdx = len(m.tabs) - 1
+	m.jqlQuery = jql
+	m.tab = m.jqlTabIdx
+	m.loadFromCache()
+}
+
+// RemoveJQLTab removes the JQL tab and switches to tab 0.
+func (m *IssuesList) RemoveJQLTab() {
+	if m.jqlTabIdx < 0 {
+		return
+	}
+	m.tabs = m.tabs[:m.jqlTabIdx]
+	// Clean up cache for the removed tab
+	if m.tabCache != nil {
+		delete(m.tabCache, m.jqlTabIdx)
+	}
+	m.jqlTabIdx = -1
+	m.jqlQuery = ""
+	m.tab = 0
+	m.loadFromCache()
+}
+
+// HasJQLTab returns true if a JQL tab currently exists.
+func (m *IssuesList) HasJQLTab() bool {
+	return m.jqlTabIdx >= 0
+}
+
+// IsJQLTab returns true if the currently active tab is the JQL tab.
+func (m *IssuesList) IsJQLTab() bool {
+	return m.jqlTabIdx >= 0 && m.tab == m.jqlTabIdx
+}
+
+// JQLQuery returns the raw JQL query for the JQL tab.
+func (m *IssuesList) JQLQuery() string {
+	return m.jqlQuery
+}
 
 func (m *IssuesList) NextTab() {
 	if len(m.tabs) == 0 {
@@ -152,6 +202,14 @@ func (m *IssuesList) SetIssuesForTab(tab int, issues []jira.Issue) {
 // InvalidateTabCache clears all cached tab data (e.g. on project switch).
 func (m *IssuesList) InvalidateTabCache() {
 	m.tabCache = nil
+	if m.jqlTabIdx >= 0 {
+		m.tabs = m.tabs[:m.jqlTabIdx]
+		m.jqlTabIdx = -1
+		m.jqlQuery = ""
+		if m.tab >= len(m.tabs) {
+			m.tab = 0
+		}
+	}
 }
 
 func (m *IssuesList) SetFilter(query string) {

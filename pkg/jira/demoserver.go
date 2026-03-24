@@ -97,6 +97,10 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 		s.handleComponents(w, key)
 	case path == "/issuetype/project":
 		s.handleIssueTypes(w, r)
+	case path == "/jql/autocompletedata":
+		s.handleAutocompleteData(w)
+	case strings.HasPrefix(path, "/jql/autocompletedata/suggestions"):
+		s.handleAutocompleteSuggestions(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -386,6 +390,44 @@ func (s *DemoServer) handleIssueTypes(w http.ResponseWriter, r *http.Request) {
 		result[i] = map[string]any{"id": t.ID, "name": t.Name}
 	}
 	writeJSON(w, result)
+}
+
+func (s *DemoServer) handleAutocompleteData(w http.ResponseWriter) {
+	fields := []map[string]any{
+		{"value": "status", "displayName": "Status", "operators": []string{"=", "!=", "in", "not in", "was", "was in", "was not in", "was not", "changed"}},
+		{"value": "assignee", "displayName": "Assignee", "operators": []string{"=", "!=", "in", "not in", "was", "was in", "was not in", "was not", "changed"}},
+		{"value": "priority", "displayName": "Priority", "operators": []string{"=", "!=", "in", "not in", ">", ">=", "<", "<="}},
+		{"value": "project", "displayName": "Project", "operators": []string{"=", "!=", "in", "not in"}},
+		{"value": "issuetype", "displayName": "Issue Type", "operators": []string{"=", "!=", "in", "not in"}},
+		{"value": "summary", "displayName": "Summary", "operators": []string{"~", "!~", "is", "is not"}},
+		{"value": "description", "displayName": "Description", "operators": []string{"~", "!~", "is", "is not"}},
+		{"value": "reporter", "displayName": "Reporter", "operators": []string{"=", "!=", "in", "not in", "was", "was in", "was not in", "was not", "changed"}},
+		{"value": "created", "displayName": "Created", "operators": []string{"=", "!=", ">", ">=", "<", "<="}},
+		{"value": "updated", "displayName": "Updated", "operators": []string{"=", "!=", ">", ">=", "<", "<="}},
+		{"value": "labels", "displayName": "Labels", "operators": []string{"=", "!=", "in", "not in"}},
+		{"value": "component", "displayName": "Component", "operators": []string{"=", "!=", "in", "not in"}},
+	}
+	writeJSON(w, map[string]any{"visibleFieldNames": fields})
+}
+
+func (s *DemoServer) handleAutocompleteSuggestions(w http.ResponseWriter, r *http.Request) {
+	fieldName := r.URL.Query().Get("fieldName")
+	suggestions := map[string][]map[string]string{
+		"status":    {{"value": "Open", "displayName": "Open"}, {"value": "In Progress", "displayName": "In Progress"}, {"value": "Done", "displayName": "Done"}, {"value": "To Do", "displayName": "To Do"}, {"value": "In Review", "displayName": "In Review"}},
+		"priority":  {{"value": "Highest", "displayName": "Highest"}, {"value": "High", "displayName": "High"}, {"value": "Medium", "displayName": "Medium"}, {"value": "Low", "displayName": "Low"}, {"value": "Lowest", "displayName": "Lowest"}},
+		"issuetype": {{"value": "Bug", "displayName": "Bug"}, {"value": "Story", "displayName": "Story"}, {"value": "Task", "displayName": "Task"}, {"value": "Epic", "displayName": "Epic"}, {"value": "Sub-task", "displayName": "Sub-task"}},
+	}
+
+	results := make([]map[string]string, 0)
+	if vals, ok := suggestions[fieldName]; ok {
+		fieldValue := r.URL.Query().Get("fieldValue")
+		for _, v := range vals {
+			if fieldValue == "" || strings.Contains(strings.ToLower(v["displayName"]), strings.ToLower(fieldValue)) {
+				results = append(results, v)
+			}
+		}
+	}
+	writeJSON(w, map[string]any{"results": results})
 }
 
 // --- JSON serialization helpers ---

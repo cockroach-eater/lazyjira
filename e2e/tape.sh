@@ -31,8 +31,8 @@
 
 set -euo pipefail
 
-DEFAULT_SLEEP=400
-LONG_SLEEP=800
+DEFAULT_SLEEP=200
+LONG_SLEEP=400
 
 repeat() {
     local n="${1:-1}"
@@ -60,7 +60,7 @@ process_line() {
             echo ''
             echo 'Type "./lazyjira --demo"'
             echo 'Enter'
-            echo 'Sleep 2s'
+            echo 'Sleep 1s'
             ;;
         @start_vertical)
             echo 'Set Shell bash'
@@ -72,7 +72,7 @@ process_line() {
             echo ''
             echo 'Type "./lazyjira --demo"'
             echo 'Enter'
-            echo 'Sleep 2s'
+            echo 'Sleep 1s'
             ;;
         @down*)
             local n="${line#@down}"; n="${n// /}"; n="${n:-1}"
@@ -101,7 +101,7 @@ process_line() {
             printf 'Space\nSleep %sms\n' "$LONG_SLEEP"
             ;;
         @transition)
-            printf 'Type "t"\nSleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "1000"
+            printf 'Type "t"\nSleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "500"
             ;;
         @search\ *)
             local text="${line#@search }"
@@ -110,10 +110,10 @@ process_line() {
             printf 'Sleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "$DEFAULT_SLEEP"
             ;;
         @help)
-            printf 'Type "?"\nSleep 1s\nEscape\nSleep %sms\n' "$DEFAULT_SLEEP"
+            printf 'Type "?"\nSleep 500ms\nEscape\nSleep %sms\n' "$DEFAULT_SLEEP"
             ;;
         @expand)
-            printf 'Space\nSleep 1500ms\n'
+            printf 'Space\nSleep 600ms\n'
             ;;
         @close)
             printf 'Escape\nSleep %sms\n' "$DEFAULT_SLEEP"
@@ -134,7 +134,7 @@ process_line() {
             # Clear existing text: Home + Ctrl+K, then type new text
             printf 'Ctrl+a\nCtrl+k\n'
             printf 'Set TypingSpeed 50ms\nType "%s"\nSet TypingSpeed 0ms\n' "$text"
-            printf 'Sleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "1000"
+            printf 'Sleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "500"
             ;;
         @edit)
             printf 'Type "e"\nSleep %sms\n' "$LONG_SLEEP"
@@ -144,7 +144,7 @@ process_line() {
             repeat "$n" printf 'Space\nSleep %sms\n' "$DEFAULT_SLEEP"
             ;;
         @confirm)
-            printf 'Enter\nSleep %sms\n' "1000"
+            printf 'Enter\nSleep %sms\n' "500"
             ;;
         @comments)
             printf 'Type "c"\nSleep %sms\n' "$LONG_SLEEP"
@@ -163,6 +163,12 @@ process_line() {
 
 # Main: read tape file, expand @-directives, pass through everything else
 input="${1:--}"
-while IFS= read -r line || [[ -n "$line" ]]; do
-    process_line "$line"
-done < "$input"
+if [[ "$input" == "-" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        process_line "$line"
+    done
+else
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        process_line "$line"
+    done < "$input"
+fi

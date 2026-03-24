@@ -83,8 +83,12 @@ type App struct {
 	helpBar   components.HelpBar
 	searchBar components.SearchBar
 	modal     components.Modal
+	jqlModal  components.JQLModal
 	diffView   components.DiffView
 	inputModal components.InputModal
+
+	// JQL autocomplete cache.
+	jqlFields []jira.AutocompleteField
 
 	// Edit session state.
 	editTempPath string // temp file path for cleanup
@@ -150,6 +154,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	modal := components.NewModal()
 	diffView := components.NewDiffView()
 	inputModal := components.NewInputModal()
+	jqlModal := components.NewJQLModal()
 
 	logFlag := new(bool) // shared with closure, set via app.logRequests
 	client.SetOnRequest(func(rl jira.RequestLog) {
@@ -194,6 +199,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		helpBar:     helpBar,
 		searchBar:   searchBar,
 		modal:       modal,
+		jqlModal:    jqlModal,
 		diffView:    diffView,
 		inputModal:  inputModal,
 		side:        sideLeft,
@@ -229,6 +235,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if _, ok := msg.(tea.KeyMsg); ok {
 			updated, cmd := a.searchBar.Update(msg)
 			a.searchBar = updated
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return a, tea.Batch(cmds...)
+		}
+	}
+
+	// JQL modal intercepts all keys and mouse when visible.
+	if a.jqlModal.IsVisible() {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			updated, cmd := a.jqlModal.Update(msg)
+			a.jqlModal = updated
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -279,6 +298,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 		a.modal.SetSize(msg.Width, msg.Height)
+		a.jqlModal.SetSize(msg.Width, msg.Height)
 		a.diffView.SetSize(msg.Width, msg.Height)
 		a.inputModal.SetSize(msg.Width, msg.Height)
 		a.layoutPanels()
@@ -621,6 +641,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 
+		case ActJQLSearch:
+			history := LoadJQLHistory()
+			prefill := ""
+			if a.projectKey != "" {
+				prefill = "project = " + a.projectKey + " AND "
+			}
+			a.jqlModal.SetSize(a.width, a.height)
+			a.jqlModal.Show(prefill, history)
+			// Fetch autocomplete data if not cached.
+			if a.jqlFields == nil {
+				cmds = append(cmds, fetchJQLAutocompleteData(a.client))
+			}
+			return a, tea.Batch(cmds...)
+
+		case ActCloseJQLTab:
+			if a.side == sideLeft && a.leftFocus == focusIssues && a.issuesList.IsJQLTab() {
+				a.issuesList.RemoveJQLTab()
+				if !a.issuesList.HasCachedTab() {
+					return a, a.fetchActiveTab()
+				}
+			}
+			return a, nil
+
 		case ActRefresh:
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
 				*a.logFlag = true
@@ -951,6 +994,78 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.modal.ShowReadOnly(msg.Title, items)
 		return a, nil
 
+	case components.JQLSubmitMsg:
+		*a.logFlag = true
+		a.jqlModal.SetLoading(true)
+		return a, fetchJQLSearch(a.client, msg.Query)
+
+	case jqlSearchResultMsg:
+		*a.logFlag = false
+		a.jqlModal.Hide()
+		a.issuesList.AddJQLTab(msg.jql)
+		a.issuesList.SetIssues(msg.issues)
+		// Save to history.
+		history := LoadJQLHistory()
+		history = AddToHistory(history, msg.jql)
+		_ = SaveJQLHistory(history)
+		// Focus issues panel on JQL tab.
+		a.side = sideLeft
+		a.leftFocus = focusIssues
+		a.updateFocusState()
+		// Prefetch details.
+		for _, issue := range msg.issues {
+			cmds = append(cmds, prefetchIssue(a.client, issue.Key))
+		}
+		return a, tea.Batch(cmds...)
+
+	case jqlSearchErrorMsg:
+		*a.logFlag = false
+		a.jqlModal.SetError(msg.err)
+		return a, nil
+
+	case components.JQLCancelMsg:
+		return a, nil
+
+	case components.JQLInputChangedMsg:
+		// Parse context for autocomplete.
+		ctx := parseJQLContext(msg.Text, msg.CursorPos)
+		a.jqlModal.SetPartialLen(ctx.PartialLen)
+		switch ctx.Mode {
+		case jqlCtxField:
+			if a.jqlFields != nil {
+				suggestions := matchFieldSuggestions(a.jqlFields, ctx.Partial)
+				if len(suggestions) > 0 {
+					a.jqlModal.SetSuggestions(suggestions)
+				} else {
+					a.jqlModal.SetHistory(LoadJQLHistory())
+				}
+			}
+		case jqlCtxValue:
+			a.jqlModal.SetACLoading(true)
+			return a, fetchJQLSuggestions(a.client, ctx.FieldName, ctx.Partial)
+		default:
+			a.jqlModal.SetHistory(LoadJQLHistory())
+		}
+		return a, nil
+
+	case jqlFieldsLoadedMsg:
+		a.jqlFields = msg.fields
+		return a, nil
+
+	case jqlSuggestionsMsg:
+		if a.jqlModal.IsVisible() {
+			var items []string
+			for _, s := range msg.suggestions {
+				items = append(items, s.Value)
+			}
+			if len(items) > 0 {
+				a.jqlModal.SetSuggestions(items)
+			} else {
+				a.jqlModal.SetHistory(LoadJQLHistory())
+			}
+		}
+		return a, nil
+
 	case errorMsg:
 		a.err = msg.err
 		a.statusPanel.SetOnline(false)
@@ -1078,6 +1193,8 @@ func (a *App) View() string {
 	switch {
 	case a.searchBar.IsActive():
 		bottomBar = a.searchBar.View()
+	case a.jqlModal.IsVisible():
+		bottomBar = a.helpBar.View()
 	case a.modal.IsVisible() && a.modal.IsSearching():
 		bottomBar = a.modal.SearchView(a.width)
 	default:
@@ -1102,6 +1219,9 @@ func (a *App) View() string {
 		x := (a.width - diffW) / 2
 		y := (a.height - diffH) / 2
 		full = components.OverlayAt(full, diff, x, y, a.width, a.height)
+	case a.jqlModal.IsVisible():
+		popup := a.jqlModal.View()
+		full = components.Overlay(full, popup, a.width, a.height)
 	case a.modal.IsVisible():
 		full = a.renderModalOverlay(full)
 	}
@@ -1262,6 +1382,16 @@ func (a *App) renderHelpOverlay(base string) string {
 
 // fetchActiveTab returns a command to fetch issues for the current active tab's JQL.
 func (a *App) fetchActiveTab() tea.Cmd {
+	// JQL tab: use stored raw JQL directly.
+	if a.issuesList.IsJQLTab() {
+		jql := a.issuesList.JQLQuery()
+		if jql == "" {
+			return nil
+		}
+		tabIdx := a.issuesList.GetTabIndex()
+		*a.logFlag = true
+		return fetchIssuesByJQL(a.client, jql, tabIdx)
+	}
 	if a.projectKey == "" {
 		return nil
 	}

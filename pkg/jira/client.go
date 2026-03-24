@@ -35,6 +35,8 @@ type ClientInterface interface {
 	GetLabels(ctx context.Context) ([]string, error)
 	GetComponents(ctx context.Context, projectKey string) ([]Component, error)
 	GetIssueTypes(ctx context.Context, projectID string) ([]IssueType, error)
+	GetJQLAutocompleteData(ctx context.Context) ([]AutocompleteField, error)
+	GetJQLAutocompleteSuggestions(ctx context.Context, fieldName, fieldValue string) ([]AutocompleteSuggestion, error)
 	SetOnRequest(fn func(RequestLog))
 	SetCustomFields(ids []string)
 }
