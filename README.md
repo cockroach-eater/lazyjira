@@ -14,7 +14,7 @@ Terminal UI for Jira. Like [lazygit](https://github.com/jesseduffield/lazygit) b
 - **Configurable** - custom keybindings, JQL tabs, issue columns, custom fields
 - **Adaptive** - side-by-side or stacked layout, mouse support, ANSI 16 colors
 
-<summary><h2>Installation</h2></summary>
+## Installation
 
 <details>
 <summary><b>macOS</b></summary>
@@ -114,7 +114,6 @@ Credentials saved to `~/.config/lazyjira/auth.json`.
 
 ```
 lazyjira                 # start
-lazyjira --demo          # demo mode (no Jira account needed)
 lazyjira auth            # re-authenticate
 lazyjira logout          # clear credentials
 lazyjira --dry-run       # read-only mode (no writes to Jira)
@@ -123,6 +122,15 @@ lazyjira --version       # show version
 ```
 
 Press `?` inside the app for all keybindings.
+
+### Demo mode
+
+Try without a Jira account:
+
+```
+make build-demo
+./lazyjira --demo
+```
 
 ## Roadmap
 
