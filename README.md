@@ -134,6 +134,7 @@ make build-demo
 
 ## Roadmap
 
+- [x] Robust JQL search
 - [ ] Git integration - create branches from issues, open issue from current branch
 - [ ] Create issues
 - [ ] Rich text editing - colors, panels, media in ADF descriptions
