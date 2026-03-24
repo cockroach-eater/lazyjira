@@ -125,7 +125,7 @@ Press `?` inside the app for all keybindings.
 
 ### Demo mode
 
-Try without a Jira account:
+Try without a Jira account (build from source required):
 
 ```
 make build-demo
