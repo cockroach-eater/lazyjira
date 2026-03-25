@@ -18,6 +18,8 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.11.3
 
       - run: go vet ./...
 
