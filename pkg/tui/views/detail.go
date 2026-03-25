@@ -366,20 +366,9 @@ func (d *DetailView) ClickItem(relY int) tea.Cmd {
 	}
 
 	// Walk blocks to find which one contains the clicked line.
-	var blocks [][]string
 	blockWidth := max(d.width-2, 10) - 1 // -1 for list bar prefix
-	switch d.activeTab {
-	case TabSubtasks:
-		blocks = d.renderSubtaskBlocks(blockWidth)
-	case TabComments:
-		blocks = d.renderCommentBlocks(blockWidth)
-	case TabLinks:
-		blocks = d.renderLinkBlocks(blockWidth)
-	case TabHistory:
-		blocks = d.renderHistoryBlocks(blockWidth)
-	case TabInfo:
-		blocks = d.renderInfoBlocks(blockWidth)
-	default:
+	blocks := d.renderActiveTabBlocks(blockWidth)
+	if blocks == nil {
 		return nil
 	}
 
@@ -573,21 +562,7 @@ func (d *DetailView) View() string {
 		// List tab — render blocks, highlight selected.
 		// Subtract 1 for the list bar/space prefix added below.
 		blockWidth := contentWidth - 1
-		var blocks [][]string
-		switch d.activeTab {
-		case TabSubtasks:
-			blocks = d.renderSubtaskBlocks(blockWidth)
-		case TabComments:
-			blocks = d.renderCommentBlocks(blockWidth)
-		case TabLinks:
-			blocks = d.renderLinkBlocks(blockWidth)
-		case TabHistory:
-			blocks = d.renderHistoryBlocks(blockWidth)
-		case TabInfo:
-			blocks = d.renderInfoBlocks(blockWidth)
-		default:
-			// TabDetails handled by else branch (text tab)
-		}
+		blocks := d.renderActiveTabBlocks(blockWidth)
 
 		// Clamp cursor.
 		if d.listCursor >= len(blocks) {
@@ -877,6 +852,23 @@ func (d *DetailView) buildBlockKeys(blocks [][]string) []string {
 		}
 	}
 	return keys
+}
+
+// renderActiveTabBlocks dispatches block rendering to the current tab.
+func (d *DetailView) renderActiveTabBlocks(width int) [][]string {
+	switch d.activeTab { //nolint:exhaustive // TabDetails is text-based, not block-based
+	case TabSubtasks:
+		return d.renderSubtaskBlocks(width)
+	case TabComments:
+		return d.renderCommentBlocks(width)
+	case TabLinks:
+		return d.renderLinkBlocks(width)
+	case TabHistory:
+		return d.renderHistoryBlocks(width)
+	case TabInfo:
+		return d.renderInfoBlocks(width)
+	}
+	return nil
 }
 
 func (d *DetailView) renderSubtaskBlocks(width int) [][]string {

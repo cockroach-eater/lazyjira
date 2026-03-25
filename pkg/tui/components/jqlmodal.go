@@ -362,6 +362,28 @@ func (m *JQLModal) adjustListOffset() {
 	}
 }
 
+// Intercept handles a message if the modal is visible. Implements Overlay.
+func (m *JQLModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
+	if !m.visible {
+		return nil, false
+	}
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		updated, cmd := m.Update(msg)
+		*m = updated
+		return cmd, true
+	}
+	return nil, false
+}
+
+// Render draws the JQL modal centered on bg. Implements Overlay.
+func (m *JQLModal) Render(bg string, w, h int) string {
+	if !m.visible {
+		return bg
+	}
+	return Overlay(bg, m.View(), w, h)
+}
+
 // SelectedSuggestion returns the currently selected suggestion (for autocomplete mode).
 func (m *JQLModal) SelectedSuggestion() string {
 	if m.mode != jqlModeAutocomplete || m.focusInput {

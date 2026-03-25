@@ -196,6 +196,28 @@ func (m *InputModal) View() string {
 	return RenderPanelFull(m.title, "", rendered, contentW, 1, m.focusInput, nil)
 }
 
+// Intercept handles a message if the modal is visible. Implements Overlay.
+func (m *InputModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
+	if !m.visible {
+		return nil, false
+	}
+	if _, ok := msg.(tea.KeyMsg); ok {
+		updated, cmd := m.Update(msg)
+		*m = updated
+		return cmd, true
+	}
+	return nil, false
+}
+
+// Render draws the input modal centered on bg with optional hint panel. Implements Overlay.
+func (m *InputModal) Render(bg string, w, h int) string {
+	if !m.visible {
+		return bg
+	}
+	popup := m.View()
+	return centerOverlayWithHint(bg, popup, m.HintView(), w, h)
+}
+
 // HintView returns a separate bordered panel with hint items (existing branches).
 // Returns "" if no hints are set.
 func (m *InputModal) HintView() string {

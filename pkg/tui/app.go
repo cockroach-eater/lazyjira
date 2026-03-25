@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -35,23 +34,31 @@ const (
 	sideRight
 )
 
+// editKind identifies the type of edit in progress.
+type editKind int
+
+const (
+	editNone       editKind = iota
+	editDesc                // description via $EDITOR
+	editCommentNew          // new comment via $EDITOR
+	editCommentMod          // edit existing comment via $EDITOR
+	editSummary             // summary via InputModal
+	editField               // custom field via InputModal
+	editFieldText           // multi-line custom field via $EDITOR
+	editBranch              // git branch via InputModal
+)
+
 // editCtx tracks what edit operation is in progress.
 type editCtx struct {
-	kind      string // "description", "comment-new", "comment-edit", "summary", "field", "field-text"
+	kind      editKind
 	issueKey  string
-	commentID string // for "comment-edit"
-	fieldID   string // for "field" / "field-text" (e.g. "customfield_10015")
+	commentID string // for editCommentMod
+	fieldID   string // for editField / editFieldText
 }
 
-// Modal kind constants for ModalSelectedMsg dispatch.
-const (
-	modalPriority  = "priority"
-	modalAssignee  = "assignee"
-	modalReporter  = "reporter"
-	modalIssueType = "issuetype"
-	modalLabels    = "labels"
-	modalComps = "components"
-)
+// Modal callback types for result dispatch.
+type onSelectFunc func(components.ModalItem) tea.Cmd
+type onChecklistFunc func([]components.ModalItem) tea.Cmd
 
 // Async messages.
 type issuesLoadedMsg struct {
@@ -85,10 +92,11 @@ type App struct {
 	keymap    Keymap
 	helpBar   components.HelpBar
 	searchBar components.SearchBar
-	modal     components.Modal
-	jqlModal  components.JQLModal
+	modal      components.Modal
+	jqlModal   components.JQLModal
 	diffView   components.DiffView
 	inputModal components.InputModal
+	overlays   components.OverlayStack
 
 	// JQL autocomplete cache.
 	jqlFields []jira.AutocompleteField
@@ -96,7 +104,10 @@ type App struct {
 	// Edit session state.
 	editTempPath string // temp file path for cleanup
 	editContext  editCtx
-	modalKind    string // modal* constants
+
+	// Modal callbacks: set before showing modal, consumed on result.
+	onSelect    onSelectFunc
+	onChecklist onChecklistFunc
 
 	side        focusSide
 	leftFocus   focusPanel
@@ -217,6 +228,14 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		logFlag:     logFlag,
 		issueCache:  make(map[string]*jira.Issue),
 	}
+	// Overlay stack: checked in priority order for input interception and rendering.
+	app.overlays = components.OverlayStack{
+		&app.jqlModal,
+		&app.inputModal,
+		&app.diffView,
+		&app.modal,
+	}
+
 	// Detect git repo (sync, <10ms).
 	if git.GitAvailable() {
 		cwd, _ := os.Getwd()
@@ -247,953 +266,116 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-//nolint:gocognit // will be refactored in Phase 5
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
 	// Search bar intercepts all keys when active.
 	if a.searchBar.IsActive() {
 		if _, ok := msg.(tea.KeyMsg); ok {
 			updated, cmd := a.searchBar.Update(msg)
 			a.searchBar = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return a, tea.Batch(cmds...)
+			return a, cmd
 		}
 	}
 
-	// JQL modal intercepts all keys and mouse when visible.
-	if a.jqlModal.IsVisible() {
-		switch msg.(type) {
-		case tea.KeyMsg, tea.MouseMsg:
-			updated, cmd := a.jqlModal.Update(msg)
-			a.jqlModal = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return a, tea.Batch(cmds...)
-		}
-	}
-
-	// Input modal intercepts keys when visible.
-	if a.inputModal.IsVisible() {
-		if _, ok := msg.(tea.KeyMsg); ok {
-			updated, cmd := a.inputModal.Update(msg)
-			a.inputModal = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return a, tea.Batch(cmds...)
-		}
-	}
-
-	// Diff view intercepts keys when visible.
-	if a.diffView.IsVisible() {
-		switch msg.(type) {
-		case tea.KeyMsg, tea.MouseMsg:
-			updated, cmd := a.diffView.Update(msg)
-			a.diffView = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return a, tea.Batch(cmds...)
-		}
-	}
-
-	// Modal intercepts keys and mouse when visible.
-	if a.modal.IsVisible() {
-		switch msg.(type) {
-		case tea.KeyMsg, tea.MouseMsg:
-			updated, cmd := a.modal.Update(msg)
-			a.modal = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return a, tea.Batch(cmds...)
-		}
+	// Overlays (JQL modal, input modal, diff view, selection modal) intercept input.
+	if cmd, ok := a.overlays.Intercept(msg); ok {
+		return a, cmd
 	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		a.width = msg.Width
-		a.height = msg.Height
-		a.modal.SetSize(msg.Width, msg.Height)
-		a.jqlModal.SetSize(msg.Width, msg.Height)
-		a.diffView.SetSize(msg.Width, msg.Height)
-		a.inputModal.SetSize(msg.Width, msg.Height)
-		a.layoutPanels()
-		a.helpBar.SetWidth(msg.Width)
-		a.searchBar.SetWidth(msg.Width)
-		return a, nil
-
+		return a.handleResize(msg)
 	case tea.MouseMsg:
 		return a.handleMouse(msg)
+	case tea.KeyMsg:
+		if m, cmd := a.handleKeyMsg(msg); m != nil {
+			return m, cmd
+		}
 
 	case components.SearchChangedMsg:
-		// Filter only the active panel.
-		if a.side == sideLeft && a.leftFocus == focusIssues {
-			a.issuesList.SetFilter(msg.Query)
-		} else if a.side == sideLeft && a.leftFocus == focusProjects {
-			a.projectList.SetFilter(msg.Query)
-		}
-		return a, nil
-
+		return a.handleSearchChanged(msg)
 	case components.SearchConfirmedMsg:
-		var cmd tea.Cmd
-		if a.side == sideLeft && a.leftFocus == focusIssues {
-			selectedIssue := a.issuesList.SelectedIssue()
-			a.issuesList.ClearFilter()
-			if selectedIssue != nil {
-				a.issuesList.SelectByKey(selectedIssue.Key)
-				cmds = append(cmds, fetchIssueDetail(a.client, selectedIssue.Key))
-			}
-		} else if a.side == sideLeft && a.leftFocus == focusProjects {
-			// Select top filtered project and load its issues.
-			if p := a.projectList.SelectedProject(); p != nil {
-				a.projectKey = p.Key
-				a.projectID = p.ID
-				a.statusPanel.SetProject(p.Key)
-				a.projectList.SetActiveKey(p.Key)
-				a.issuesList.ClearActiveKey()
-				a.issuesList.InvalidateTabCache()
-				a.issueCache = make(map[string]*jira.Issue)
-				if !a.demoMode {
-					go saveLastProject(p.Key)
-				}
-				cmds = append(cmds, a.fetchActiveTab())
-			}
-			a.projectList.SetFilter("")
-		}
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		return a, tea.Batch(cmds...)
-
+		return a.handleSearchConfirmed()
 	case components.SearchCancelledMsg:
-		a.issuesList.SetFilter("")
-		a.projectList.SetFilter("")
-		return a, nil
-
-	case tea.KeyMsg:
-		a.helpBar.SetStatusMsg("")
-		// Help popup: j/k navigate, esc/q close, other keys ignored.
-		if a.showHelp {
-			bindings := a.ContextBindings()
-			switch msg.String() {
-			case "j", "down":
-				if a.helpCursor < len(bindings)-1 {
-					a.helpCursor++
-				}
-				return a, nil
-			case "k", "up":
-				if a.helpCursor > 0 {
-					a.helpCursor--
-				}
-				return a, nil
-			case "esc", "q", "?":
-				a.showHelp = false
-				return a, nil
-			default:
-				// Ignore other keys — keep help open.
-				return a, nil
-			}
-		}
-
-		action := a.keymap.Match(msg.String())
-		switch action {
-		case ActQuit:
-			return a, tea.Quit
-
-		case ActHelp:
-			a.showHelp = true
-			a.helpCursor = 0
-			return a, nil
-
-		case ActSearch:
-			a.searchBar.Activate()
-			return a, nil
-
-		case ActSwitchPanel:
-			if a.side == sideLeft {
-				a.side = sideRight
-			} else {
-				a.side = sideLeft
-			}
-			a.updateFocusState()
-			return a, nil
-
-		case ActFocusRight:
-			if a.side == sideLeft {
-				a.side = sideRight
-				a.updateFocusState()
-				return a, nil
-			}
-
-		case ActFocusLeft:
-			if a.side == sideRight {
-				a.side = sideLeft
-				a.updateFocusState()
-				return a, nil
-			}
-
-		case ActSelect:
-			// Primary action: select. On sideRight, fall through to let detail handle it.
-			switch {
-			case a.side == sideLeft && a.leftFocus == focusIssues:
-				if sel := a.issuesList.SelectedIssue(); sel != nil {
-					a.issuesList.SetActiveKey(sel.Key)
-					a.side = sideRight
-					a.updateFocusState()
-					return a, fetchIssueDetail(a.client, sel.Key)
-				}
-				return a, nil
-			case a.side == sideLeft && a.leftFocus == focusProjects:
-				if p := a.projectList.SelectedProject(); p != nil {
-					a.projectKey = p.Key
-					a.statusPanel.SetProject(p.Key)
-					a.projectList.SetActiveKey(p.Key)
-					a.issuesList.ClearActiveKey()
-					a.issuesList.InvalidateTabCache()
-					a.issueCache = make(map[string]*jira.Issue)
-					a.leftFocus = focusIssues
-					a.updateFocusState()
-					if !a.demoMode {
-						go saveLastProject(p.Key)
-					}
-					return a, a.fetchActiveTab()
-				}
-				return a, nil
-			}
-			// sideRight: let detail view handle expand via its Update.
-
-		case ActOpen:
-			// Secondary action: open/preview without selecting.
-			// On sideRight, fall through to let detail handle expand.
-			switch {
-			case a.side == sideLeft && a.leftFocus == focusIssues:
-				if sel := a.issuesList.SelectedIssue(); sel != nil {
-					a.side = sideRight
-					a.updateFocusState()
-					return a, fetchIssueDetail(a.client, sel.Key)
-				}
-				return a, nil
-			case a.side == sideLeft && a.leftFocus == focusProjects:
-				if p := a.projectList.SelectedProject(); p != nil {
-					a.detailView.SetProject(p)
-				}
-				return a, nil
-			}
-			// sideRight: let detail view handle expand via its Update.
-
-		case ActPrevTab:
-			if a.side == sideRight {
-				a.detailView.PrevTab()
-			} else if a.side == sideLeft && a.leftFocus == focusIssues {
-				a.issuesList.PrevTab()
-				if !a.issuesList.HasCachedTab() {
-					return a, a.fetchActiveTab()
-				}
-			}
-			return a, nil
-		case ActNextTab:
-			if a.side == sideRight {
-				a.detailView.NextTab()
-			} else if a.side == sideLeft && a.leftFocus == focusIssues {
-				a.issuesList.NextTab()
-				if !a.issuesList.HasCachedTab() {
-					return a, a.fetchActiveTab()
-				}
-			}
-			return a, nil
-
-		case ActFocusDetail:
-			a.side = sideRight
-			a.updateFocusState()
-			return a, nil
-
-		case ActFocusStatus:
-			a.side = sideLeft
-			a.leftFocus = focusStatus
-			a.splashInfo.Project = a.projectKey
-			a.detailView.SetSplash(a.splashInfo)
-			a.updateFocusState()
-			return a, nil
-		case ActFocusIssues:
-			a.side = sideLeft
-			a.leftFocus = focusIssues
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				a.showCachedIssue(sel.Key)
-			}
-			a.updateFocusState()
-			return a, nil
-		case ActFocusProj:
-			a.side = sideLeft
-			a.leftFocus = focusProjects
-			a.updateFocusState()
-			return a, nil
-
-		case ActCopyURL:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				copyToClipboard(a.cfg.Jira.Host + "/browse/" + sel.Key)
-			}
-			return a, nil
-
-		case ActBrowser:
-			if sel := a.issuesList.SelectedIssue(); sel != nil && (a.leftFocus == focusIssues || a.side == sideRight) {
-				openBrowser(a.cfg.Jira.Host + "/browse/" + sel.Key)
-			}
-			return a, nil
-
-		case ActURLPicker:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				cached := sel
-				if c, ok := a.issueCache[sel.Key]; ok {
-					cached = c
-				}
-				groups := views.ExtractURLs(cached, a.cfg.Jira.Host)
-				if len(groups) > 0 {
-					var items []components.ModalItem
-					for i, g := range groups {
-						if i > 0 || len(groups) > 1 {
-							items = append(items, components.ModalItem{Label: g.Section, Separator: true})
-						}
-						for _, u := range g.URLs {
-							display := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
-							if key := a.extractIssueKey(u); key != "" {
-								items = append(items, components.ModalItem{ID: u, Label: key + " " + display, Internal: true})
-							} else {
-								items = append(items, components.ModalItem{ID: u, Label: display})
-							}
-						}
-					}
-					a.modal.SetSize(a.width, a.height)
-					a.modal.Show("URLs", items)
-				}
-			}
-			return a, nil
-
-		case ActTransition:
-			if a.side == sideLeft && a.leftFocus == focusIssues {
-				if sel := a.issuesList.SelectedIssue(); sel != nil {
-					*a.logFlag = true
-					return a, fetchTransitions(a.client, sel.Key)
-				}
-			}
-			return a, nil
-
-		case ActComments:
-			sel := a.issuesList.SelectedIssue()
-			if sel == nil {
-				return a, nil
-			}
-			a.side = sideRight
-			a.detailView.SetActiveTab(views.TabComments)
-			a.updateFocusState()
-			if _, ok := a.issueCache[sel.Key]; !ok {
-				return a, fetchIssueDetail(a.client, sel.Key)
-			}
-			return a, nil
-
-		case ActAddComment:
-			sel := a.issuesList.SelectedIssue()
-			if sel == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
-				return a, nil
-			}
-			a.editContext = editCtx{kind: "comment-new", issueKey: sel.Key}
-			return a, launchEditor("", ".md")
-
-		case ActEdit:
-			sel := a.issuesList.SelectedIssue()
-			if sel == nil {
-				return a, nil
-			}
-			if a.side == sideLeft && a.leftFocus == focusIssues {
-				// Issues panel → edit summary (inline input).
-				a.inputModal.SetSize(a.width, a.height)
-				a.inputModal.Show("Edit Summary", sel.Summary)
-				a.editContext = editCtx{kind: "summary", issueKey: sel.Key}
-				return a, nil
-			}
-			// Detail panel — context-aware by tab.
-			if a.side == sideRight && a.detailView.ActiveTab() == views.TabComments {
-				// Cmt tab → edit comment under cursor.
-				cmt := a.detailView.SelectedComment()
-				if cmt == nil {
-					return a, nil
-				}
-				md := ""
-				if cmt.BodyADF != nil {
-					md = views.ADFToMarkdown(cmt.BodyADF)
-				} else if cmt.Body != "" {
-					md = cmt.Body
-				}
-				a.editContext = editCtx{kind: "comment-edit", issueKey: sel.Key, commentID: cmt.ID}
-				return a, launchEditor(md, ".md")
-			}
-			// Info tab → type-aware field editing.
-			if a.side == sideRight && a.detailView.ActiveTab() == views.TabInfo {
-				return a.editInfoField(sel)
-			}
-			// Detail panel (Body tab) → edit description ($EDITOR).
-			cached := sel
-			if c, ok := a.issueCache[sel.Key]; ok {
-				cached = c
-			}
-			md := ""
-			if cached.DescriptionADF != nil {
-				md = views.ADFToMarkdown(cached.DescriptionADF)
-			} else if cached.Description != "" {
-				md = cached.Description
-			}
-			a.editContext = editCtx{kind: "description", issueKey: sel.Key}
-			return a, launchEditor(md, ".md")
-
-		case ActEditPriority:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				*a.logFlag = true
-				return a, fetchPriorities(a.client)
-			}
-			return a, nil
-
-		case ActEditAssignee:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				*a.logFlag = true
-				return a, fetchUsers(a.client, a.projectKey, sel.Key)
-			}
-			return a, nil
-
-		case ActCreateBranch:
-			if a.side == sideLeft && a.leftFocus == focusIssues {
-				if a.gitRepoPath == "" {
-					a.err = errors.New("not a git repository")
-					return a, nil
-				}
-				sel := a.issuesList.SelectedIssue()
-				if sel == nil {
-					return a, nil
-				}
-				// Build template data.
-				parts := strings.SplitN(sel.Key, "-", 2)
-				projKey := parts[0]
-				number := ""
-				if len(parts) > 1 {
-					number = parts[1]
-				}
-				typeName := ""
-				if sel.IssueType != nil {
-					typeName = sel.IssueType.Name
-				}
-				data := git.BranchTemplateData{
-					Key:        sel.Key,
-					ProjectKey: projKey,
-					Number:     number,
-					Summary:    git.SanitizeSummary(sel.Summary, a.cfg.Git.AsciiOnly),
-					Type:       typeName,
-				}
-				// Find matching template from config rules.
-				tmplStr := ""
-				for _, r := range a.cfg.Git.BranchFormat {
-					if r.When.Type == "*" || strings.EqualFold(r.When.Type, typeName) {
-						tmplStr = r.Template
-						break
-					}
-				}
-				name := git.GenerateBranchName(data, tmplStr, a.cfg.Git.AsciiOnly)
-				a.inputModal.SetSize(a.width, a.height)
-				a.inputModal.Show("Create branch", name)
-				a.editContext = editCtx{kind: "git-branch"}
-				// Show existing branches as hints if any match.
-				if result, err := git.SearchBranches(a.gitRepoPath, sel.Key); err == nil {
-					hints := make([]string, 0, len(result.Local)+len(result.Remote))
-					hints = append(hints, result.Local...)
-					hints = append(hints, result.Remote...)
-					if len(hints) > 0 {
-						a.inputModal.SetHints(hints)
-					}
-				}
-				return a, nil
-			}
-			return a, nil
-
-		case ActJQLSearch:
-			history := LoadJQLHistory()
-			prefill := ""
-			if a.projectKey != "" {
-				prefill = "project = " + a.projectKey + " AND "
-			}
-			a.jqlModal.SetSize(a.width, a.height)
-			a.jqlModal.Show(prefill, history)
-			// Fetch autocomplete data if not cached.
-			if a.jqlFields == nil {
-				cmds = append(cmds, fetchJQLAutocompleteData(a.client))
-			}
-			return a, tea.Batch(cmds...)
-
-		case ActCloseJQLTab:
-			if a.side == sideLeft && a.leftFocus == focusIssues && a.issuesList.IsJQLTab() {
-				a.issuesList.RemoveJQLTab()
-				if !a.issuesList.HasCachedTab() {
-					return a, a.fetchActiveTab()
-				}
-			}
-			return a, nil
-
-		case ActRefresh:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				*a.logFlag = true
-				return a, fetchIssueDetail(a.client, sel.Key)
-			}
-			return a, nil
-
-		case ActRefreshAll:
-			return a, a.fetchActiveTab()
-
-		default:
-			// ActInfoTab and nav keys are handled by the focused panel below.
-		}
+		return a.handleSearchCancelled()
 
 	case autoFetchTickMsg:
-		var fetchCmds []tea.Cmd
-		if cmd := a.fetchActiveTab(); cmd != nil {
-			fetchCmds = append(fetchCmds, cmd)
-		}
-		// Schedule next tick.
-		fetchCmds = append(fetchCmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
-			return autoFetchTickMsg{}
-		}))
-		return a, tea.Batch(fetchCmds...)
-
+		return a.handleAutoFetch()
 	case issuesLoadedMsg:
-		a.err = nil
-		*a.logFlag = false
-		a.statusPanel.SetOnline(true)
-		a.issuesList.SetIssuesForTab(msg.tab, msg.issues)
-		// Only update display + prefetch if this is still the active tab.
-		if msg.tab == a.issuesList.GetTabIndex() {
-			a.issuesList.SetIssues(msg.issues)
-			// Prefetch details for all issues in this tab.
-			for _, issue := range msg.issues {
-				cmds = append(cmds, prefetchIssue(a.client, issue.Key))
-			}
-		}
-		// Auto-detect: select issue from git branch.
-		if a.gitDetectedKey != "" {
-			detectedKey := a.gitDetectedKey
-			projectKey := strings.SplitN(detectedKey, "-", 2)[0]
-			if !strings.EqualFold(projectKey, a.projectKey) {
-				// Need to switch project first — find it in the project list.
-				projects := a.projectList.AllProjects()
-				for _, p := range projects {
-					if strings.EqualFold(p.Key, projectKey) {
-						a.projectKey = p.Key
-						a.projectID = p.ID
-						a.statusPanel.SetProject(p.Key)
-						a.projectList.SetActiveKey(p.Key)
-						a.issuesList.ClearActiveKey()
-						a.issuesList.InvalidateTabCache()
-						a.issueCache = make(map[string]*jira.Issue)
-						if !a.demoMode {
-							go saveLastProject(p.Key)
-						}
-						// gitDetectedKey stays — will be consumed on next issuesLoadedMsg.
-						cmds = append(cmds, a.fetchActiveTab())
-						return a, tea.Batch(cmds...)
-					}
-				}
-				// Project not found — clear and proceed.
-				a.gitDetectedKey = ""
-			} else {
-				a.gitDetectedKey = ""
-				a.navigateToIssue(detectedKey)
-			}
-		}
-		return a, tea.Batch(cmds...)
-
+		return a.handleIssuesLoaded(msg)
 	case issueDetailLoadedMsg:
-		*a.logFlag = false
-		if msg.issue != nil {
-			a.issueCache[msg.issue.Key] = msg.issue
-		}
-		if a.leftFocus == focusIssues || a.side == sideRight {
-			a.detailView.SetIssue(msg.issue)
-		} else {
-			a.detailView.UpdateIssueData(msg.issue)
-		}
-		return a, nil
-
+		return a.handleIssueDetailLoaded(msg)
 	case issuePrefetchedMsg:
-		if msg.issue != nil {
-			a.issueCache[msg.issue.Key] = msg.issue
-			// If this is the currently selected issue, update detail.
-			if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
-				if a.leftFocus == focusIssues || a.side == sideRight {
-					a.detailView.SetIssue(msg.issue)
-				}
-			}
-		}
-		return a, nil
+		return a.handleIssuePrefetched(msg)
+	case projectsLoadedMsg:
+		return a.handleProjectsLoaded(msg)
 
 	case transitionDoneMsg:
-		var fetchCmds []tea.Cmd
-		if cmd := a.fetchActiveTab(); cmd != nil {
-			fetchCmds = append(fetchCmds, cmd)
-		}
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			fetchCmds = append(fetchCmds, fetchIssueDetail(a.client, sel.Key))
-		}
-		if len(fetchCmds) > 0 {
-			return a, tea.Batch(fetchCmds...)
-		}
-		return a, nil
-
+		return a.handleTransitionDone()
 	case transitionsLoadedMsg:
-		if len(msg.transitions) == 0 {
-			return a, nil
-		}
-		var items []components.ModalItem
-		for _, t := range msg.transitions {
-			label := t.Name
-			hint := ""
-			if t.To != nil {
-				label += " → " + t.To.Name
-				hint = t.To.Description
-			}
-			items = append(items, components.ModalItem{ID: t.ID, Label: label, Hint: hint})
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modalKind = ""
-		a.modal.Show("Transition: "+msg.issueKey, items)
-		return a, nil
-
+		return a.handleTransitionsLoaded(msg)
 	case prioritiesLoadedMsg:
-		if len(msg.priorities) == 0 {
-			return a, nil
-		}
-		var items []components.ModalItem
-		for _, p := range msg.priorities {
-			items = append(items, components.ModalItem{ID: p.ID, Label: p.Name})
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modalKind = modalPriority
-		a.modal.Show("Priority", items)
-		return a, nil
-
+		return a.handlePrioritiesLoaded(msg)
 	case usersLoadedMsg:
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
-			return a, nil
-		}
-		// Build assignee list: Unassigned, self, then others.
-		var items []components.ModalItem
-		items = append(items, components.ModalItem{ID: "", Label: "Unassigned"})
-		email := a.cfg.Jira.Email
-		for _, u := range msg.users {
-			if u.Email == email {
-				items = append(items, components.ModalItem{ID: u.AccountID, Label: "→ " + u.DisplayName})
-				break
-			}
-		}
-		for _, u := range msg.users {
-			if u.Email != email {
-				items = append(items, components.ModalItem{ID: u.AccountID, Label: u.DisplayName})
-			}
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modalKind = modalAssignee
-		a.modal.Show("Assignee: "+sel.Key, items)
-		return a, nil
-
+		return a.handleUsersLoaded(msg)
 	case labelsLoadedMsg:
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
-			return a, nil
-		}
-		cached := sel
-		if c, ok := a.issueCache[sel.Key]; ok {
-			cached = c
-		}
-		// Build items and selected map from current labels.
-		selected := make(map[string]bool)
-		for _, l := range cached.Labels {
-			selected[l] = true
-		}
-		var items []components.ModalItem
-		for _, l := range msg.labels {
-			items = append(items, components.ModalItem{ID: l, Label: l})
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modal.ShowChecklist("Labels: "+sel.Key, items, selected)
-		return a, nil
-
+		return a.handleLabelsLoaded(msg)
 	case componentsLoadedMsg:
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
-			return a, nil
-		}
-		cached := sel
-		if c, ok := a.issueCache[sel.Key]; ok {
-			cached = c
-		}
-		selected := make(map[string]bool)
-		for _, c := range cached.Components {
-			selected[c.ID] = true
-		}
-		var items []components.ModalItem
-		for _, c := range msg.components {
-			items = append(items, components.ModalItem{ID: c.ID, Label: c.Name})
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modal.ShowChecklist("Components: "+sel.Key, items, selected)
-		return a, nil
-
+		return a.handleComponentsLoaded(msg)
 	case issueTypesLoadedMsg:
-		var items []components.ModalItem
-		for _, t := range msg.issueTypes {
-			items = append(items, components.ModalItem{ID: t.ID, Label: t.Name})
-		}
-		a.modal.SetSize(a.width, a.height)
-		a.modal.Show("Issue Type", items)
-		return a, nil
-
-	case components.ChecklistConfirmedMsg:
-		kind := a.modalKind
-		a.modalKind = ""
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
-			return a, nil
-		}
-		switch kind {
-		case modalLabels:
-			var labels []string
-			for _, item := range msg.Selected {
-				labels = append(labels, item.ID)
-			}
-			return a, updateIssueField(a.client, sel.Key, "labels", labels)
-		case modalComps:
-			var comps []map[string]string
-			for _, item := range msg.Selected {
-				comps = append(comps, map[string]string{"id": item.ID})
-			}
-			return a, updateIssueField(a.client, sel.Key, "components", comps)
-		}
-		return a, nil
+		return a.handleIssueTypesLoaded(msg)
+	case issueUpdatedMsg:
+		return a.handleIssueUpdated(msg)
+	case commentAddedMsg:
+		return a, fetchIssueDetail(a.client, msg.issueKey)
+	case commentUpdatedMsg:
+		return a, fetchIssueDetail(a.client, msg.issueKey)
 
 	case components.ModalSelectedMsg:
-		kind := a.modalKind
-		a.modalKind = ""
-		id := msg.Item.ID
-		switch kind {
-		case modalPriority:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				return a, updateIssueField(a.client, sel.Key, "priority", map[string]string{"id": id})
-			}
-		case modalAssignee, modalReporter:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				fieldName := kind
-				if id == "" {
-					return a, updateIssueField(a.client, sel.Key, fieldName, nil)
-				}
-				return a, updateIssueField(a.client, sel.Key, fieldName, map[string]string{"accountId": id})
-			}
-		case modalIssueType:
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				return a, updateIssueField(a.client, sel.Key, "issuetype", map[string]string{"id": id})
-			}
-		default:
-			// Transition or URL picker.
-			if strings.HasPrefix(id, "http") {
-				if issueKey := a.extractIssueKey(id); issueKey != "" {
-					a.navigateToIssue(issueKey)
-					return a, nil
-				}
-				openBrowser(id)
-			} else {
-				if sel := a.issuesList.SelectedIssue(); sel != nil {
-					return a, doTransition(a.client, sel.Key, id)
-				}
-			}
-		}
-		return a, nil
-
+		return a.handleModalSelected(msg)
+	case components.ChecklistConfirmedMsg:
+		return a.handleChecklistConfirmed(msg)
 	case components.ModalCancelledMsg:
-		a.modalKind = ""
-		return a, nil
+		return a.handleModalCancelled()
 
 	case editorFinishedMsg:
-		// Re-enable mouse after editor exits (tea.ExecProcess may disable it).
-		cmds = append(cmds, tea.EnableMouseCellMotion)
-		content, changed, err := readAndCheckEditor(msg)
-		if err != nil {
-			cleanupEditor(msg.tempPath)
-			a.editTempPath = ""
-			a.err = err
-			return a, tea.Batch(cmds...)
-		}
-		if !changed {
-			cleanupEditor(msg.tempPath)
-			a.editTempPath = ""
-			return a, tea.Batch(cmds...)
-		}
-		// Store temp path for cleanup after diff decision.
-		a.editTempPath = msg.tempPath
-		a.diffView.SetSize(a.width, a.height)
-		original := msg.original
-		a.diffView.Show("Confirm changes", original, content)
-		return a, tea.Batch(cmds...)
-
+		return a.handleEditorFinished(msg)
 	case components.DiffConfirmedMsg:
-		cleanupEditor(a.editTempPath)
-		a.editTempPath = ""
-		cmd := a.applyEdit(msg.Content)
-		return a, cmd
-
-	case components.InputConfirmedMsg:
-		ctx := a.editContext
-		a.editContext = editCtx{}
-		switch ctx.kind {
-		case "summary":
-			if msg.Text != "" {
-				return a, updateIssueField(a.client, ctx.issueKey, "summary", msg.Text)
-			}
-		case "field":
-			if msg.Text != "" {
-				return a, updateIssueField(a.client, ctx.issueKey, ctx.fieldID, msg.Text)
-			}
-		case "git-branch":
-			if msg.Text != "" {
-				switch {
-				case git.BranchExists(a.gitRepoPath, msg.Text):
-					return a, gitCheckoutBranch(a.gitRepoPath, msg.Text)
-				case strings.Contains(msg.Text, "/"):
-					// Remote branch selected from hints (e.g. "origin/feat/PLAT-3").
-					return a, gitCheckoutTracking(a.gitRepoPath, msg.Text)
-				default:
-					return a, gitCreateBranch(a.gitRepoPath, msg.Text)
-				}
-			}
-		}
-		return a, nil
-
-	case components.InputCancelledMsg:
-		a.editContext = editCtx{}
-		return a, nil
-
+		return a.handleDiffConfirmed(msg)
 	case components.DiffCancelledMsg:
-		cleanupEditor(a.editTempPath)
-		a.editTempPath = ""
+		return a.handleDiffCancelled()
+	case components.InputConfirmedMsg:
+		return a.handleInputConfirmed(msg)
+	case components.InputCancelledMsg:
+		return a.handleInputCancelled()
+
+	case components.JQLSubmitMsg:
+		return a.handleJQLSubmit(msg)
+	case jqlSearchResultMsg:
+		return a.handleJQLSearchResult(msg)
+	case jqlSearchErrorMsg:
+		return a.handleJQLSearchError(msg)
+	case components.JQLCancelMsg:
 		return a, nil
-
-	case issueUpdatedMsg:
-		// Re-fetch both the issue detail and the issue list to reflect changes.
-		return a, tea.Batch(
-			fetchIssueDetail(a.client, msg.issueKey),
-			a.fetchActiveTab(),
-		)
-
-	case commentAddedMsg:
-		// Re-fetch the issue to show new comment.
-		return a, fetchIssueDetail(a.client, msg.issueKey)
-
-	case commentUpdatedMsg:
-		// Re-fetch the issue to show updated comment.
-		return a, fetchIssueDetail(a.client, msg.issueKey)
+	case components.JQLInputChangedMsg:
+		return a.handleJQLInputChanged(msg)
+	case jqlFieldsLoadedMsg:
+		return a.handleJQLFieldsLoaded(msg)
+	case jqlSuggestionsMsg:
+		return a.handleJQLSuggestions(msg)
 
 	case views.NavigateIssueMsg:
 		a.navigateToIssue(msg.Key)
 		return a, nil
-
 	case views.ExpandBlockMsg:
-		var items []components.ModalItem
-		for _, line := range msg.Lines {
-			items = append(items, components.ModalItem{ID: "", Label: line})
-		}
-		a.modal.SetSize(a.width, a.height-1)
-		a.modal.ShowReadOnly(msg.Title, items)
-		return a, nil
-
-	case components.JQLSubmitMsg:
-		*a.logFlag = true
-		a.jqlModal.SetLoading(true)
-		return a, fetchJQLSearch(a.client, msg.Query)
-
-	case jqlSearchResultMsg:
-		*a.logFlag = false
-		a.jqlModal.Hide()
-		a.issuesList.AddJQLTab(msg.jql)
-		a.issuesList.SetIssues(msg.issues)
-		// Save to history.
-		history := LoadJQLHistory()
-		history = AddToHistory(history, msg.jql)
-		_ = SaveJQLHistory(history)
-		// Focus issues panel on JQL tab.
-		a.side = sideLeft
-		a.leftFocus = focusIssues
-		a.updateFocusState()
-		// Prefetch details.
-		for _, issue := range msg.issues {
-			cmds = append(cmds, prefetchIssue(a.client, issue.Key))
-		}
-		return a, tea.Batch(cmds...)
-
-	case jqlSearchErrorMsg:
-		*a.logFlag = false
-		a.jqlModal.SetError(msg.err)
-		return a, nil
-
-	case components.JQLCancelMsg:
-		return a, nil
-
-	case components.JQLInputChangedMsg:
-		// Parse context for autocomplete.
-		ctx := parseJQLContext(msg.Text, msg.CursorPos)
-		a.jqlModal.SetPartialLen(ctx.PartialLen)
-		switch ctx.Mode {
-		case jqlCtxField:
-			if a.jqlFields != nil {
-				suggestions := matchFieldSuggestions(a.jqlFields, ctx.Partial)
-				if len(suggestions) > 0 {
-					a.jqlModal.SetSuggestions(suggestions)
-				} else {
-					a.jqlModal.SetHistory(LoadJQLHistory())
-				}
-			}
-		case jqlCtxValue:
-			a.jqlModal.SetACLoading(true)
-			return a, fetchJQLSuggestions(a.client, ctx.FieldName, ctx.Partial)
-		default:
-			a.jqlModal.SetHistory(LoadJQLHistory())
-		}
-		return a, nil
-
-	case jqlFieldsLoadedMsg:
-		a.jqlFields = msg.fields
-		return a, nil
-
-	case jqlSuggestionsMsg:
-		if a.jqlModal.IsVisible() {
-			var items []string
-			for _, s := range msg.suggestions {
-				items = append(items, s.Value)
-			}
-			if len(items) > 0 {
-				a.jqlModal.SetSuggestions(items)
-			} else {
-				a.jqlModal.SetHistory(LoadJQLHistory())
-			}
-		}
-		return a, nil
+		return a.handleExpandBlock(msg)
 
 	case gitBranchCreatedMsg:
 		return a.handleGitBranchSwitch(msg.name)
-
 	case gitCheckoutDoneMsg:
 		return a.handleGitBranchSwitch(msg.name)
-
 	case gitErrorMsg:
 		a.err = msg.err
 		return a, nil
-
 	case errorMsg:
 		a.err = msg.err
 		a.statusPanel.SetOnline(false)
@@ -1208,70 +390,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return a, nil
-
-	case projectsLoadedMsg:
-		projects := msg.projects
-		// Move last-used project to top (skip in demo mode — no credentials).
-		if !a.demoMode {
-			if creds, err := config.LoadCredentials(); err == nil && creds != nil && creds.LastProject != "" {
-				for i, p := range projects {
-					if p.Key == creds.LastProject {
-						// Swap to front.
-						projects[0], projects[i] = projects[i], projects[0]
-						break
-					}
-				}
-			}
-		}
-		a.projectList.SetProjects(projects)
-		if a.projectKey == "" && len(projects) > 0 {
-			a.projectKey = projects[0].Key
-			a.projectID = projects[0].ID
-			a.statusPanel.SetProject(a.projectKey)
-			a.projectList.SetActiveKey(a.projectKey)
-			return a, a.fetchActiveTab()
-		}
-		return a, nil
-
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)
 		}
 		return a, nil
-
 	}
 
-	// Route input to focused panel.
-	if a.side == sideLeft {
-		switch a.leftFocus {
-		case focusIssues:
-			updated, cmd := a.issuesList.Update(msg)
-			a.issuesList = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		case focusProjects:
-			updated, cmd := a.projectList.Update(msg)
-			a.projectList = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		case focusStatus:
-			updated, cmd := a.statusPanel.Update(msg)
-			a.statusPanel = updated
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-	} else {
-		updated, cmd := a.detailView.Update(msg)
-		a.detailView = updated
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-
-	return a, tea.Batch(cmds...)
+	// Route remaining input to focused panel.
+	return a, a.routeToPanel(msg)
 }
 
 func (a *App) View() string {
@@ -1331,32 +458,8 @@ func (a *App) View() string {
 
 	full := lipgloss.JoinVertical(lipgloss.Left, content, bottomBar)
 
-	// Overlays (mutually exclusive — only one shown at a time).
-	switch {
-	case a.inputModal.IsVisible():
-		popup := a.inputModal.View()
-		popupW := lipgloss.Width(popup)
-		popupH := len(strings.Split(popup, "\n"))
-		x := (a.width - popupW) / 2
-		y := (a.height - popupH) / 2
-		full = components.OverlayAt(full, popup, x, y, a.width, a.height)
-		// Hint box (existing branches): place right below the input modal.
-		if hint := a.inputModal.HintView(); hint != "" {
-			full = components.OverlayAt(full, hint, x, y+popupH, a.width, a.height)
-		}
-	case a.diffView.IsVisible():
-		diff := a.diffView.View()
-		diffW := lipgloss.Width(diff)
-		diffH := len(strings.Split(diff, "\n"))
-		x := (a.width - diffW) / 2
-		y := (a.height - diffH) / 2
-		full = components.OverlayAt(full, diff, x, y, a.width, a.height)
-	case a.jqlModal.IsVisible():
-		popup := a.jqlModal.View()
-		full = components.Overlay(full, popup, a.width, a.height)
-	case a.modal.IsVisible():
-		full = a.renderModalOverlay(full)
-	}
+	// Render the first visible overlay (mutually exclusive).
+	full = a.overlays.Render(full, a.width, a.height)
 	if a.showHelp {
 		full = a.renderHelpOverlay(full)
 	}
@@ -1380,37 +483,43 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			return a, fetchPriorities(a.client)
 		case "issuetype":
 			if a.projectID != "" {
-				a.modalKind = modalIssueType
+				a.onSelect = a.makeFieldSelectCallback(sel.Key, "issuetype")
 				return a, fetchIssueTypes(a.client, a.projectID)
 			}
 		}
 	case views.FieldPerson:
-		switch field.FieldID {
-		case "assignee":
-			a.modalKind = modalAssignee
-			return a, fetchUsers(a.client, a.projectKey, sel.Key)
-		case "reporter":
-			a.modalKind = modalReporter
-			return a, fetchUsers(a.client, a.projectKey, sel.Key)
-		}
+		a.onSelect = a.makePersonSelectCallback(field.FieldID)
+		return a, fetchUsers(a.client, a.projectKey, sel.Key)
 	case views.FieldMultiSelect:
+		issueKey := sel.Key
 		switch field.FieldID {
 		case "labels":
-			a.modalKind = modalLabels
+			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
+				labels := make([]string, 0, len(selected))
+				for _, item := range selected {
+					labels = append(labels, item.ID)
+				}
+				return updateIssueField(a.client, issueKey, "labels", labels)
+			}
 			return a, fetchLabels(a.client)
 		case "components":
-			a.modalKind = modalComps
+			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
+				comps := make([]map[string]string, 0, len(selected))
+				for _, item := range selected {
+					comps = append(comps, map[string]string{"id": item.ID})
+				}
+				return updateIssueField(a.client, issueKey, "components", comps)
+			}
 			return a, fetchComponents(a.client, a.projectKey)
 		}
 	case views.FieldSingleText:
 		// InputModal for single-line text (summary, custom fields).
-		a.inputModal.SetSize(a.width, a.height)
 		a.inputModal.Show("Edit "+field.Name, field.Value)
-		a.editContext = editCtx{kind: "field", issueKey: sel.Key, fieldID: field.FieldID}
+		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, nil
 	case views.FieldMultiText:
 		// $EDITOR for multi-line text.
-		a.editContext = editCtx{kind: "field-text", issueKey: sel.Key, fieldID: field.FieldID}
+		a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, launchEditor(field.Value, ".md")
 	}
 	return a, nil
@@ -1421,38 +530,42 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 	ctx := a.editContext
 	a.editContext = editCtx{} // clear
 
-	switch ctx.kind {
-	case "description":
+	switch ctx.kind { //nolint:exhaustive // only editor-based kinds handled here
+	case editDesc:
 		adf := views.MarkdownToADF(mdContent)
 		return updateIssueField(a.client, ctx.issueKey, "description", adf)
-	case "comment-new":
+	case editCommentNew:
 		adf := views.MarkdownToADF(mdContent)
 		return addComment(a.client, ctx.issueKey, adf)
-	case "comment-edit":
+	case editCommentMod:
 		adf := views.MarkdownToADF(mdContent)
 		return updateComment(a.client, ctx.issueKey, ctx.commentID, adf)
-	case "field-text":
+	case editFieldText:
 		return updateIssueField(a.client, ctx.issueKey, ctx.fieldID, mdContent)
 	}
 	return nil
 }
 
-func (a *App) renderModalOverlay(base string) string {
-	popup := a.modal.View()
-	popupLines := strings.Split(popup, "\n")
-	popupW := lipgloss.Width(popup)
-	popupH := len(popupLines)
 
-	x := (a.width - popupW) / 2
-	y := (a.height - popupH) / 2
-
-	result := components.OverlayAt(base, popup, x, y, a.width, a.height)
-
-	// Hint box: place right below the centered main modal.
-	if hint := a.modal.HintView(); hint != "" {
-		result = components.OverlayAt(result, hint, x, y+popupH, a.width, a.height)
+// makePersonSelectCallback creates a callback for person field (assignee/reporter).
+func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
+	return func(item components.ModalItem) tea.Cmd {
+		sel := a.issuesList.SelectedIssue()
+		if sel == nil {
+			return nil
+		}
+		if item.ID == "" {
+			return updateIssueField(a.client, sel.Key, fieldID, nil)
+		}
+		return updateIssueField(a.client, sel.Key, fieldID, map[string]string{"accountId": item.ID})
 	}
-	return result
+}
+
+// makeFieldSelectCallback creates a callback for simple field selection (priority, issuetype).
+func (a *App) makeFieldSelectCallback(issueKey, fieldID string) onSelectFunc {
+	return func(item components.ModalItem) tea.Cmd {
+		return updateIssueField(a.client, issueKey, fieldID, map[string]string{"id": item.ID})
+	}
 }
 
 func (a *App) renderHelpOverlay(base string) string {

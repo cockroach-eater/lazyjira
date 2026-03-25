@@ -19,15 +19,50 @@ func TruncateEnd(s string, maxWidth int) string {
 }
 
 // TruncateMiddle truncates keeping start and end visible: "abcdef...xyz"
-func TruncateMiddle(s string, maxLen int) string {
-	if len(s) <= maxLen {
+// Uses display width (not byte count) so multi-byte chars like → are handled correctly.
+func TruncateMiddle(s string, maxWidth int) string {
+	if lipgloss.Width(s) <= maxWidth {
 		return s
 	}
-	if maxLen < 5 {
-		return s[:maxLen]
+	if maxWidth < 5 {
+		runes := []rune(s)
+		if len(runes) > maxWidth {
+			return string(runes[:maxWidth])
+		}
+		return s
 	}
-	side := (maxLen - 3) / 2
-	return s[:side+1] + "..." + s[len(s)-side:]
+	runes := []rune(s)
+	ellipsis := "..."
+	ellipsisW := 3
+	budget := maxWidth - ellipsisW
+	startBudget := (budget + 1) / 2 // start gets the extra column on odd budget
+	endBudget := budget - startBudget
+
+	// Build start: runes from the beginning.
+	var start []rune
+	w := 0
+	for _, r := range runes {
+		rw := lipgloss.Width(string(r))
+		if w+rw > startBudget {
+			break
+		}
+		start = append(start, r)
+		w += rw
+	}
+
+	// Build end: runes from the end.
+	var end []rune
+	w = 0
+	for i := len(runes) - 1; i >= 0; i-- {
+		rw := lipgloss.Width(string(runes[i]))
+		if w+rw > endBudget {
+			break
+		}
+		end = append([]rune{runes[i]}, end...)
+		w += rw
+	}
+
+	return string(start) + ellipsis + string(end)
 }
 
 // Truncate truncates s to max bytes, appending "…" if needed.
