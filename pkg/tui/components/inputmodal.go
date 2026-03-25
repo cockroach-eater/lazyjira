@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,13 +15,18 @@ type InputConfirmedMsg struct{ Text string }
 type InputCancelledMsg struct{}
 
 // InputModal is a single-line text input popup (like lazygit branch rename).
+// Optionally shows a list of hints below the input (e.g. existing branches).
+// Tab toggles focus between input and hints list.
 type InputModal struct {
-	title   string
-	text    []rune
-	cursor  int
-	visible bool
-	width   int
-	height  int
+	title      string
+	text       []rune
+	cursor     int
+	visible    bool
+	focusInput bool // true = input focused, false = hints focused
+	hints      []string
+	hintCursor int
+	width      int
+	height     int
 }
 
 func NewInputModal() InputModal {
@@ -33,6 +39,15 @@ func (m *InputModal) Show(title, prefill string) {
 	m.text = []rune(prefill)
 	m.cursor = len(m.text)
 	m.visible = true
+	m.focusInput = true
+	m.hints = nil
+	m.hintCursor = 0
+}
+
+// SetHints sets the optional hint items shown below the input.
+func (m *InputModal) SetHints(hints []string) {
+	m.hints = hints
+	m.hintCursor = 0
 }
 
 func (m *InputModal) Hide()           { m.visible = false }
@@ -42,12 +57,54 @@ func (m *InputModal) SetSize(w, h int) {
 	m.height = h
 }
 
-//nolint:gocognit // input handling with cursor movement
+//nolint:gocognit // input handling with cursor movement + hints navigation
 func (m *InputModal) Update(msg tea.Msg) (InputModal, tea.Cmd) {
 	if !m.visible {
 		return *m, nil
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok {
+		// Tab toggles focus between input and hints.
+		if msg.Type == tea.KeyTab && len(m.hints) > 0 {
+			m.focusInput = !m.focusInput
+			return *m, nil
+		}
+
+		if !m.focusInput {
+			// Hints list navigation.
+			switch msg.Type {
+			case tea.KeyEnter:
+				if m.hintCursor >= 0 && m.hintCursor < len(m.hints) {
+					m.visible = false
+					text := m.hints[m.hintCursor]
+					return *m, func() tea.Msg { return InputConfirmedMsg{Text: text} }
+				}
+			case tea.KeyEsc:
+				m.visible = false
+				return *m, func() tea.Msg { return InputCancelledMsg{} }
+			case tea.KeyDown:
+				if m.hintCursor < len(m.hints)-1 {
+					m.hintCursor++
+				}
+			case tea.KeyUp:
+				if m.hintCursor > 0 {
+					m.hintCursor--
+				}
+			default:
+				switch msg.String() {
+				case "j":
+					if m.hintCursor < len(m.hints)-1 {
+						m.hintCursor++
+					}
+				case "k":
+					if m.hintCursor > 0 {
+						m.hintCursor--
+					}
+				}
+			}
+			return *m, nil
+		}
+
+		// Input mode.
 		switch msg.Type {
 		case tea.KeyEnter:
 			m.visible = false
@@ -132,5 +189,49 @@ func (m *InputModal) View() string {
 		rendered += strings.Repeat(" ", innerW-lineW)
 	}
 
-	return RenderPanelFull(m.title, "", rendered, contentW, 1, true, nil)
+	return RenderPanelFull(m.title, "", rendered, contentW, 1, m.focusInput, nil)
+}
+
+// HintView returns a separate bordered panel with hint items (existing branches).
+// Returns "" if no hints are set.
+func (m *InputModal) HintView() string {
+	if !m.visible || len(m.hints) == 0 {
+		return ""
+	}
+
+	contentW := min(max(m.width*6/10, 30), m.width-4)
+	innerW := contentW - 2 // borders
+
+	selStyle := lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15"))
+	normalStyle := lipgloss.NewStyle()
+
+	maxHints := min(5, len(m.hints))
+	start := 0
+	if m.hintCursor >= maxHints {
+		start = m.hintCursor - maxHints + 1
+	}
+	end := start + maxHints
+	if end > len(m.hints) {
+		end = len(m.hints)
+		start = max(0, end-maxHints)
+	}
+
+	var lines []string
+	for i := start; i < end; i++ {
+		line := " " + m.hints[i]
+		line = TruncateEnd(line, innerW)
+		if lineW := lipgloss.Width(line); lineW < innerW {
+			line += strings.Repeat(" ", innerW-lineW)
+		}
+		if i == m.hintCursor && !m.focusInput {
+			lines = append(lines, selStyle.Render(line))
+		} else {
+			lines = append(lines, normalStyle.Render(line))
+		}
+	}
+
+	body := strings.Join(lines, "\n")
+	title := "Existing branches"
+	footer := fmt.Sprintf("%d of %d", m.hintCursor+1, len(m.hints))
+	return RenderPanelFull(title, footer, body, contentW, len(lines), !m.focusInput, nil)
 }

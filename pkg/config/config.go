@@ -16,6 +16,22 @@ type Config struct {
 	Cache        CacheConfig         `yaml:"cache"`
 	Refresh      RefreshConfig       `yaml:"refresh"`
 	CustomFields []CustomFieldConfig `yaml:"customFields"`
+	Git          GitConfig           `yaml:"git"`
+}
+
+type GitConfig struct {
+	CloseOnCheckout bool              `yaml:"closeOnCheckout"`
+	AsciiOnly       bool              `yaml:"asciiOnly"`
+	BranchFormat    []BranchFormatRule `yaml:"branchFormat"`
+}
+
+type BranchFormatRule struct {
+	When     BranchFormatCondition `yaml:"when"`
+	Template string                `yaml:"template"`
+}
+
+type BranchFormatCondition struct {
+	Type string `yaml:"type"` // issue type name, "*" = any
 }
 
 type IssueTabConfig struct {
@@ -60,7 +76,8 @@ type IssueKeys struct {
 	Browser    string `yaml:"browser"`
 	URLPicker  string `yaml:"urlPicker"`
 	CopyURL    string `yaml:"copyURL"`
-	CloseJQLTab string `yaml:"closeJQLTab"`
+	CloseJQLTab  string `yaml:"closeJQLTab"`
+	CreateBranch string `yaml:"createBranch"`
 }
 
 type ProjectKeys struct {

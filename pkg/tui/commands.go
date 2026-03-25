@@ -4,13 +4,53 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"text/template"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/textfuel/lazyjira/pkg/config"
+	"github.com/textfuel/lazyjira/pkg/git"
 	"github.com/textfuel/lazyjira/pkg/jira"
 )
+
+// Git message types.
+type gitBranchCreatedMsg struct{ name string }
+type gitCheckoutDoneMsg struct{ name string }
+type gitErrorMsg struct{ err error }
+
+func gitCreateBranch(repoPath, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := git.CreateBranch(repoPath, name); err != nil {
+			return gitErrorMsg{err: err}
+		}
+		return gitBranchCreatedMsg{name: name}
+	}
+}
+
+func gitCheckoutBranch(repoPath, name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := git.Checkout(repoPath, name); err != nil {
+			return gitErrorMsg{err: err}
+		}
+		return gitCheckoutDoneMsg{name: name}
+	}
+}
+
+func gitCheckoutTracking(repoPath, remoteBranch string) tea.Cmd {
+	return func() tea.Msg {
+		if err := git.CheckoutTracking(repoPath, remoteBranch); err != nil {
+			return gitErrorMsg{err: err}
+		}
+		// Extract local name from remote branch (strip remote prefix).
+		name := remoteBranch
+		if _, after, ok := strings.Cut(remoteBranch, "/"); ok {
+			name = after
+		}
+		return gitCheckoutDoneMsg{name: name}
+	}
+}
+
 
 func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab int) tea.Cmd {
 	return func() tea.Msg {

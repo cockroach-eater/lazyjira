@@ -39,6 +39,7 @@ const (
 	ActEditAssignee Action = "editAssignee"
 	ActJQLSearch    Action = "jqlSearch"
 	ActCloseJQLTab  Action = "closeJQLTab"
+	ActCreateBranch Action = "createBranch"
 )
 
 // Keymap maps actions to key strings. Multiple keys can trigger the same action.
@@ -75,6 +76,7 @@ func DefaultKeymap() Keymap {
 		ActEditAssignee: {"a"},
 		ActJQLSearch:    {"s"},
 		ActCloseJQLTab:  {"x"},
+		ActCreateBranch: {"b"},
 	}
 }
 
@@ -110,6 +112,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActURLPicker, kcfg.Issues.URLPicker)
 	set(ActCopyURL, kcfg.Issues.CopyURL)
 	set(ActCloseJQLTab, kcfg.Issues.CloseJQLTab)
+	set(ActCreateBranch, kcfg.Issues.CreateBranch)
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)

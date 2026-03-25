@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/textfuel/lazyjira/pkg/config"
+	"github.com/textfuel/lazyjira/pkg/git"
 	"github.com/textfuel/lazyjira/pkg/jira"
 	"github.com/textfuel/lazyjira/pkg/tui/components"
 	"github.com/textfuel/lazyjira/pkg/tui/views"
@@ -47,7 +50,7 @@ const (
 	modalReporter  = "reporter"
 	modalIssueType = "issuetype"
 	modalLabels    = "labels"
-	modalComps     = "components"
+	modalComps = "components"
 )
 
 // Async messages.
@@ -104,6 +107,11 @@ type App struct {
 	logFlag     *bool
 	demoMode    bool
 	issueCache  map[string]*jira.Issue
+
+	// Git integration.
+	gitRepoPath    string // empty = not a git repo
+	gitBranch      string // current branch name
+	gitDetectedKey string // issue key from auto-detect (consumed once)
 
 	// Cached panel sizes for mouse hit-testing.
 	panelSideW    int
@@ -209,6 +217,19 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		logFlag:     logFlag,
 		issueCache:  make(map[string]*jira.Issue),
 	}
+	// Detect git repo (sync, <10ms).
+	if git.GitAvailable() {
+		cwd, _ := os.Getwd()
+		if git.IsRepo(cwd) {
+			app.gitRepoPath = cwd
+			if branch, err := git.CurrentBranch(cwd); err == nil && branch != "" {
+				app.gitBranch = branch
+				app.gitDetectedKey = git.ExtractIssueKey(branch)
+
+			}
+		}
+	}
+
 	app.helpBar.SetItems(app.helpBarItems())
 	return app
 }
@@ -355,6 +376,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
+		a.helpBar.SetStatusMsg("")
 		// Help popup: j/k navigate, esc/q close, other keys ignored.
 		if a.showHelp {
 			bindings := a.ContextBindings()
@@ -641,6 +663,59 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 
+		case ActCreateBranch:
+			if a.side == sideLeft && a.leftFocus == focusIssues {
+				if a.gitRepoPath == "" {
+					a.err = errors.New("not a git repository")
+					return a, nil
+				}
+				sel := a.issuesList.SelectedIssue()
+				if sel == nil {
+					return a, nil
+				}
+				// Build template data.
+				parts := strings.SplitN(sel.Key, "-", 2)
+				projKey := parts[0]
+				number := ""
+				if len(parts) > 1 {
+					number = parts[1]
+				}
+				typeName := ""
+				if sel.IssueType != nil {
+					typeName = sel.IssueType.Name
+				}
+				data := git.BranchTemplateData{
+					Key:        sel.Key,
+					ProjectKey: projKey,
+					Number:     number,
+					Summary:    git.SanitizeSummary(sel.Summary, a.cfg.Git.AsciiOnly),
+					Type:       typeName,
+				}
+				// Find matching template from config rules.
+				tmplStr := ""
+				for _, r := range a.cfg.Git.BranchFormat {
+					if r.When.Type == "*" || strings.EqualFold(r.When.Type, typeName) {
+						tmplStr = r.Template
+						break
+					}
+				}
+				name := git.GenerateBranchName(data, tmplStr, a.cfg.Git.AsciiOnly)
+				a.inputModal.SetSize(a.width, a.height)
+				a.inputModal.Show("Create branch", name)
+				a.editContext = editCtx{kind: "git-branch"}
+				// Show existing branches as hints if any match.
+				if result, err := git.SearchBranches(a.gitRepoPath, sel.Key); err == nil {
+					hints := make([]string, 0, len(result.Local)+len(result.Remote))
+					hints = append(hints, result.Local...)
+					hints = append(hints, result.Remote...)
+					if len(hints) > 0 {
+						a.inputModal.SetHints(hints)
+					}
+				}
+				return a, nil
+			}
+			return a, nil
+
 		case ActJQLSearch:
 			history := LoadJQLHistory()
 			prefill := ""
@@ -700,6 +775,37 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Prefetch details for all issues in this tab.
 			for _, issue := range msg.issues {
 				cmds = append(cmds, prefetchIssue(a.client, issue.Key))
+			}
+		}
+		// Auto-detect: select issue from git branch.
+		if a.gitDetectedKey != "" {
+			detectedKey := a.gitDetectedKey
+			projectKey := strings.SplitN(detectedKey, "-", 2)[0]
+			if !strings.EqualFold(projectKey, a.projectKey) {
+				// Need to switch project first — find it in the project list.
+				projects := a.projectList.AllProjects()
+				for _, p := range projects {
+					if strings.EqualFold(p.Key, projectKey) {
+						a.projectKey = p.Key
+						a.projectID = p.ID
+						a.statusPanel.SetProject(p.Key)
+						a.projectList.SetActiveKey(p.Key)
+						a.issuesList.ClearActiveKey()
+						a.issuesList.InvalidateTabCache()
+						a.issueCache = make(map[string]*jira.Issue)
+						if !a.demoMode {
+							go saveLastProject(p.Key)
+						}
+						// gitDetectedKey stays — will be consumed on next issuesLoadedMsg.
+						cmds = append(cmds, a.fetchActiveTab())
+						return a, tea.Batch(cmds...)
+					}
+				}
+				// Project not found — clear and proceed.
+				a.gitDetectedKey = ""
+			} else {
+				a.gitDetectedKey = ""
+				a.navigateToIssue(detectedKey)
 			}
 		}
 		return a, tea.Batch(cmds...)
@@ -954,6 +1060,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.Text != "" {
 				return a, updateIssueField(a.client, ctx.issueKey, ctx.fieldID, msg.Text)
 			}
+		case "git-branch":
+			if msg.Text != "" {
+				switch {
+				case git.BranchExists(a.gitRepoPath, msg.Text):
+					return a, gitCheckoutBranch(a.gitRepoPath, msg.Text)
+				case strings.Contains(msg.Text, "/"):
+					// Remote branch selected from hints (e.g. "origin/feat/PLAT-3").
+					return a, gitCheckoutTracking(a.gitRepoPath, msg.Text)
+				default:
+					return a, gitCreateBranch(a.gitRepoPath, msg.Text)
+				}
+			}
 		}
 		return a, nil
 
@@ -1064,6 +1182,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.jqlModal.SetHistory(LoadJQLHistory())
 			}
 		}
+		return a, nil
+
+	case gitBranchCreatedMsg:
+		return a.handleGitBranchSwitch(msg.name)
+
+	case gitCheckoutDoneMsg:
+		return a.handleGitBranchSwitch(msg.name)
+
+	case gitErrorMsg:
+		a.err = msg.err
 		return a, nil
 
 	case errorMsg:
@@ -1212,6 +1340,10 @@ func (a *App) View() string {
 		x := (a.width - popupW) / 2
 		y := (a.height - popupH) / 2
 		full = components.OverlayAt(full, popup, x, y, a.width, a.height)
+		// Hint box (existing branches): place right below the input modal.
+		if hint := a.inputModal.HintView(); hint != "" {
+			full = components.OverlayAt(full, hint, x, y+popupH, a.width, a.height)
+		}
 	case a.diffView.IsVisible():
 		diff := a.diffView.View()
 		diffW := lipgloss.Width(diff)
@@ -1381,6 +1513,15 @@ func (a *App) renderHelpOverlay(base string) string {
 }
 
 // fetchActiveTab returns a command to fetch issues for the current active tab's JQL.
+func (a *App) handleGitBranchSwitch(name string) (tea.Model, tea.Cmd) {
+	a.gitBranch = name
+	a.helpBar.SetStatusMsg(name)
+	if a.cfg.Git.CloseOnCheckout {
+		return a, tea.Quit
+	}
+	return a, nil
+}
+
 func (a *App) fetchActiveTab() tea.Cmd {
 	// JQL tab: use stored raw JQL directly.
 	if a.issuesList.IsJQLTab() {

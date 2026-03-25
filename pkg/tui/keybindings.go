@@ -46,6 +46,7 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActEditAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActCreateBranch, "create branch"),
 			a.bind(ActCloseJQLTab, "close JQL tab"),
 			Binding{"[/]", "switch tab"},
 		)
@@ -152,6 +153,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActEdit), Description: "edit"},
 			components.HelpItem{Key: km.Keys(ActTransition), Description: "transition"},
 			components.HelpItem{Key: km.Keys(ActEditPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActCreateBranch), Description: "branch"},
 			components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"},
 			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
 		)

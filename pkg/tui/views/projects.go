@@ -38,6 +38,8 @@ func (p *ProjectList) SetProjects(projects []jira.Project) {
 	p.applyFilter()
 }
 
+func (p *ProjectList) AllProjects() []jira.Project { return p.allProjects }
+
 func (p *ProjectList) SetFilter(query string) {
 	p.filter = query
 	p.applyFilter()
