@@ -581,6 +581,29 @@ func (m *Modal) renderFooter() string {
 	return fmt.Sprintf("%d of %d", pos, total)
 }
 
+// Intercept handles a message if the modal is visible. Implements Overlay.
+func (m *Modal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
+	if !m.visible {
+		return nil, false
+	}
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		updated, cmd := m.Update(msg)
+		*m = updated
+		return cmd, true
+	}
+	return nil, false
+}
+
+// Render draws the modal centered on bg with optional hint box. Implements Overlay.
+func (m *Modal) Render(bg string, w, h int) string {
+	if !m.visible {
+		return bg
+	}
+	popup := m.View()
+	return centerOverlayWithHint(bg, popup, m.HintView(), w, h)
+}
+
 // HintView returns the hint box for the currently selected item, or "" if none.
 func (m *Modal) HintView() string {
 	if !m.visible || m.readOnly {

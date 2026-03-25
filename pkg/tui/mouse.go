@@ -2,8 +2,6 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/textfuel/lazyjira/pkg/jira"
 )
 
 type panelID int
@@ -156,15 +154,9 @@ func (a *App) mouseClick(panel panelID, relY int, x int) (tea.Model, tea.Cmd) {
 		if dbl := a.projectList.ClickAt(relY); dbl {
 			// Double-click → select project (same as Enter).
 			if p := a.projectList.SelectedProject(); p != nil {
-				a.projectKey = p.Key
-				a.statusPanel.SetProject(p.Key)
-				a.projectList.SetActiveKey(p.Key)
-				a.issuesList.ClearActiveKey()
-				a.issuesList.InvalidateTabCache()
-				a.issueCache = make(map[string]*jira.Issue)
+				a.selectProject(p)
 				a.leftFocus = focusIssues
 				a.updateFocusState()
-				go saveLastProject(p.Key)
 				return a, a.fetchActiveTab()
 			}
 		} else if p := a.projectList.SelectedProject(); p != nil {

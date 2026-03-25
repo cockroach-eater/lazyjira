@@ -129,6 +129,28 @@ func (d *DiffView) View() string {
 		&ScrollInfo{Total: len(d.lines), Visible: visibleH, Offset: d.offset})
 }
 
+// Intercept handles a message if the diff view is visible. Implements Overlay.
+func (d *DiffView) Intercept(msg tea.Msg) (tea.Cmd, bool) {
+	if !d.visible {
+		return nil, false
+	}
+	switch msg.(type) {
+	case tea.KeyMsg, tea.MouseMsg:
+		updated, cmd := d.Update(msg)
+		*d = updated
+		return cmd, true
+	}
+	return nil, false
+}
+
+// Render draws the diff view centered on bg. Implements Overlay.
+func (d *DiffView) Render(bg string, w, h int) string {
+	if !d.visible {
+		return bg
+	}
+	return centerOverlay(bg, d.View(), w, h)
+}
+
 // computeUnifiedDiff generates a simple line-based unified diff.
 // Context lines are plain, additions green with +, removals red with -.
 func computeUnifiedDiff(oldText, newText string) []string {
