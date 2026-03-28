@@ -42,7 +42,7 @@ type IssueTabConfig struct {
 type CustomFieldConfig struct {
 	ID   string `yaml:"id"`   // e.g. "customfield_10015"
 	Name string `yaml:"name"` // display name, e.g. "Story Points"
-	Type string `yaml:"type"` // "select", "multiselect", "user", "text", "textarea" (default: "text")
+	Type string `yaml:"type"` // TODO not yet wired up. "select", "multiselect", "user", "text", "textarea" (default: "text")
 }
 
 type KeybindingConfig struct {
@@ -100,25 +100,27 @@ type JiraConfig struct {
 
 type ProjectConfig struct {
 	Key     string `yaml:"key"`
-	BoardID int    `yaml:"boardId"`
+	BoardID int    `yaml:"boardId"` // TODO not yet wired up
 }
 
 type GUIConfig struct {
-	Theme           string   `yaml:"theme"`
-	Language        string   `yaml:"language"`
+	Theme           string   `yaml:"theme"`           // TODO not yet wired up
+	Language        string   `yaml:"language"`         // TODO not yet wired up
 	SidePanelWidth  int      `yaml:"sidePanelWidth"`
-	ShowIcons       bool     `yaml:"showIcons"`
-	DateFormat      string   `yaml:"dateFormat"`
-	Mouse           bool     `yaml:"mouse"`
-	Borders         string   `yaml:"borders"`
+	ShowIcons       bool     `yaml:"showIcons"`        // TODO not yet wired up
+	DateFormat      string   `yaml:"dateFormat"`       // TODO not yet wired up
+	Mouse           bool     `yaml:"mouse"`            // TODO not yet wired up
+	Borders         string   `yaml:"borders"`          // TODO not yet wired up
 	IssueListFields []string `yaml:"issueListFields"`
 }
 
+// TODO not yet wired up
 type CacheConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	TTL     string `yaml:"ttl"`
 }
 
+// TODO not yet wired up
 type RefreshConfig struct {
 	AutoRefresh bool   `yaml:"autoRefresh"`
 	Interval    string `yaml:"interval"`

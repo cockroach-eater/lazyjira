@@ -139,15 +139,30 @@ lazyjira --version       # show version
 
 Press `?` inside the app for all keybindings.
 
+## Documentation
+
+- [Configuration](docs/Config.md) - config file, keybindings, issue tabs, custom fields, git integration
+- [Keybindings](docs/Keybindings.md) - full list of default keys
+- [Custom Fields](docs/Custom_Fields.md) - displaying Jira custom fields
+
 ## Roadmap
 
 - [x] Robust JQL search
-- [x] Git integration - create branches from issues, open issue from current branch
+- [x] Git integration, create branches from issues, open issue from current branch
 - [ ] Create issues
-- [ ] Rich text editing - colors, panels, media in ADF descriptions
-- [ ] Bulk operations - transition/assign multiple issues at once
-- [ ] Notifications - watch for issue updates
-- [ ] Offline mode - cached view when network is unavailable
+- [ ] Jira Server and Data Center support
+- [ ] Client certificate authentication
+- [ ] Theming, borders, date format, language and other GUI options
+- [ ] Mouse support toggle
+- [ ] Show icons toggle
+- [ ] Cache with configurable TTL
+- [ ] Auto-refresh with configurable interval
+- [ ] Custom field type handling (select, multiselect, user)
+- [ ] Board ID per project
+- [ ] Rich text editing, colors, panels, media in ADF descriptions
+- [ ] Bulk operations, transition and assign multiple issues at once
+- [ ] Notifications, watch for issue updates
+- [ ] Offline mode, cached view when network is unavailable
 
 ## Star History
 
