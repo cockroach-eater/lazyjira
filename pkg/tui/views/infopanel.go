@@ -67,6 +67,17 @@ func (p *InfoPanel) SetFilter(query string) {
 	p.filteredIndices = nil
 }
 
+// ClearFilter removes the search filter, preserving cursor on the same element.
+func (p *InfoPanel) ClearFilter() {
+	origIdx := p.resolveOriginalIndex()
+	p.filter = ""
+	p.filteredIndices = nil
+	if origIdx >= 0 {
+		p.Cursor = origIdx
+		p.AdjustOffset()
+	}
+}
+
 func (p *InfoPanel) Issue() *jira.Issue {
 	return p.issue
 }

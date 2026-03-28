@@ -45,7 +45,7 @@ func (a *App) handleSearchConfirmed() (tea.Model, tea.Cmd) {
 			cmds = append(cmds, fetchIssueDetail(a.client, selectedIssue.Key))
 		}
 	case a.side == sideLeft && a.leftFocus == focusInfo:
-		a.infoPanel.SetFilter("")
+		a.infoPanel.ClearFilter()
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		if p := a.projectList.SelectedProject(); p != nil {
 			a.selectProject(p)

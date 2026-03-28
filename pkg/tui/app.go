@@ -280,9 +280,10 @@ func (a *App) Init() tea.Cmd {
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Search bar intercepts all keys when active.
+	// Search bar intercepts all keys when active, except arrow keys
+	// which pass through for navigating filtered results.
 	if a.searchBar.IsActive() {
-		if _, ok := msg.(tea.KeyMsg); ok {
+		if km, ok := msg.(tea.KeyMsg); ok && km.Type != tea.KeyUp && km.Type != tea.KeyDown {
 			updated, cmd := a.searchBar.Update(msg)
 			a.searchBar = updated
 			return a, cmd
