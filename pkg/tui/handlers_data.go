@@ -66,6 +66,9 @@ func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.
 			a.infoPanel.SetIssue(msg.issue)
 		}
 	}
+	// Update issue in the list so changes appear immediately.
+	a.issuesList.PatchIssue(msg.issue)
+
 	// Prefetch linked issues and subtasks for instant preview.
 	return a, a.prefetchRelated(msg.issue)
 }

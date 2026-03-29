@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
 // ModalItem is one option in the modal.
@@ -46,6 +48,7 @@ type Modal struct {
 	height    int
 	filter    string // current search query
 	searching bool   // whether search input is active
+	isError   bool   // red border for error display
 }
 
 func NewModal() Modal {
@@ -64,6 +67,7 @@ func (m *Modal) show(title string, items []ModalItem, readOnly bool) {
 	m.selected = nil
 	m.filter = ""
 	m.searching = false
+	m.isError = false
 	// Skip initial separator.
 	if !readOnly && m.cursor < len(m.items) && m.items[m.cursor].Separator {
 		m.moveCursor(1)
@@ -72,6 +76,12 @@ func (m *Modal) show(title string, items []ModalItem, readOnly bool) {
 
 func (m *Modal) Show(title string, items []ModalItem)         { m.show(title, items, false) }
 func (m *Modal) ShowReadOnly(title string, items []ModalItem) { m.show(title, items, true) }
+
+// ShowError opens a read-only modal with red border.
+func (m *Modal) ShowError(title string, items []ModalItem) {
+	m.show(title, items, true)
+	m.isError = true
+}
 
 // ShowChecklist opens a multi-select checklist modal.
 func (m *Modal) ShowChecklist(title string, items []ModalItem, selected map[string]bool) {
@@ -461,6 +471,10 @@ func (m *Modal) viewReadOnly() string {
 		scrolled = scrolled[:visibleH]
 	}
 	content := strings.Join(scrolled, "\n")
+	if m.isError {
+		return RenderPanelWithColor(m.title, "", content, contentW, visibleH,
+			&ScrollInfo{Total: totalLines, Visible: visibleH, Offset: m.offset}, theme.ColorRed)
+	}
 	return RenderPanelFull(m.title, "", content, contentW, visibleH, true,
 		&ScrollInfo{Total: totalLines, Visible: visibleH, Offset: m.offset})
 }

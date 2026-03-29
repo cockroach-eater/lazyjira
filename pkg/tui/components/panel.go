@@ -53,20 +53,31 @@ func RenderPanel(title, content string, width, innerHeight int, focused bool) st
 	return RenderPanelFull(title, "", content, width, innerHeight, focused, nil)
 }
 
+// RenderPanelWithColor draws a panel with an explicit border color.
+func RenderPanelWithColor(title, footer, content string, width, innerHeight int, scroll *ScrollInfo, color lipgloss.TerminalColor) string {
+	return renderPanelImpl(title, footer, content, width, innerHeight, color, scroll)
+}
+
 // RenderPanelFull draws a panel with title, footer, and optional scrollbar.
 func RenderPanelFull(title, footer, content string, width, innerHeight int, focused bool, scroll *ScrollInfo) string {
-	th := theme.Default
-
 	borderColor := theme.ColorNone
 	if focused {
 		borderColor = theme.ColorGreen
 	}
+	return renderPanelImpl(title, footer, content, width, innerHeight, borderColor, scroll)
+}
+
+func renderPanelImpl(title, footer, content string, width, innerHeight int, borderColor lipgloss.TerminalColor, scroll *ScrollInfo) string {
+	th := theme.Default
 
 	var styledTitle string
-	if focused {
+	switch borderColor {
+	case theme.ColorGreen:
 		styledTitle = th.Title.Render(title)
-	} else {
+	case theme.ColorNone:
 		styledTitle = lipgloss.NewStyle().Foreground(borderColor).Render(title)
+	default:
+		styledTitle = lipgloss.NewStyle().Foreground(borderColor).Bold(true).Render(title)
 	}
 
 	contentWidth := max(width-2, 1)

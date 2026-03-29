@@ -173,6 +173,30 @@ func (m *IssuesList) SetIssues(issues []jira.Issue) {
 	}
 }
 
+// PatchIssue updates a single issue in the current list and tab cache by key.
+func (m *IssuesList) PatchIssue(updated *jira.Issue) {
+	patch := func(issues []jira.Issue) {
+		for i, iss := range issues {
+			if iss.Key == updated.Key {
+				issues[i].Summary = updated.Summary
+				issues[i].Status = updated.Status
+				issues[i].Priority = updated.Priority
+				issues[i].Assignee = updated.Assignee
+				issues[i].IssueType = updated.IssueType
+				issues[i].Updated = updated.Updated
+				return
+			}
+		}
+	}
+	patch(m.allIssues)
+	if m.tabCache != nil {
+		if cached, ok := m.tabCache[m.tab]; ok {
+			patch(cached)
+		}
+	}
+	m.applyFilter()
+}
+
 func (m *IssuesList) updateKeyColWidth(issues []jira.Issue) {
 	m.keyColWidth = 0
 	for _, issue := range issues {

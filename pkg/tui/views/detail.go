@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -607,9 +608,9 @@ func (d *DetailView) renderDescription(width int) []string {
 		}
 	}
 
-	// Fallback: plain text.
+	// Fallback: plain text (Server/DC may use Jira wiki markup).
 	valStyle := d.theme.ValueStyle
-	desc := d.issue.Description
+	desc := wikiToPlain(d.issue.Description)
 	if desc == "" {
 		desc = "(no description)"
 	}
@@ -908,8 +909,8 @@ func (d *DetailView) renderCommentBlocks(width int) [][]string {
 				block = append(block, " "+l)
 			}
 		} else {
-			// Fallback: plain text.
-			wrapped := colorURLsWrapped(wrapText(c.Body, width-2))
+			// Fallback: plain text (Server/DC may use wiki markup).
+			wrapped := colorURLsWrapped(wrapText(wikiToPlain(c.Body), width-2))
 			for _, wl := range wrapped {
 				block = append(block, " "+colorMentions(valStyle.Render(wl)))
 			}
@@ -1224,6 +1225,32 @@ func wrapText(text string, width int) []string {
 		}
 	}
 	return lines
+}
+
+// wikiToPlain converts Jira wiki markup to plain text with basic formatting.
+// Handles: *bold* -> bold, [text|url] -> text (url), {code}...{code} -> ..., h1-h6.
+var (
+	wikiLinkRe     = regexp.MustCompile(`\[([^|\]]+)\|([^\]]+)\]`)
+	wikiPlainLinkRe = regexp.MustCompile(`\[([^\]|]+)\]`)
+	wikiBoldRe     = regexp.MustCompile(`\*([^\n*]+)\*`)
+	wikiItalicRe   = regexp.MustCompile(`_([^\n_]+)_`)
+	wikiHeadingRe  = regexp.MustCompile(`(?m)^h[1-6]\.\s*`)
+)
+
+// wikiToPlain converts Jira wiki markup to readable plain text.
+func wikiToPlain(s string) string {
+	if s == "" {
+		return s
+	}
+	s = wikiLinkRe.ReplaceAllString(s, "$1 ($2)")
+	s = wikiPlainLinkRe.ReplaceAllString(s, "$1")
+	s = wikiBoldRe.ReplaceAllString(s, "$1")
+	s = wikiItalicRe.ReplaceAllString(s, "$1")
+	s = wikiHeadingRe.ReplaceAllString(s, "")
+	for _, tag := range []string{"{code}", "{noformat}", "{quote}"} {
+		s = strings.ReplaceAll(s, tag, "")
+	}
+	return s
 }
 
 func timeAgo(t time.Time) string {

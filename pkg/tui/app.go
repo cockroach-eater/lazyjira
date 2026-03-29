@@ -125,6 +125,7 @@ type App struct {
 	showHelp    bool
 	helpCursor  int
 	logFlag     *bool
+	isCloud     bool
 	demoMode    bool
 	issueCache  map[string]*jira.Issue
 
@@ -236,6 +237,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		side:        sideLeft,
 		leftFocus:   focusIssues,
 		projectKey:  projectKey,
+		isCloud:     cfg.Jira.IsCloud(),
 		demoMode:    authMethod == AuthDemo,
 		logFlag:     logFlag,
 		issueCache:  make(map[string]*jira.Issue),
@@ -397,8 +399,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusPanel.SetError(msg.err.Error())
 		return a, nil
 	case errorMsg:
-		a.statusPanel.SetError(msg.err.Error())
-		a.statusPanel.SetOnline(false)
+		errText := msg.err.Error()
+		a.statusPanel.SetError(errText)
+		// Show error modal so the user sees what went wrong.
+		a.modal.ShowError("Error", []components.ModalItem{
+			{Label: errText},
+		})
 		return a, nil
 
 	case views.IssueSelectedMsg:
@@ -551,16 +557,19 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 	ctx := a.editContext
 	a.editContext = editCtx{} // clear
 
+	// Cloud sends ADF, Server sends plain text.
+	var body any = mdContent
+	if a.isCloud {
+		body = views.MarkdownToADF(mdContent)
+	}
+
 	switch ctx.kind { //nolint:exhaustive // only editor-based kinds handled here
 	case editDesc:
-		adf := views.MarkdownToADF(mdContent)
-		return updateIssueField(a.client, ctx.issueKey, "description", adf)
+		return updateIssueField(a.client, ctx.issueKey, "description", body)
 	case editCommentNew:
-		adf := views.MarkdownToADF(mdContent)
-		return addComment(a.client, ctx.issueKey, adf)
+		return addComment(a.client, ctx.issueKey, body)
 	case editCommentMod:
-		adf := views.MarkdownToADF(mdContent)
-		return updateComment(a.client, ctx.issueKey, ctx.commentID, adf)
+		return updateComment(a.client, ctx.issueKey, ctx.commentID, body)
 	case editFieldText:
 		return updateIssueField(a.client, ctx.issueKey, ctx.fieldID, mdContent)
 	}
@@ -578,7 +587,11 @@ func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
 		if item.ID == "" {
 			return updateIssueField(a.client, sel.Key, fieldID, nil)
 		}
-		return updateIssueField(a.client, sel.Key, fieldID, map[string]string{"accountId": item.ID})
+		key := "name"
+		if a.isCloud {
+			key = "accountId"
+		}
+		return updateIssueField(a.client, sel.Key, fieldID, map[string]string{key: item.ID})
 	}
 }
 

@@ -143,6 +143,13 @@ func (m *InputModal) Update(msg tea.Msg) (InputModal, tea.Cmd) {
 			m.cursor = 0
 		case tea.KeyCtrlK:
 			m.text = m.text[:m.cursor]
+		case tea.KeySpace:
+			newText := make([]rune, 0, len(m.text)+1)
+			newText = append(newText, m.text[:m.cursor]...)
+			newText = append(newText, ' ')
+			newText = append(newText, m.text[m.cursor:]...)
+			m.text = newText
+			m.cursor++
 		case tea.KeyRunes:
 			runes := msg.Runes
 			newText := make([]rune, 0, len(m.text)+len(runes))
@@ -166,34 +173,83 @@ func (m *InputModal) View() string {
 	contentW := min(max(m.width*6/10, 30), m.width-4)
 	innerW := contentW - 2 // borders
 
-	// Render text with cursor.
-	textStr := string(m.text)
+	// Build wrapped lines from plain runes, then overlay cursor.
 	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	allRunes := append([]rune{' '}, m.text...) // leading space
+	cursorPos := m.cursor + 1                  // +1 for leading space
 
-	var rendered string
-	if m.cursor >= len(m.text) {
-		rendered = " " + textStr + cursorStyle.Render("█")
-	} else {
-		before := string(m.text[:m.cursor])
-		at := string(m.text[m.cursor : m.cursor+1])
-		after := string(m.text[m.cursor+1:])
-		rendered = " " + before + cursorStyle.Render(at) + after
+	// Split runes into lines of innerW display columns.
+	type wrappedLine struct {
+		runes []rune
+		start int // rune offset in allRunes
+	}
+	var wrapped []wrappedLine
+	off := 0
+	for off < len(allRunes) {
+		cut := 0
+		w := 0
+		for i := off; i < len(allRunes); i++ {
+			rw := lipgloss.Width(string(allRunes[i]))
+			if w+rw > innerW {
+				break
+			}
+			w += rw
+			cut = i + 1
+		}
+		if cut <= off {
+			cut = off + 1
+		}
+		wrapped = append(wrapped, wrappedLine{runes: allRunes[off:cut], start: off})
+		off = cut
+	}
+	if len(wrapped) == 0 {
+		wrapped = append(wrapped, wrappedLine{})
 	}
 
-	// Truncate if too long — show window around cursor.
-	if lipgloss.Width(rendered) > innerW {
-		// Simple approach: show from cursor-leftward.
-		visible := " " + textStr + " "
-		rendered = TruncateEnd(visible, innerW)
+	// Render each line, inserting cursor on the right one.
+	var lines []string
+	cursorPlaced := false
+	for _, wl := range wrapped {
+		lineEnd := wl.start + len(wl.runes)
+		lineW := lipgloss.Width(string(wl.runes))
+
+		if !cursorPlaced && (cursorPos < lineEnd || (cursorPos == lineEnd && cursorPos >= len(allRunes))) {
+			col := cursorPos - wl.start
+			switch {
+			case col >= len(wl.runes) && lineW >= innerW:
+				// Cursor past end of a full line: put cursor on a new line.
+				lines = append(lines, string(wl.runes))
+				lines = append(lines, cursorStyle.Render("█")+strings.Repeat(" ", innerW-1))
+			case col >= len(wl.runes):
+				// Cursor past end of a short line: append cursor block.
+				rendered := string(wl.runes) + cursorStyle.Render("█")
+				if w := lipgloss.Width(rendered); w < innerW {
+					rendered += strings.Repeat(" ", innerW-w)
+				}
+				lines = append(lines, rendered)
+			default:
+				before := string(wl.runes[:col])
+				at := string(wl.runes[col : col+1])
+				after := string(wl.runes[col+1:])
+				rendered := before + cursorStyle.Render(at) + after
+				if w := lipgloss.Width(rendered); w < innerW {
+					rendered += strings.Repeat(" ", innerW-w)
+				}
+				lines = append(lines, rendered)
+			}
+			cursorPlaced = true
+		} else {
+			line := string(wl.runes)
+			if w := lipgloss.Width(line); w < innerW {
+				line += strings.Repeat(" ", innerW-w)
+			}
+			lines = append(lines, line)
+		}
 	}
 
-	// Pad to fill width.
-	lineW := lipgloss.Width(rendered)
-	if lineW < innerW {
-		rendered += strings.Repeat(" ", innerW-lineW)
-	}
+	body := strings.Join(lines, "\n")
 
-	return RenderPanelFull(m.title, "", rendered, contentW, 1, m.focusInput, nil)
+	return RenderPanelFull(m.title, "", body, contentW, len(lines), m.focusInput, nil)
 }
 
 // Intercept handles a message if the modal is visible. Implements Overlay.

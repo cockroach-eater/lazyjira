@@ -11,6 +11,7 @@ type Credentials struct {
 	Host        string `json:"host"`
 	Email       string `json:"email"`
 	Token       string `json:"token"`
+	ServerType  string `json:"server_type,omitempty"` // "cloud", "server", "datacenter"
 	LastProject string `json:"last_project,omitempty"`
 }
 

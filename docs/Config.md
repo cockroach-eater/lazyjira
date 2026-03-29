@@ -19,16 +19,23 @@ Jira credentials can be set via environment variables. These always take priorit
 | Variable | Description |
 |----------|-------------|
 | `JIRA_HOST` | Jira instance URL |
-| `JIRA_EMAIL` | Account email |
-| `JIRA_API_TOKEN` | API token |
+| `JIRA_EMAIL` | Account email (Cloud only) |
+| `JIRA_API_TOKEN` | API token / PAT |
+| `JIRA_SERVER_TYPE` | `cloud` (default), `server`, or `datacenter` |
+| `JIRA_TLS_CERT` | Path to client certificate PEM |
+| `JIRA_TLS_KEY` | Path to client private key PEM |
+| `JIRA_TLS_CA` | Path to custom CA bundle PEM |
+| `JIRA_TLS_INSECURE` | Set to `1` or `true` to skip TLS verification |
 
 ## Default config
 
 Do not copy the entire thing into your config. Only add the settings you want to change.
+
 ```yaml
 jira:
     host: ""
     email: ""
+    serverType: cloud
 projects: []
 gui:
     theme: default
@@ -91,6 +98,48 @@ git:
     closeOnCheckout: false
     asciiOnly: false
     branchFormat: []
+```
+
+## Server type
+
+Set `serverType` to connect to Jira Server or Data Center (uses REST API v2 instead of v3).
+
+```yaml
+jira:
+  serverType: server
+```
+
+Values: `cloud` (default), `server`, `datacenter`.
+
+Cloud uses email + API token (Basic auth). Server/Data Center uses a Personal Access Token (Bearer auth), no email needed.
+
+## TLS
+
+For environments that require client certificates (mTLS) or a custom CA:
+
+```yaml
+jira:
+  tls:
+    certFile: /path/to/client.crt
+    keyFile:  /path/to/client.key
+    caFile:   /path/to/ca.pem
+    insecure: false
+```
+
+| Field | Description |
+|-------|-------------|
+| `certFile` | Client certificate PEM |
+| `keyFile` | Client private key PEM |
+| `caFile` | Custom CA bundle (optional) |
+| `insecure` | Skip TLS verification (not recommended) |
+
+All fields are optional. You can use `caFile` alone for custom CA without client certs. Environment variables `JIRA_TLS_CERT`, `JIRA_TLS_KEY`, `JIRA_TLS_CA`, `JIRA_TLS_INSECURE` also work.
+
+If your certificate is in PKCS#12 format (`.p12`/`.pfx`, e.g. exported from Firefox), convert it to PEM first:
+
+```bash
+openssl pkcs12 -in cert.p12 -out client.crt -clcerts -nokeys
+openssl pkcs12 -in cert.p12 -out client.key -nocerts -nodes
 ```
 
 ## GUI

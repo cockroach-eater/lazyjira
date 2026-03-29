@@ -52,12 +52,34 @@ type RequestLog struct {
 
 type Client struct {
 	baseURL        string
+	hostURL        string // base host without API path, e.g. "https://jira.example.com"
 	authHeader     string
 	httpClient     *http.Client
+	isCloud        bool
 	dryRun         bool
 	logger         io.Writer
 	onRequest      func(RequestLog) // callback for TUI log panel
 	customFieldIDs []string
+}
+
+// IsCloud returns true when the client targets Jira Cloud (API v3).
+func (c *Client) IsCloud() bool { return c.isCloud }
+
+// UserFieldKey returns the JSON field name for user references: "accountId" (Cloud) or "name" (Server).
+func (c *Client) UserFieldKey() string {
+	if c.isCloud {
+		return "accountId"
+	}
+	return "name"
+}
+
+// ClientOpts configures a new Client.
+type ClientOpts struct {
+	Host       string
+	Email      string // Cloud: email, Server: username
+	Token      string // Cloud: API token, Server: PAT
+	IsCloud    bool
+	HTTPClient *http.Client // optional, for custom TLS
 }
 
 // SetCustomFields sets the list of custom field IDs to fetch from the API.
@@ -66,23 +88,53 @@ func (c *Client) SetCustomFields(ids []string) { c.customFieldIDs = ids }
 // Compile-time check that Client implements ClientInterface.
 var _ ClientInterface = (*Client)(nil)
 
+// NewClient creates a Cloud (API v3) client. Shorthand for NewClientWithOpts.
 func NewClient(host, email, token string) *Client {
-	host = strings.TrimRight(host, "/")
-	credentials := base64.StdEncoding.EncodeToString([]byte(email + ":" + token))
+	return NewClientWithOpts(ClientOpts{Host: host, Email: email, Token: token, IsCloud: true})
+}
+
+// NewClientWithOpts creates a client for Cloud (API v3) or Server/Data Center (API v2).
+func NewClientWithOpts(opts ClientOpts) *Client {
+	host := strings.TrimRight(opts.Host, "/")
+	if !strings.HasPrefix(host, "http") {
+		host = "https://" + host
+	}
+
+	apiVersion := "2"
+	if opts.IsCloud {
+		apiVersion = "3"
+	}
+
+	var authHeader string
+	if opts.IsCloud {
+		credentials := base64.StdEncoding.EncodeToString([]byte(opts.Email + ":" + opts.Token))
+		authHeader = "Basic " + credentials
+	} else {
+		authHeader = "Bearer " + opts.Token
+	}
+
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
 	return &Client{
-		baseURL:    host + "/rest/api/3",
-		authHeader: "Basic " + credentials,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:    host + "/rest/api/" + apiVersion,
+		hostURL:    host,
+		authHeader: authHeader,
+		httpClient: httpClient,
+		isCloud:    opts.IsCloud,
 	}
 }
 
-// NewOAuthClient creates a client using OAuth bearer token.
-// baseURL is https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3
+// NewOAuthClient creates a Cloud client using OAuth bearer token.
 func NewOAuthClient(cloudID, accessToken string) *Client {
 	return &Client{
 		baseURL:    "https://api.atlassian.com/ex/jira/" + cloudID + "/rest/api/3",
+		hostURL:    "https://api.atlassian.com/ex/jira/" + cloudID,
 		authHeader: "Bearer " + accessToken,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		isCloud:    true,
 	}
 }
 
@@ -91,6 +143,9 @@ func (c *Client) BaseURL() string { return c.baseURL }
 
 // AuthHeader returns the Authorization header value.
 func (c *Client) AuthHeader() string { return c.authHeader }
+
+// HTTPClient returns the underlying HTTP client (useful for connection tests with TLS).
+func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 
 // SetDryRun enables dry-run mode: GET requests work normally, write operations (POST/PUT/DELETE) are skipped.
 func (c *Client) SetDryRun(v bool) { c.dryRun = v }
@@ -199,8 +254,16 @@ func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResul
 	if len(c.customFieldIDs) > 0 {
 		fields += "," + strings.Join(c.customFieldIDs, ",")
 	}
-	path := fmt.Sprintf("/search/jql?jql=%s&startAt=%d&maxResults=%d&fields=%s",
-		url.QueryEscape(jql), startAt, maxResults, fields)
+
+	// Cloud v3: /search/jql?jql=..., Server v2: /search?jql=...&fields=...
+	var path string
+	if c.isCloud {
+		path = fmt.Sprintf("/search/jql?jql=%s&startAt=%d&maxResults=%d&fields=%s",
+			url.QueryEscape(jql), startAt, maxResults, fields)
+	} else {
+		path = fmt.Sprintf("/search?jql=%s&startAt=%d&maxResults=%d&fields=%s",
+			url.QueryEscape(jql), startAt, maxResults, fields)
+	}
 
 	var raw searchResponse
 	err := c.do(ctx, http.MethodGet, path, nil, &raw)
@@ -274,7 +337,7 @@ func (c *Client) UpdateComment(ctx context.Context, issueKey, commentID string, 
 }
 
 func (c *Client) AssignIssue(ctx context.Context, issueKey, accountID string) error {
-	body := map[string]string{"accountId": accountID}
+	body := map[string]string{c.UserFieldKey(): accountID}
 	err := c.do(ctx, http.MethodPut, "/issue/"+issueKey+"/assignee", body, nil)
 	if err != nil {
 		return fmt.Errorf("assign issue %s: %w", issueKey, err)
@@ -284,11 +347,20 @@ func (c *Client) AssignIssue(ctx context.Context, issueKey, accountID string) er
 
 func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
 	var raw []projectResponse
-	err := c.do(ctx, http.MethodGet, "/project/search?maxResults=100", nil, &struct {
-		Values *[]projectResponse `json:"values"`
-	}{Values: &raw})
-	if err != nil {
-		return nil, fmt.Errorf("get projects: %w", err)
+	if c.isCloud {
+		// Cloud v3: GET /project/search → paginated {values:[...]}
+		err := c.do(ctx, http.MethodGet, "/project/search?maxResults=100", nil, &struct {
+			Values *[]projectResponse `json:"values"`
+		}{Values: &raw})
+		if err != nil {
+			return nil, fmt.Errorf("get projects: %w", err)
+		}
+	} else {
+		// Server v2: GET /project → [...]
+		err := c.do(ctx, http.MethodGet, "/project", nil, &raw)
+		if err != nil {
+			return nil, fmt.Errorf("get projects: %w", err)
+		}
 	}
 	projects := make([]Project, len(raw))
 	for i, rp := range raw {
@@ -303,7 +375,7 @@ func (c *Client) doAgile(ctx context.Context, path string, result any) error {
 }
 
 func (c *Client) doAgileMethod(ctx context.Context, method, path string, body, result any) error {
-	agileBase := strings.Replace(c.baseURL, "/rest/api/3", "/rest/agile/1.0", 1)
+	agileBase := c.hostURL + "/rest/agile/1.0"
 	return c.doWithBase(ctx, agileBase, method, path, body, result)
 }
 
@@ -392,15 +464,34 @@ func (c *Client) GetComments(ctx context.Context, issueKey string) ([]Comment, e
 }
 
 func (c *Client) GetChangelog(ctx context.Context, issueKey string) ([]ChangelogEntry, error) {
-	var raw struct {
-		Values []changelogResponse `json:"values"`
+	if c.isCloud {
+		// Cloud v3: separate changelog endpoint.
+		var raw struct {
+			Values []changelogResponse `json:"values"`
+		}
+		err := c.do(ctx, http.MethodGet, "/issue/"+issueKey+"/changelog?maxResults=100", nil, &raw)
+		if err != nil {
+			return nil, fmt.Errorf("get changelog for %s: %w", issueKey, err)
+		}
+		entries := make([]ChangelogEntry, len(raw.Values))
+		for i, rc := range raw.Values {
+			entries[i] = rc.toChangelogEntry()
+		}
+		return entries, nil
 	}
-	err := c.do(ctx, http.MethodGet, "/issue/"+issueKey+"/changelog?maxResults=100", nil, &raw)
+
+	// Server v2: changelog is embedded in issue via expand parameter.
+	var raw struct {
+		Changelog struct {
+			Histories []changelogResponse `json:"histories"`
+		} `json:"changelog"`
+	}
+	err := c.do(ctx, http.MethodGet, "/issue/"+issueKey+"?expand=changelog&fields=none", nil, &raw)
 	if err != nil {
 		return nil, fmt.Errorf("get changelog for %s: %w", issueKey, err)
 	}
-	entries := make([]ChangelogEntry, len(raw.Values))
-	for i, rc := range raw.Values {
+	entries := make([]ChangelogEntry, len(raw.Changelog.Histories))
+	for i, rc := range raw.Changelog.Histories {
 		entries[i] = rc.toChangelogEntry()
 	}
 	return entries, nil
@@ -462,10 +553,21 @@ func (c *Client) GetComponents(ctx context.Context, projectKey string) ([]Compon
 }
 
 func (c *Client) GetIssueTypes(ctx context.Context, projectID string) ([]IssueType, error) {
+	if c.isCloud {
+		// Cloud v3: GET /issuetype/project?projectId=...
+		var raw []IssueType
+		err := c.do(ctx, http.MethodGet, "/issuetype/project?projectId="+projectID, nil, &raw)
+		if err != nil {
+			return nil, fmt.Errorf("get issue types for project %s: %w", projectID, err)
+		}
+		return raw, nil
+	}
+
+	// Server v2: GET /issuetype returns all issue types, no per-project filter.
 	var raw []IssueType
-	err := c.do(ctx, http.MethodGet, "/issuetype/project?projectId="+projectID, nil, &raw)
+	err := c.do(ctx, http.MethodGet, "/issuetype", nil, &raw)
 	if err != nil {
-		return nil, fmt.Errorf("get issue types for project %s: %w", projectID, err)
+		return nil, fmt.Errorf("get issue types: %w", err)
 	}
 	return raw, nil
 }
@@ -551,9 +653,11 @@ func (r *issueResponse) toIssue() Issue {
 		issue.Status = r.Fields.Status.toStatus()
 	}
 
-	// Description in API v3 is ADF (JSON document); store raw + extract plain text fallback.
+	// API v3 description is ADF (JSON object), v2 is plain string.
 	if r.Fields.Description != nil {
-		issue.DescriptionADF = r.Fields.Description
+		if _, isMap := r.Fields.Description.(map[string]any); isMap {
+			issue.DescriptionADF = r.Fields.Description
+		}
 		issue.Description = extractADFText(r.Fields.Description)
 	}
 
@@ -693,6 +797,8 @@ func (r *issueLinkResponse) toIssueLink() IssueLink {
 
 type userResponse struct {
 	AccountID   string          `json:"accountId"`
+	Name        string          `json:"name"` // Server/DC username
+	Key         string          `json:"key"`  // Server/DC user key
 	DisplayName string          `json:"displayName"`
 	Email       string          `json:"emailAddress"`
 	AvatarURLs  json.RawMessage `json:"avatarUrls"`
@@ -700,8 +806,13 @@ type userResponse struct {
 }
 
 func (r *userResponse) toUser() User {
+	// Cloud uses accountId, Server/DC uses name. Unify into AccountID.
+	id := r.AccountID
+	if id == "" {
+		id = r.Name
+	}
 	u := User{
-		AccountID:   r.AccountID,
+		AccountID:   id,
 		DisplayName: r.DisplayName,
 		Email:       r.Email,
 		Active:      r.Active,
@@ -732,9 +843,11 @@ func (r *commentResponse) toComment() Comment {
 		u := r.Author.toUser()
 		c.Author = &u
 	}
-	// Body in API v3 is ADF; store raw + extract plain text fallback.
+	// API v3 body is ADF (JSON object), v2 is plain string.
 	if r.Body != nil {
-		c.BodyADF = r.Body
+		if _, isMap := r.Body.(map[string]any); isMap {
+			c.BodyADF = r.Body
+		}
 		c.Body = extractADFText(r.Body)
 	}
 	return c

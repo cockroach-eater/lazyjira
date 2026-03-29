@@ -93,9 +93,23 @@ type DetailKeys struct {
 }
 
 type JiraConfig struct {
-	Host  string `yaml:"host"`
-	Email string `yaml:"email"`
-	Token string `yaml:"-"` // never saved to file
+	Host       string    `yaml:"host"`
+	Email      string    `yaml:"email"`
+	Token      string    `yaml:"-"` // never saved to file
+	ServerType string    `yaml:"serverType"` // "cloud" (default), "server", "datacenter"
+	TLS        TLSConfig `yaml:"tls"`
+}
+
+// IsCloud returns true if this is a Jira Cloud instance (or unset, which defaults to Cloud).
+func (j JiraConfig) IsCloud() bool {
+	return j.ServerType == "" || j.ServerType == "cloud"
+}
+
+type TLSConfig struct {
+	CertFile string `yaml:"certFile"` // client certificate PEM
+	KeyFile  string `yaml:"keyFile"`  // client private key PEM
+	CAFile   string `yaml:"caFile"`   // custom CA bundle PEM
+	Insecure bool   `yaml:"insecure"` // skip TLS verification
 }
 
 type ProjectConfig struct {
@@ -210,6 +224,21 @@ func Load() (*Config, error) {
 	}
 	if v := os.Getenv("JIRA_API_TOKEN"); v != "" {
 		cfg.Jira.Token = v
+	}
+	if v := os.Getenv("JIRA_SERVER_TYPE"); v != "" {
+		cfg.Jira.ServerType = v
+	}
+	if v := os.Getenv("JIRA_TLS_CERT"); v != "" {
+		cfg.Jira.TLS.CertFile = v
+	}
+	if v := os.Getenv("JIRA_TLS_KEY"); v != "" {
+		cfg.Jira.TLS.KeyFile = v
+	}
+	if v := os.Getenv("JIRA_TLS_CA"); v != "" {
+		cfg.Jira.TLS.CAFile = v
+	}
+	if v := os.Getenv("JIRA_TLS_INSECURE"); v == "1" || v == "true" {
+		cfg.Jira.TLS.Insecure = true
 	}
 
 	return cfg, nil

@@ -120,9 +120,21 @@ make build
 
 ## Setup
 
-Run `lazyjira`. On first launch it asks for your Jira host, email, and API token.
+Run `lazyjira`. On first launch the setup wizard asks for your Jira type (Cloud or Server/Data Center), host, and credentials.
 
-Create an API token at <https://id.atlassian.com/manage-profile/security/api-tokens>
+### Jira Cloud
+
+Provide your email and an API token (also called Personal Access Token / PAT).
+
+Create one at <https://id.atlassian.com/manage-profile/security/api-tokens>
+
+### Jira Server / Data Center
+
+Provide your Personal Access Token (PAT). No email needed.
+
+Generate a PAT in Jira: Profile > Personal Access Tokens > Create token.
+
+For environments that require client certificates (mTLS), see [Configuration](docs/Config.md#tls).
 
 Credentials saved to `~/.config/lazyjira/auth.json`.
 
@@ -149,9 +161,11 @@ Press `?` inside the app for all keybindings.
 
 - [x] Robust JQL search
 - [x] Git integration, create branches from issues, open issue from current branch
+- [x] Jira Server and Data Center support
+- [x] Client certificate authentication (mTLS)
 - [ ] Create issues
-- [ ] Jira Server and Data Center support
-- [ ] Client certificate authentication
+- [ ] Robust issue type changer (handle subtask/parent unlinking, field validation)
+- [ ] Clickable hyperlinks in terminal (OSC 8) for URLs in descriptions and comments
 - [ ] Theming, borders, date format, language and other GUI options
 - [ ] Mouse support toggle
 - [ ] Show icons toggle

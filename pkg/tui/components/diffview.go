@@ -111,12 +111,14 @@ func (d *DiffView) View() string {
 	end := min(d.offset+visibleH, len(d.lines))
 	visible := d.lines[d.offset:end]
 
-	// Truncate lines to fit width.
+	// Wrap lines to fit width.
 	innerW := contentW - 2 // borders
+	wrapStyle := lipgloss.NewStyle().Width(innerW)
 	var displayLines []string
 	for _, line := range visible {
 		if lipgloss.Width(line) > innerW {
-			displayLines = append(displayLines, TruncateEnd(line, innerW))
+			wrapped := wrapStyle.Render(line)
+			displayLines = append(displayLines, strings.Split(wrapped, "\n")...)
 		} else {
 			displayLines = append(displayLines, line)
 		}

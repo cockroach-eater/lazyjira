@@ -1,4 +1,4 @@
-.PHONY: build build-version build-demo lint lint-fix vet clean check check-demo preview e2e-gen-preview e2e e2e-gen e2e-update
+.PHONY: build build-version build-demo lint lint-fix lint-docs vet clean check check-demo preview e2e-gen-preview e2e e2e-gen e2e-update
 
 build:
 	go build -o lazyjira ./cmd/lazyjira
@@ -14,6 +14,9 @@ lint:
 
 lint-fix:
 	golangci-lint run --fix ./...
+
+lint-docs:
+	npx --yes markdownlint-cli README.md CHANGELOG.md docs/*.md --disable MD001 MD013 MD024 MD033 MD040 MD041 MD060
 
 vet:
 	go vet ./...

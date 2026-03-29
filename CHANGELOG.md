@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Jira Server and Data Center support (REST API v2) with automatic endpoint adaptation
+- Client certificate authentication (mTLS): `certFile`, `keyFile`, `caFile`, `insecure` in config
+- Setup wizard: choose between Cloud and Server/Data Center, prompts adapt accordingly
+- Server/DC uses Bearer PAT auth (no email needed), Cloud keeps Basic auth
+- Jira wiki markup rendering: bold, italic, links, headings, code blocks converted to plain text
+- Error modal with red border for API errors (previously only shown in status bar)
+- Issues list updates immediately after editing summary, status, or assignee
+- Config: `serverType` field (`cloud`, `server`, `datacenter`) and TLS settings
+- Environment variables: `JIRA_SERVER_TYPE`, `JIRA_TLS_CERT`, `JIRA_TLS_KEY`, `JIRA_TLS_CA`, `JIRA_TLS_INSECURE`
+- README: clarified that API token and PAT are the same thing, added Server/DC setup instructions
+
+### Fixed
+
+- Edit Summary: long text now wraps instead of being truncated with "..."
+- Edit Summary: space key now works (was silently ignored)
+- Edit Summary: cursor at end of full line wraps to next line instead of breaking the border
+- Edit Summary: ANSI escape codes no longer split across wrapped lines
+- Confirm changes diff view: lines wrap instead of being truncated
+- Description editor: opens with content on Server/DC (was empty due to ADF/string mismatch)
+- Changelog tab: works on Server/DC (uses `?expand=changelog` instead of separate endpoint)
+- Status panel: shows host when email is empty (Server/DC)
+
 ## [2.5.1] - 2026-03-28
 
 ### Fixed
