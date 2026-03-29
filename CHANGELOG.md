@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Nix flake: switched from vendorHash to gomod2nix for reproducible builds
+- CI: added nix build check to catch outdated dependency hashes
+- CONTRIBUTING: added Nix dev environment section
+
 ## [2.6.0] - 2026-03-29
 
 ### Added
