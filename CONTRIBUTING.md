@@ -31,6 +31,22 @@ make build-demo
 ./lazyjira --demo
 ```
 
+## Nix
+
+If you have Nix with flakes enabled, you can get a complete dev environment
+without installing Go or other tools globally:
+
+```bash
+nix develop
+make check
+```
+
+To update Nix dependency lockfile after changing `go.mod`:
+
+```bash
+nix develop -c make nix-deps
+```
+
 ## Code style
 
 - Go standard formatting (`gofmt`)

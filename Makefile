@@ -1,4 +1,4 @@
-.PHONY: build build-version build-demo lint lint-fix lint-docs vet clean check check-demo release preview e2e-gen-preview e2e e2e-gen e2e-update
+.PHONY: build build-version build-demo lint lint-fix lint-docs vet clean check check-demo release preview e2e-gen-preview e2e e2e-gen e2e-update nix-deps
 
 build:
 	go build -o lazyjira ./cmd/lazyjira
@@ -65,6 +65,9 @@ e2e-gen:
 		dst="$${src%.sh}"; \
 		./e2e/tape.sh "$$src" > "$$dst"; \
 	done
+
+nix-deps:
+	gomod2nix generate
 
 e2e-update: build-demo e2e-gen
 	@pids=""; \
