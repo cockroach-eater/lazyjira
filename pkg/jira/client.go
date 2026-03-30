@@ -29,6 +29,7 @@ type ClientInterface interface {
 	GetPriorities(ctx context.Context) ([]Priority, error)
 	CreateIssue(ctx context.Context, projectKey, issueTypeID, summary, description string) (*Issue, error)
 	GetComments(ctx context.Context, issueKey string) ([]Comment, error)
+	GetMyself(ctx context.Context) (*User, error)
 	GetUsers(ctx context.Context, projectKey string) ([]User, error)
 	GetSprints(ctx context.Context, boardID int) ([]Sprint, error)
 	MoveToSprint(ctx context.Context, sprintID int, issueKey string) error
@@ -495,6 +496,16 @@ func (c *Client) GetChangelog(ctx context.Context, issueKey string) ([]Changelog
 		entries[i] = rc.toChangelogEntry()
 	}
 	return entries, nil
+}
+
+func (c *Client) GetMyself(ctx context.Context) (*User, error) {
+	var raw userResponse
+	err := c.do(ctx, http.MethodGet, "/myself", nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get myself: %w", err)
+	}
+	u := raw.toUser()
+	return &u, nil
 }
 
 func (c *Client) GetUsers(ctx context.Context, projectKey string) ([]User, error) {

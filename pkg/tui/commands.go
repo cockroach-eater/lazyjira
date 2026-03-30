@@ -198,6 +198,8 @@ func fetchJQLSuggestions(client jira.ClientInterface, fieldName, partial string)
 	}
 }
 
+type myselfLoadedMsg struct{ user *jira.User }
+
 type issueUpdatedMsg struct{ issueKey string }
 type commentAddedMsg struct{ issueKey string }
 type commentUpdatedMsg struct{ issueKey string }
@@ -248,6 +250,16 @@ func fetchPriorities(client jira.ClientInterface) tea.Cmd {
 			return errorMsg{err: err}
 		}
 		return prioritiesLoadedMsg{priorities: priorities}
+	}
+}
+
+func fetchMyself(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		user, err := client.GetMyself(context.Background())
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return myselfLoadedMsg{user: user}
 	}
 }
 

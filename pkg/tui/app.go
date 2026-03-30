@@ -127,6 +127,7 @@ type App struct {
 	logFlag     *bool
 	isCloud     bool
 	demoMode    bool
+	currentUser *jira.User
 	issueCache  map[string]*jira.Issue
 
 	// Git integration.
@@ -269,6 +270,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 
 func (a *App) Init() tea.Cmd {
 	var cmds []tea.Cmd
+	cmds = append(cmds, fetchMyself(a.client))
 	cmds = append(cmds, fetchProjects(a.client))
 	cmds = append(cmds, fetchBoards(a.client))
 	if cmd := a.fetchActiveTab(); cmd != nil {
@@ -333,6 +335,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleTransitionsLoaded(msg)
 	case prioritiesLoadedMsg:
 		return a.handlePrioritiesLoaded(msg)
+	case myselfLoadedMsg:
+		a.currentUser = msg.user
+		return a, nil
 	case boardsLoadedMsg:
 		return a.handleBoardsLoaded(msg)
 	case sprintsLoadedMsg:

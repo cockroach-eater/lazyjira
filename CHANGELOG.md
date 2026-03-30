@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Assignee list: current user now always appears first, matched by account ID instead of email. Fixes cases where Jira Cloud hides emails due to privacy settings (#16)
+
 ## [2.6.5] - 2026-03-30
 
 ### Fixed

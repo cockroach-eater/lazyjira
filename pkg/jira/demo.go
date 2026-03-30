@@ -407,6 +407,11 @@ func (d *DemoClient) UpdateIssue(_ context.Context, issueKey string, fields map[
 func (d *DemoClient) CreateIssue(_ context.Context, _, _, _, _ string) (*Issue, error) {
 	return nil, nil
 }
+func (d *DemoClient) GetMyself(_ context.Context) (*User, error) {
+	d.logRequest("GET", "/myself")
+	return &User{AccountID: "u0", DisplayName: "Demo User", Email: "demo@lazyjira.dev", Active: true}, nil
+}
+
 func (d *DemoClient) GetUsers(_ context.Context, _ string) ([]User, error) {
 	d.logRequest("GET", "/user/assignable/search")
 	return []User{

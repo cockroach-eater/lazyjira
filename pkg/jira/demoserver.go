@@ -55,6 +55,8 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/rest/api/3")
 
 	switch {
+	case path == "/myself":
+		s.handleMyself(w)
 	case path == "/project/search":
 		s.handleProjects(w)
 	case path == "/search/jql":
@@ -113,6 +115,16 @@ func extractKeyFromPath(path, suffix string) string {
 }
 
 // --- Handlers ---
+
+func (s *DemoServer) handleMyself(w http.ResponseWriter) {
+	writeJSON(w, map[string]any{
+		"accountId":    "u0",
+		"displayName":  "Demo User",
+		"emailAddress": "demo@lazyjira.dev",
+		"active":       true,
+		"avatarUrls":   map[string]string{"48x48": ""},
+	})
+}
 
 func (s *DemoServer) handleProjects(w http.ResponseWriter) {
 	projects := make([]any, len(s.data.projects))
