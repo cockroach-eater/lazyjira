@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Distinct colors from ANSI 256 palette, chosen for readability on dark bg.
+// Distinct colors from ANSI 256 palette readable on dark backgrounds
 var authorPalette = []lipgloss.Color{
 	lipgloss.Color("208"), // orange
 	lipgloss.Color("176"), // pink/magenta
@@ -25,13 +25,13 @@ var authorPalette = []lipgloss.Color{
 
 var authorCache = make(map[string]lipgloss.Style)
 
-// authorKey normalizes a name for consistent color: strips @ prefix, trims spaces.
+// authorKey normalizes a name for consistent color by stripping @ prefix and trimming spaces
 func authorKey(name string) string {
 	return strings.TrimSpace(strings.TrimPrefix(name, "@"))
 }
 
-// AuthorStyle returns a deterministic color for a given author name.
-// "@Aleksandr Savinykh" and "Aleksandr Savinykh" get the same color.
+// AuthorStyle returns a deterministic color for a given author name
+// "@Aleksandr Savinykh" and "Aleksandr Savinykh" get the same color
 func AuthorStyle(name string) lipgloss.Style {
 	key := authorKey(name)
 	if s, ok := authorCache[key]; ok {
@@ -44,7 +44,7 @@ func AuthorStyle(name string) lipgloss.Style {
 	return s
 }
 
-// AuthorRender renders a name with its deterministic color.
+// AuthorRender renders a name with its deterministic color
 func AuthorRender(name string) string {
 	return AuthorStyle(name).Render(name)
 }

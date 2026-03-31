@@ -199,7 +199,20 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case ActAddComment:
+	case ActDuplicateIssue:
+		if a.side == sideLeft && a.leftFocus == focusIssues {
+			return a.startDuplicateIssue()
+		}
+		return a, nil
+
+	case ActCreateIssue:
+		return a.startCreateIssue()
+
+	case ActNew:
+		// on issues panel creates issue, on comments tab adds comment
+		if a.side == sideLeft && a.leftFocus == focusIssues && a.projectKey != "" {
+			return a.startCreateIssue()
+		}
 		sel := a.issuesList.SelectedIssue()
 		if sel == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
 			return a, nil
@@ -210,14 +223,14 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ActEdit:
 		return a.handleActionEdit()
 
-	case ActEditPriority:
+	case ActPriority:
 		if sel := a.issuesList.SelectedIssue(); sel != nil {
 			*a.logFlag = true
 			return a, fetchPriorities(a.client)
 		}
 		return a, nil
 
-	case ActEditAssignee:
+	case ActAssignee:
 		if sel := a.issuesList.SelectedIssue(); sel != nil {
 			*a.logFlag = true
 			a.onSelect = a.makePersonSelectCallback("assignee")
@@ -276,6 +289,39 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+func (a *App) startDuplicateIssue() (tea.Model, tea.Cmd) {
+	sel := a.issuesList.SelectedIssue()
+	if sel == nil || a.projectKey == "" {
+		return a, nil
+	}
+	// use cached version if available for full field data
+	source := sel
+	if cached, ok := a.issueCache[sel.Key]; ok {
+		source = cached
+	}
+	a.createCtx = createCtx{
+		intent:        true,
+		projectKey:    a.projectKey,
+		projectID:     a.projectID,
+		duplicateFrom: source,
+	}
+	*a.logFlag = true
+	return a, fetchIssueTypes(a.client, a.projectID)
+}
+
+func (a *App) startCreateIssue() (tea.Model, tea.Cmd) {
+	if a.projectKey == "" {
+		return a, nil
+	}
+	a.createCtx = createCtx{
+		intent:     true,
+		projectKey: a.projectKey,
+		projectID:  a.projectID,
+	}
+	*a.logFlag = true
+	return a, fetchIssueTypes(a.client, a.projectID)
+}
+
 // handleActionSelect handles space/enter on the left panel.
 // Returns nil model on sideRight so the key falls through to the detail panel.
 func (a *App) handleActionSelect() (tea.Model, tea.Cmd) {
@@ -289,7 +335,14 @@ func (a *App) handleActionSelect() (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case a.side == sideLeft && a.leftFocus == focusInfo:
-		// Space = make active in issues list + open detail.
+		// on Info tab: space edits the field (same as e)
+		if a.infoPanel.ActiveTab() == views.InfoTabFields {
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return a.editInfoField(sel)
+			}
+			return a, nil
+		}
+		// on Lnk/Sub tabs: make active in issues list + open detail
 		if key := a.infoPanelSelectedKey(); key != "" {
 			// Find in any tab, or inject into All tab.
 			if tab, found := a.issuesList.FindInAnyTab(key); found {
@@ -334,7 +387,14 @@ func (a *App) handleActionOpen() (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case a.side == sideLeft && a.leftFocus == focusInfo:
-		// Enter = preview in detail (stay on [3]).
+		// on Info tab: enter edits the field (same as e)
+		if a.infoPanel.ActiveTab() == views.InfoTabFields {
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return a.editInfoField(sel)
+			}
+			return a, nil
+		}
+		// on Lnk/Sub tabs: preview in detail (stay on [3])
 		if key := a.infoPanelSelectedKey(); key != "" {
 			if cached, ok := a.issueCache[key]; ok {
 				a.detailView.SetIssue(cached)

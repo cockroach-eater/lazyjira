@@ -16,11 +16,11 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui"
 )
 
-// version is set at build time via ldflags.
+// version is set at build time via ldflags
 var version = "dev"
 
 func main() {
-	// Subcommands.
+	// Subcommands
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "auth":
@@ -101,7 +101,7 @@ func run() error {
 	return err
 }
 
-// buildHTTPClient creates an *http.Client with TLS settings if configured.
+// buildHTTPClient creates an *http.Client with TLS settings if configured
 func buildHTTPClient(cfg *config.Config) (*http.Client, error) {
 	tlsCfg := jira.TLSConfig{
 		CertFile: cfg.Jira.TLS.CertFile,
@@ -121,7 +121,7 @@ func isCloudType(serverType string) bool {
 	return serverType == "" || serverType == serverTypeCloud
 }
 
-// makeClient creates a Jira client from the given parameters.
+// makeClient creates a Jira client from the given parameters
 func makeClient(cfg *config.Config, host, email, token, serverType string) (*jira.Client, error) {
 	httpClient, err := buildHTTPClient(cfg)
 	if err != nil {
@@ -138,13 +138,13 @@ func makeClient(cfg *config.Config, host, email, token, serverType string) (*jir
 
 // resolveClient finds credentials from: saved auth.json > env vars > interactive wizard.
 func resolveClient(cfg *config.Config) (*jira.Client, tui.AuthMethod, error) {
-	// 1. Saved credentials.
+	// 1 Saved credentials
 	creds, err := config.LoadCredentials()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 	}
 	if creds != nil && creds.Host != "" && creds.Token != "" {
-		// Cloud requires email; Server/DC does not.
+		// Cloud requires email but Server/DC does not
 		isCloud := isCloudType(creds.ServerType)
 		if !isCloud || creds.Email != "" {
 			cfg.Jira.Host = creds.Host
@@ -160,10 +160,10 @@ func resolveClient(cfg *config.Config) (*jira.Client, tui.AuthMethod, error) {
 		}
 	}
 
-	// 2. Environment variables.
+	// 2 Environment variables
 	if cfg.Jira.Host != "" && cfg.Jira.Token != "" {
 		if cfg.Jira.IsCloud() && cfg.Jira.Email == "" {
-			// Cloud needs email, fall through to wizard.
+			// Cloud needs email so fall through to wizard
 		} else {
 			client, err := makeClient(cfg, cfg.Jira.Host, cfg.Jira.Email, cfg.Jira.Token, cfg.Jira.ServerType)
 			if err != nil {
@@ -173,7 +173,7 @@ func resolveClient(cfg *config.Config) (*jira.Client, tui.AuthMethod, error) {
 		}
 	}
 
-	// 3. Interactive wizard.
+	// 3 Interactive wizard
 	fmt.Println()
 	fmt.Println("  Welcome to lazyjira! Let's set up your Jira connection.")
 	fmt.Println()

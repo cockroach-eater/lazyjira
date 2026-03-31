@@ -43,11 +43,13 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActTransition, "transition issue status"),
 			a.bind(ActEdit, "edit summary"),
 			a.bind(ActComments, "go to comments"),
-			a.bind(ActEditPriority, "change priority"),
-			a.bind(ActEditAssignee, "change assignee"),
+			a.bind(ActPriority, "change priority"),
+			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
 			a.bind(ActCreateBranch, "create branch"),
+			a.bind(ActNew, "create issue"),
+			a.bind(ActDuplicateIssue, "duplicate issue"),
 			a.bind(ActCloseJQLTab, "close JQL tab"),
 			Binding{"[]", "switch tab"},
 		)
@@ -60,8 +62,8 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"[]", "switch tab (Info/Lnk/Sub)"},
 			a.bind(ActEdit, "edit field"),
 			a.bind(ActTransition, "transition issue status"),
-			a.bind(ActEditPriority, "change priority"),
-			a.bind(ActEditAssignee, "change assignee"),
+			a.bind(ActPriority, "change priority"),
+			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
 			a.bind(ActFocusRight, "next panel"),
@@ -93,15 +95,15 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"[]", "previous/next tab"},
 			a.bind(ActFocusLeft, "back to left panel"),
 			a.bind(ActInfoTab, "focus info panel"),
-			a.bind(ActEditPriority, "change priority"),
-			a.bind(ActEditAssignee, "change assignee"),
+			a.bind(ActPriority, "change priority"),
+			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
 		)
 		if a.detailView.ActiveTab() == views.TabComments {
 			bindings = append(bindings,
 				a.bind(ActEdit, "edit comment"),
-				a.bind(ActAddComment, "new comment"),
+				a.bind(ActNew, "new comment"),
 			)
 		} else {
 			bindings = append(bindings,
@@ -115,8 +117,24 @@ func (a *App) ContextBindings() []Binding {
 }
 
 func (a *App) helpBarItems() []components.HelpItem {
-	// Overlay-specific hints take priority over panel hints.
+	// Overlay-specific hints take priority over panel hints
 	switch {
+	case a.createForm.IsVisible():
+		items := []components.HelpItem{
+			{Key: "tab", Description: "next panel"},
+			{Key: "enter", Description: "submit"},
+			{Key: "esc", Description: "cancel"},
+		}
+		switch a.createForm.FocusedPanel() { //nolint:exhaustive // summary has no extra hints
+		case components.CreatePanelFields:
+			items = append(items,
+				components.HelpItem{Key: "e", Description: "edit"},
+				components.HelpItem{Key: "/", Description: "filter"},
+			)
+		case components.CreatePanelDescription:
+			items = append(items, components.HelpItem{Key: "e", Description: "edit in $EDITOR"})
+		}
+		return items
 	case a.jqlModal.IsVisible():
 		return []components.HelpItem{
 			{Key: "enter", Description: "search"},
@@ -168,8 +186,9 @@ func (a *App) helpBarItems() []components.HelpItem {
 		items = append(items,
 			components.HelpItem{Key: km.Keys(ActEdit), Description: "edit"},
 			components.HelpItem{Key: km.Keys(ActTransition), Description: "transition"},
-			components.HelpItem{Key: km.Keys(ActEditPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
 			components.HelpItem{Key: km.Keys(ActCreateBranch), Description: "branch"},
+			components.HelpItem{Key: km.Keys(ActNew), Description: "create"},
 			components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"},
 			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
 		)
@@ -178,8 +197,8 @@ func (a *App) helpBarItems() []components.HelpItem {
 		return []components.HelpItem{
 			{Key: km.Keys(ActEdit), Description: "edit"},
 			{Key: km.Keys(ActTransition), Description: "transition"},
-			{Key: km.Keys(ActEditPriority), Description: "priority"},
-			{Key: km.Keys(ActEditAssignee), Description: "assignee"},
+			{Key: km.Keys(ActPriority), Description: "priority"},
+			{Key: km.Keys(ActAssignee), Description: "assignee"},
 			{Key: km.Keys(ActHelp), Description: "help"},
 		}
 	case a.side == sideLeft && a.leftFocus == focusProjects:
@@ -201,7 +220,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 		case views.TabComments:
 			items = append(items,
 				components.HelpItem{Key: km.Keys(ActEdit), Description: "edit comment"},
-				components.HelpItem{Key: km.Keys(ActAddComment), Description: "new comment"},
+				components.HelpItem{Key: km.Keys(ActNew), Description: "new comment"},
 			)
 		default:
 			items = append(items,
@@ -209,8 +228,8 @@ func (a *App) helpBarItems() []components.HelpItem {
 			)
 		}
 		items = append(items,
-			components.HelpItem{Key: km.Keys(ActEditPriority), Description: "priority"},
-			components.HelpItem{Key: km.Keys(ActEditAssignee), Description: "assignee"},
+			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActAssignee), Description: "assignee"},
 			components.HelpItem{Key: km.Keys(ActFocusLeft), Description: "back"},
 			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
 		)

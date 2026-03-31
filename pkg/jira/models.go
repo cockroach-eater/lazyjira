@@ -170,3 +170,23 @@ type SearchResult struct {
 	MaxResults int     `json:"maxResults"`
 	StartAt    int     `json:"startAt"`
 }
+
+type CreateMetaField struct {
+	FieldID       string
+	Name          string
+	Required      bool
+	Schema        CreateMetaSchema
+	AllowedValues []CreateMetaValue
+}
+
+type CreateMetaSchema struct {
+	Type   string // "string", "array", "priority", "user", "option", etc
+	System string // "priority", "assignee", etc
+	Custom string // plugin key for custom fields
+	Items  string // item type for arrays ("option", "user", "string", etc)
+}
+
+type CreateMetaValue struct {
+	ID   string
+	Name string
+}

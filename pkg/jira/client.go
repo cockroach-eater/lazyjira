@@ -27,7 +27,8 @@ type ClientInterface interface {
 	GetBoardIssues(ctx context.Context, boardID int, jql string) ([]Issue, error)
 	UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error
 	GetPriorities(ctx context.Context) ([]Priority, error)
-	CreateIssue(ctx context.Context, projectKey, issueTypeID, summary, description string) (*Issue, error)
+	CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error)
+	GetCreateMeta(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error)
 	GetComments(ctx context.Context, issueKey string) ([]Comment, error)
 	GetMyself(ctx context.Context) (*User, error)
 	GetUsers(ctx context.Context, projectKey string) ([]User, error)
@@ -226,6 +227,10 @@ func (c *Client) doWithBase(ctx context.Context, baseURL, method, path string, b
 	}
 
 	if result != nil && len(respBody) > 0 {
+		// log raw body for createmeta to help debug missing fields
+		if strings.Contains(path, "createmeta") {
+			c.log("  RAW: %s\n", string(respBody))
+		}
 		if err := json.Unmarshal(respBody, result); err != nil {
 			return fmt.Errorf("decode response for %s %s: %w", method, path, err)
 		}
@@ -431,15 +436,8 @@ func (c *Client) GetPriorities(ctx context.Context) ([]Priority, error) {
 	return raw, nil
 }
 
-func (c *Client) CreateIssue(ctx context.Context, projectKey, issueTypeID, summary, description string) (*Issue, error) {
-	body := map[string]any{
-		"fields": map[string]any{
-			"project":     map[string]string{"key": projectKey},
-			"issuetype":   map[string]string{"id": issueTypeID},
-			"summary":     summary,
-			"description": description,
-		},
-	}
+func (c *Client) CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error) {
+	body := map[string]any{"fields": fields}
 	var raw issueResponse
 	err := c.do(ctx, http.MethodPost, "/issue", body, &raw)
 	if err != nil {
@@ -447,6 +445,130 @@ func (c *Client) CreateIssue(ctx context.Context, projectKey, issueTypeID, summa
 	}
 	issue := raw.toIssue()
 	return &issue, nil
+}
+
+func (c *Client) GetCreateMeta(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error) {
+	if c.isCloud {
+		return c.getCreateMetaCloud(ctx, projectKey, issueTypeID)
+	}
+	return c.getCreateMetaServer(ctx, projectKey, issueTypeID)
+}
+
+func (c *Client) getCreateMetaCloud(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error) {
+	type rawField struct {
+		FieldID  string `json:"fieldId"`
+		Name     string `json:"name"`
+		Required bool   `json:"required"`
+		Schema   struct {
+			Type   string `json:"type"`
+			System string `json:"system"`
+			Custom string `json:"custom"`
+			Items  string `json:"items"`
+		} `json:"schema"`
+		AllowedValues []struct {
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		} `json:"allowedValues"`
+	}
+
+	basePath := "/issue/createmeta/" + url.PathEscape(projectKey) + "/issuetypes/" + url.PathEscape(issueTypeID)
+
+	var allRaw []rawField
+	startAt := 0
+	for {
+		var raw struct {
+			StartAt    int        `json:"startAt"`
+			MaxResults int        `json:"maxResults"`
+			Total      int        `json:"total"`
+			Fields     []rawField `json:"fields"`
+		}
+		path := fmt.Sprintf("%s?startAt=%d&maxResults=200", basePath, startAt)
+		err := c.do(ctx, http.MethodGet, path, nil, &raw)
+		if err != nil {
+			return nil, fmt.Errorf("get create meta: %w", err)
+		}
+		c.log("  createmeta: startAt=%d total=%d got=%d\n", raw.StartAt, raw.Total, len(raw.Fields))
+		for _, f := range raw.Fields {
+			c.log("    field: %s (%s) system=%s type=%s\n", f.FieldID, f.Name, f.Schema.System, f.Schema.Type)
+		}
+		allRaw = append(allRaw, raw.Fields...)
+		if len(allRaw) >= raw.Total || len(raw.Fields) == 0 {
+			break
+		}
+		startAt = len(allRaw)
+	}
+
+	fields := make([]CreateMetaField, 0, len(allRaw))
+	for _, f := range allRaw {
+		cf := CreateMetaField{
+			FieldID:  f.FieldID,
+			Name:     f.Name,
+			Required: f.Required,
+			Schema:   CreateMetaSchema{Type: f.Schema.Type, System: f.Schema.System, Custom: f.Schema.Custom, Items: f.Schema.Items},
+		}
+		for _, v := range f.AllowedValues {
+			name := v.Name
+			if name == "" {
+				name = v.Value
+			}
+			cf.AllowedValues = append(cf.AllowedValues, CreateMetaValue{ID: v.ID, Name: name})
+		}
+		fields = append(fields, cf)
+	}
+	return fields, nil
+}
+
+func (c *Client) getCreateMetaServer(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error) {
+	var raw struct {
+		Projects []struct {
+			IssueTypes []struct {
+				Fields map[string]struct {
+					Name     string `json:"name"`
+					Required bool   `json:"required"`
+					Schema   struct {
+						Type   string `json:"type"`
+						System string `json:"system"`
+						Custom string `json:"custom"`
+						Items  string `json:"items"`
+					} `json:"schema"`
+					AllowedValues []struct {
+						ID    string `json:"id"`
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"allowedValues"`
+				} `json:"fields"`
+			} `json:"issuetypes"`
+		} `json:"projects"`
+	}
+	path := fmt.Sprintf("/issue/createmeta?projectKeys=%s&issuetypeIds=%s&expand=projects.issuetypes.fields",
+		url.QueryEscape(projectKey), url.QueryEscape(issueTypeID))
+	err := c.do(ctx, http.MethodGet, path, nil, &raw)
+	if err != nil {
+		return nil, fmt.Errorf("get create meta: %w", err)
+	}
+	if len(raw.Projects) == 0 || len(raw.Projects[0].IssueTypes) == 0 {
+		return nil, nil
+	}
+	rawFields := raw.Projects[0].IssueTypes[0].Fields
+	fields := make([]CreateMetaField, 0, len(rawFields))
+	for id, f := range rawFields {
+		cf := CreateMetaField{
+			FieldID:  id,
+			Name:     f.Name,
+			Required: f.Required,
+			Schema:   CreateMetaSchema{Type: f.Schema.Type, System: f.Schema.System, Custom: f.Schema.Custom, Items: f.Schema.Items},
+		}
+		for _, v := range f.AllowedValues {
+			name := v.Name
+			if name == "" {
+				name = v.Value
+			}
+			cf.AllowedValues = append(cf.AllowedValues, CreateMetaValue{ID: v.ID, Name: name})
+		}
+		fields = append(fields, cf)
+	}
+	return fields, nil
 }
 
 func (c *Client) GetComments(ctx context.Context, issueKey string) ([]Comment, error) {

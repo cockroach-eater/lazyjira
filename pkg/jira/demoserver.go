@@ -81,6 +81,12 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/changelog"):
 		key := extractKeyFromPath(path, "/changelog")
 		s.handleChangelog(w, key)
+	case strings.HasPrefix(path, "/issue/createmeta/"):
+		s.handleCreateMeta(w)
+	case path == "/issue":
+		if r.Method == http.MethodPost {
+			s.handleCreateIssue(w, r)
+		}
 	case strings.HasPrefix(path, "/issue/"):
 		key := strings.TrimPrefix(path, "/issue/")
 		if r.Method == http.MethodPut {
@@ -291,6 +297,40 @@ func (s *DemoServer) handleUpdateComment(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *DemoServer) handleCreateMeta(w http.ResponseWriter) {
+	// Cloud v3 format: field definitions with allowed values
+	priorities, _ := s.data.GetPriorities(context.Background())
+	prioValues := make([]map[string]any, 0, len(priorities))
+	for _, p := range priorities {
+		prioValues = append(prioValues, map[string]any{"id": p.ID, "name": p.Name})
+	}
+	fields := []map[string]any{
+		{"fieldId": "summary", "name": "Summary", "required": true, "schema": map[string]string{"type": "string", "system": "summary"}},
+		{"fieldId": "description", "name": "Description", "required": false, "schema": map[string]string{"type": "string", "system": "description"}},
+		{"fieldId": "priority", "name": "Priority", "required": false, "schema": map[string]string{"type": "priority", "system": "priority"}, "allowedValues": prioValues},
+		{"fieldId": "assignee", "name": "Assignee", "required": false, "schema": map[string]string{"type": "user", "system": "assignee"}},
+		{"fieldId": "labels", "name": "Labels", "required": false, "schema": map[string]string{"type": "array", "system": "labels"}},
+		{"fieldId": "components", "name": "Components", "required": false, "schema": map[string]string{"type": "array", "system": "components"}},
+	}
+	writeJSON(w, map[string]any{"values": fields})
+}
+
+func (s *DemoServer) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Fields map[string]any `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	issue, err := s.data.CreateIssue(context.Background(), body.Fields)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, issueToJSON(issue))
 }
 
 func (s *DemoServer) handleAddComment(w http.ResponseWriter, r *http.Request, key string) {

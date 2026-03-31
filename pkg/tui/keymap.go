@@ -35,12 +35,14 @@ const (
 	ActInfoTab     Action = "infoTab" // legacy: now focuses Info panel
 	ActEdit        Action = "edit"
 	ActComments    Action = "comments"
-	ActAddComment  Action = "addComment"
-	ActEditPriority Action = "editPriority"
-	ActEditAssignee Action = "editAssignee"
+	ActNew Action = "new"
+	ActPriority Action = "editPriority"
+	ActAssignee Action = "editAssignee"
 	ActJQLSearch    Action = "jqlSearch"
 	ActCloseJQLTab  Action = "closeJQLTab"
 	ActCreateBranch Action = "createBranch"
+	ActCreateIssue    Action = "createIssue"
+	ActDuplicateIssue Action = "duplicateIssue"
 )
 
 // Keymap maps actions to key strings. Multiple keys can trigger the same action.
@@ -73,12 +75,13 @@ func DefaultKeymap() Keymap {
 		ActInfoTab:         {"i"},
 		ActEdit:        {"e"},
 		ActComments:    {"c"},
-		ActAddComment:  {"n"},
-		ActEditPriority: {"p"},
-		ActEditAssignee: {"a"},
+		ActNew:  {"n"},
+		ActPriority: {"p"},
+		ActAssignee: {"a"},
 		ActJQLSearch:    {"s"},
 		ActCloseJQLTab:  {"x"},
-		ActCreateBranch: {"b"},
+		ActCreateBranch:    {"b"},
+		ActDuplicateIssue: {"ctrl+n"},
 	}
 }
 
@@ -116,6 +119,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActCopyURL, kcfg.Issues.CopyURL)
 	set(ActCloseJQLTab, kcfg.Issues.CloseJQLTab)
 	set(ActCreateBranch, kcfg.Issues.CreateBranch)
+	set(ActCreateIssue, kcfg.Issues.CreateIssue)
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)

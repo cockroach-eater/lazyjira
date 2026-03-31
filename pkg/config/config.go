@@ -20,8 +20,8 @@ type Config struct {
 }
 
 type GitConfig struct {
-	CloseOnCheckout bool              `yaml:"closeOnCheckout"`
-	AsciiOnly       bool              `yaml:"asciiOnly"`
+	CloseOnCheckout bool               `yaml:"closeOnCheckout"`
+	AsciiOnly       bool               `yaml:"asciiOnly"`
 	BranchFormat    []BranchFormatRule `yaml:"branchFormat"`
 }
 
@@ -70,15 +70,16 @@ type UniversalKeys struct {
 }
 
 type IssueKeys struct {
-	Select     string `yaml:"select"`
-	Open       string `yaml:"open"`
-	FocusRight string `yaml:"focusRight"`
-	Transition string `yaml:"transition"`
-	Browser    string `yaml:"browser"`
-	URLPicker  string `yaml:"urlPicker"`
-	CopyURL    string `yaml:"copyURL"`
+	Select       string `yaml:"select"`
+	Open         string `yaml:"open"`
+	FocusRight   string `yaml:"focusRight"`
+	Transition   string `yaml:"transition"`
+	Browser      string `yaml:"browser"`
+	URLPicker    string `yaml:"urlPicker"`
+	CopyURL      string `yaml:"copyURL"`
 	CloseJQLTab  string `yaml:"closeJQLTab"`
 	CreateBranch string `yaml:"createBranch"`
+	CreateIssue  string `yaml:"createIssue"`
 }
 
 type ProjectKeys struct {
@@ -95,7 +96,7 @@ type DetailKeys struct {
 type JiraConfig struct {
 	Host       string    `yaml:"host"`
 	Email      string    `yaml:"email"`
-	Token      string    `yaml:"-"` // never saved to file
+	Token      string    `yaml:"-"`          // never saved to file
 	ServerType string    `yaml:"serverType"` // "cloud" (default), "server", "datacenter"
 	TLS        TLSConfig `yaml:"tls"`
 }
@@ -118,14 +119,20 @@ type ProjectConfig struct {
 }
 
 type GUIConfig struct {
-	Theme           string   `yaml:"theme"`           // TODO not yet wired up
-	Language        string   `yaml:"language"`         // TODO not yet wired up
+	Theme           string   `yaml:"theme"`    // TODO not yet wired up
+	Language        string   `yaml:"language"` // TODO not yet wired up
 	SidePanelWidth  int      `yaml:"sidePanelWidth"`
-	ShowIcons       bool     `yaml:"showIcons"`        // TODO not yet wired up
-	DateFormat      string   `yaml:"dateFormat"`       // TODO not yet wired up
-	Mouse           bool     `yaml:"mouse"`            // TODO not yet wired up
-	Borders         string   `yaml:"borders"`          // TODO not yet wired up
+	ShowIcons       bool     `yaml:"showIcons"`  // TODO not yet wired up
+	DateFormat      string   `yaml:"dateFormat"` // TODO not yet wired up
+	Mouse           bool     `yaml:"mouse"`      // TODO not yet wired up
+	Borders         string   `yaml:"borders"`    // TODO not yet wired up
 	IssueListFields []string `yaml:"issueListFields"`
+	PrefillFromTab  *bool    `yaml:"prefillFromTab"` // default true when nil
+}
+
+// ShouldPrefillFromTab returns true when creation form should prefill from tab JQL
+func (g GUIConfig) ShouldPrefillFromTab() bool {
+	return g.PrefillFromTab == nil || *g.PrefillFromTab
 }
 
 // TODO not yet wired up

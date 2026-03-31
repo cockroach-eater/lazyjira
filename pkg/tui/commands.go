@@ -212,6 +212,9 @@ type usersLoadedMsg struct {
 type labelsLoadedMsg struct{ labels []string }
 type componentsLoadedMsg struct{ components []jira.Component }
 type issueTypesLoadedMsg struct{ issueTypes []jira.IssueType }
+type createMetaLoadedMsg struct{ fields []jira.CreateMetaField }
+type issueCreatedMsg struct{ issue *jira.Issue }
+type createErrorMsg struct{ err error }
 
 func updateIssueField(client jira.ClientInterface, issueKey, field string, value any) tea.Cmd {
 	return func() tea.Msg {
@@ -241,6 +244,26 @@ func updateComment(client jira.ClientInterface, issueKey, commentID string, body
 			return errorMsg{err: err}
 		}
 		return commentUpdatedMsg{issueKey: issueKey}
+	}
+}
+
+func fetchCreateMeta(client jira.ClientInterface, projectKey, issueTypeID string) tea.Cmd {
+	return func() tea.Msg {
+		fields, err := client.GetCreateMeta(context.Background(), projectKey, issueTypeID)
+		if err != nil {
+			return createErrorMsg{err: err}
+		}
+		return createMetaLoadedMsg{fields: fields}
+	}
+}
+
+func createIssue(client jira.ClientInterface, fields map[string]any) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := client.CreateIssue(context.Background(), fields)
+		if err != nil {
+			return createErrorMsg{err: err}
+		}
+		return issueCreatedMsg{issue: issue}
 	}
 }
 
@@ -319,7 +342,8 @@ func fetchSprints(client jira.ClientInterface, boardID int) tea.Cmd {
 	return func() tea.Msg {
 		sprints, err := client.GetSprints(context.Background(), boardID)
 		if err != nil {
-			return errorMsg{err: err}
+			// silently ignore, board may not support sprints
+			return sprintsLoadedMsg{sprints: nil}
 		}
 		return sprintsLoadedMsg{sprints: sprints}
 	}

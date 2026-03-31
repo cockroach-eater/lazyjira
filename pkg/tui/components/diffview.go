@@ -8,15 +8,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// DiffConfirmedMsg is sent when user confirms the diff (Enter).
+// DiffConfirmedMsg is sent when user confirms the diff (Enter)
 type DiffConfirmedMsg struct {
 	Content string // the new (edited) content
 }
 
-// DiffCancelledMsg is sent when user rejects the diff (Esc/q).
+// DiffCancelledMsg is sent when user rejects the diff (Esc/q)
 type DiffCancelledMsg struct{}
 
-// DiffView shows a unified diff in a scrollable modal with confirm/reject.
+// DiffView shows a unified diff in a scrollable modal with confirm/reject
 type DiffView struct {
 	title   string
 	lines   []string // pre-rendered diff lines with ANSI colors
@@ -31,7 +31,7 @@ func NewDiffView() DiffView {
 	return DiffView{}
 }
 
-// Show displays the diff view with the given title, diff lines, and new content.
+// Show displays the diff view with the given title and content
 func (d *DiffView) Show(title string, oldText, newText string) {
 	d.title = title
 	d.lines = computeUnifiedDiff(oldText, newText)
@@ -94,24 +94,24 @@ func (d *DiffView) View() string {
 		return ""
 	}
 
-	// Size: 80% width, fit content height.
+	// 80% width and fit content height
 	contentW := min(d.width*8/10, d.width-4)
 	if contentW < 30 {
 		contentW = min(d.width-2, 30)
 	}
 	visibleH := d.visibleH()
 
-	// Clamp scroll offset.
+	// Clamp scroll offset
 	maxOffset := max(len(d.lines)-visibleH, 0)
 	if d.offset > maxOffset {
 		d.offset = maxOffset
 	}
 
-	// Slice visible lines.
+	// Slice visible lines
 	end := min(d.offset+visibleH, len(d.lines))
 	visible := d.lines[d.offset:end]
 
-	// Wrap lines to fit width.
+	// Wrap lines to fit width
 	innerW := contentW - 2 // borders
 	wrapStyle := lipgloss.NewStyle().Width(innerW)
 	var displayLines []string
@@ -131,7 +131,7 @@ func (d *DiffView) View() string {
 		&ScrollInfo{Total: len(d.lines), Visible: visibleH, Offset: d.offset})
 }
 
-// Intercept handles a message if the diff view is visible. Implements Overlay.
+// Intercept handles a message if the diff view is visible
 func (d *DiffView) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	if !d.visible {
 		return nil, false
@@ -145,7 +145,7 @@ func (d *DiffView) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// Render draws the diff view centered on bg. Implements Overlay.
+// Render draws the diff view centered on bg
 func (d *DiffView) Render(bg string, w, h int) string {
 	if !d.visible {
 		return bg

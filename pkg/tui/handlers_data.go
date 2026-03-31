@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -128,7 +130,7 @@ func (a *App) handleTransitionsLoaded(msg transitionsLoadedMsg) (tea.Model, tea.
 	return a, nil
 }
 
-// handlePrioritiesLoaded shows the priority picker modal.
+// handlePrioritiesLoaded shows the priority picker modal
 func (a *App) handlePrioritiesLoaded(msg prioritiesLoadedMsg) (tea.Model, tea.Cmd) {
 	if len(msg.priorities) == 0 {
 		return a, nil
@@ -137,11 +139,14 @@ func (a *App) handlePrioritiesLoaded(msg prioritiesLoadedMsg) (tea.Model, tea.Cm
 	for _, p := range msg.priorities {
 		items = append(items, components.ModalItem{ID: p.ID, Label: p.Name})
 	}
-	a.onSelect = func(item components.ModalItem) tea.Cmd {
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			return updateIssueField(a.client, sel.Key, "priority", map[string]string{"id": item.ID})
+	// only set default callback if caller did not set one (e.g. create form sets its own)
+	if a.onSelect == nil {
+		a.onSelect = func(item components.ModalItem) tea.Cmd {
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return updateIssueField(a.client, sel.Key, fldPriority, map[string]string{"id": item.ID})
+			}
+			return nil
 		}
-		return nil
 	}
 	a.modal.Show("Priority", items)
 	return a, nil
@@ -156,6 +161,15 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 	// Prefetch only caches, no modal
 	if msg.issueKey == "" {
 		return a, nil
+	}
+	// create form user picker (single-select or checklist)
+	if msg.issueKey == createUsersSentinel {
+		if a.onChecklist != nil {
+			// multi-user field: show checklist with me at top
+			a.modal.ShowChecklist("Select users", a.buildUserItems(msg.users), nil)
+			return a, nil
+		}
+		return a.showCreateUserPicker(msg.users)
 	}
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
@@ -190,7 +204,7 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Then unassigned option
-	items = append(items, components.ModalItem{ID: "", Label: "Unassigned", Active: currentAssigneeID == ""})
+	items = append(items, components.ModalItem{ID: "", Label: "None", Active: currentAssigneeID == ""})
 
 	// Then everyone else, skip current user since already added
 	for _, u := range msg.users {
@@ -200,7 +214,7 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 		items = append(items, components.ModalItem{ID: u.AccountID, Label: u.DisplayName, Active: u.AccountID == currentAssigneeID})
 	}
 
-	// onSelect callback set at fetch time (ActEditAssignee or editInfoField).
+	// onSelect callback set at fetch time (ActAssignee or editInfoField)
 	a.modal.Show("Assignee: "+sel.Key, items)
 	return a, nil
 }
@@ -248,13 +262,15 @@ func (a *App) handleSprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 			Active: s.ID == currentSprintID,
 		})
 	}
-	issueKey := sel.Key
-	a.onSelect = func(item components.ModalItem) tea.Cmd {
-		sprintID, _ := strconv.Atoi(item.ID)
-		if sprintID == 0 {
-			return updateIssueField(a.client, issueKey, "sprint", nil)
+	if a.onSelect == nil {
+		issueKey := sel.Key
+		a.onSelect = func(item components.ModalItem) tea.Cmd {
+			sprintID, _ := strconv.Atoi(item.ID)
+			if sprintID == 0 {
+				return updateIssueField(a.client, issueKey, "sprint", nil)
+			}
+			return moveToSprint(a.client, sprintID, issueKey)
 		}
-		return moveToSprint(a.client, sprintID, issueKey)
 	}
 	a.modal.Show("Sprint: "+sel.Key, items)
 	return a, nil
@@ -304,8 +320,25 @@ func (a *App) handleComponentsLoaded(msg componentsLoadedMsg) (tea.Model, tea.Cm
 	return a, nil
 }
 
-// handleIssueTypesLoaded shows the issue type picker modal.
+// handleIssueTypesLoaded shows the issue type picker modal or create form type picker
 func (a *App) handleIssueTypesLoaded(msg issueTypesLoadedMsg) (tea.Model, tea.Cmd) {
+	// if creating an issue, show type picker via the standard Modal
+	if a.createCtx.intent {
+		a.createCtx.intent = false
+		items := make([]components.ModalItem, 0, len(msg.issueTypes))
+		for _, t := range msg.issueTypes {
+			if !t.Subtask {
+				items = append(items, components.ModalItem{ID: t.ID, Label: t.Name})
+			}
+		}
+		a.onSelect = func(item components.ModalItem) tea.Cmd {
+			return func() tea.Msg {
+				return components.CreateFormTypeSelectedMsg{TypeID: item.ID, TypeName: item.Label}
+			}
+		}
+		a.modal.Show("Select issue type", items)
+		return a, nil
+	}
 	items := make([]components.ModalItem, 0, len(msg.issueTypes))
 	for _, t := range msg.issueTypes {
 		items = append(items, components.ModalItem{ID: t.ID, Label: t.Name})
@@ -380,6 +413,268 @@ func (a *App) handleBatchPrefetched(msg batchPrefetchedMsg) (tea.Model, tea.Cmd)
 		a.issueCache[msg.issues[i].Key] = &msg.issues[i]
 	}
 	return a, nil
+}
+
+// handleCreateFormTypeSelected fetches create metadata for selected type
+func (a *App) handleCreateFormTypeSelected(msg components.CreateFormTypeSelectedMsg) (tea.Model, tea.Cmd) {
+	a.createCtx.issueTypeID = msg.TypeID
+	a.createCtx.issueTypeName = msg.TypeName
+	a.createForm.SetLoading(true)
+	*a.logFlag = true
+	return a, fetchCreateMeta(a.client, a.createCtx.projectKey, msg.TypeID)
+}
+
+// handleCreateMetaLoaded builds form fields from metadata
+func (a *App) handleCreateMetaLoaded(msg createMetaLoadedMsg) (tea.Model, tea.Cmd) {
+	fields := a.buildCreateFields(msg.fields)
+
+	// prefill from active tab JQL
+	if a.cfg.GUI.ShouldPrefillFromTab() {
+		tab := a.issuesList.ActiveTab()
+		if tab.JQL != "" {
+			jql := resolveTabJQL(tab, a.projectKey, a.cfg.Jira.Email)
+			prefill := ParseJQLPrefill(jql)
+			ApplyPrefill(fields, prefill, a.currentUser, a.isCloud)
+		}
+	}
+
+	// duplicate mode: prefill from source issue (overrides JQL prefill)
+	if src := a.createCtx.duplicateFrom; src != nil {
+		applyDuplicatePrefill(fields, src, a.isCloud)
+	}
+
+	a.createForm.ShowForm(fields, a.createCtx.issueTypeName, a.createCtx.projectKey)
+
+	// prefetch users in background (not included in createmeta AllowedValues)
+	var cmds []tea.Cmd
+	if _, ok := a.usersCache[a.projectKey]; !ok {
+		cmds = append(cmds, fetchUsers(a.client, a.projectKey, ""))
+	}
+	if len(cmds) > 0 {
+		return a, tea.Batch(cmds...)
+	}
+	return a, nil
+}
+
+// applyDuplicatePrefill copies field values from a source issue to form fields
+func applyDuplicatePrefill(fields []components.CreateFormField, src *jira.Issue, isCloud bool) {
+	for i := range fields {
+		switch fields[i].FieldID {
+		case "summary":
+			fields[i].DisplayValue = "Copy of " + src.Summary
+			fields[i].Value = "Copy of " + src.Summary
+		case "description":
+			fields[i].DisplayValue = src.Description
+			fields[i].Value = src.Description
+		case fldPriority:
+			if src.Priority != nil {
+				fields[i].DisplayValue = src.Priority.Name
+				fields[i].Value = map[string]string{"id": src.Priority.ID}
+			}
+		case fldAssignee:
+			if src.Assignee != nil {
+				fields[i].DisplayValue = src.Assignee.DisplayName
+				key := fldName
+				if isCloud {
+					key = fldAccountID
+				}
+				fields[i].Value = map[string]string{key: src.Assignee.AccountID}
+			}
+		case fldLabels:
+			if len(src.Labels) > 0 {
+				fields[i].DisplayValue = strings.Join(src.Labels, ", ")
+				fields[i].Value = src.Labels
+			}
+		case fldComponents:
+			if len(src.Components) > 0 {
+				comps := make([]map[string]string, 0, len(src.Components))
+				names := make([]string, 0, len(src.Components))
+				for _, c := range src.Components {
+					comps = append(comps, map[string]string{"id": c.ID})
+					names = append(names, c.Name)
+				}
+				fields[i].DisplayValue = strings.Join(names, ", ")
+				fields[i].Value = comps
+			}
+		case fldSprint:
+			if src.Sprint != nil {
+				fields[i].DisplayValue = src.Sprint.Name
+				fields[i].Value = map[string]string{"id": strconv.Itoa(src.Sprint.ID)}
+			}
+		default:
+			// custom fields
+			if strings.HasPrefix(fields[i].FieldID, "customfield_") {
+				if val, ok := src.CustomFields[fields[i].FieldID]; ok {
+					fields[i].Value = val
+					fields[i].DisplayValue = formatCustomVal(val)
+				}
+			}
+		}
+	}
+}
+
+// formatCustomVal converts a custom field value to display string
+func formatCustomVal(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return fmt.Sprintf("%g", val)
+	case map[string]any:
+		if name, ok := val["displayName"].(string); ok {
+			return name
+		}
+		if name, ok := val["value"].(string); ok {
+			return name
+		}
+		if name, ok := val["name"].(string); ok {
+			return name
+		}
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// buildCreateFields converts create metadata to form fields
+// fields that are set automatically or not user-editable on creation
+var skipCreateFields = map[string]bool{
+	"project":    true,
+	"issuetype":  true,
+	"attachment": true,
+	"issuelinks": true,
+	"parent":     true,
+}
+
+func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.CreateFormField {
+	// ordered known fields shown first
+	knownOrder := []string{"summary", "description", fldPriority, fldAssignee, fldLabels, fldComponents, fldSprint}
+	metaMap := make(map[string]jira.CreateMetaField)
+	for _, f := range meta {
+		metaMap[f.FieldID] = f
+	}
+
+	added := make(map[string]bool)
+	var fields []components.CreateFormField
+
+	for _, fid := range knownOrder {
+		mf, ok := metaMap[fid]
+		if !ok {
+			// always show summary and description even if not in metadata
+			switch fid {
+			case "summary":
+				mf = jira.CreateMetaField{FieldID: "summary", Name: "Summary", Required: true, Schema: jira.CreateMetaSchema{Type: "string", System: "summary"}}
+			case "description":
+				mf = jira.CreateMetaField{FieldID: "description", Name: "Description", Required: false, Schema: jira.CreateMetaSchema{Type: "string", System: "description"}}
+			default:
+				continue
+			}
+		}
+		fields = append(fields, a.metaToFormField(mf))
+		added[fid] = true
+	}
+
+	// apply custom field name overrides from config
+	cfgNames := make(map[string]string)
+	for _, cf := range a.cfg.CustomFields {
+		cfgNames[cf.ID] = cf.Name
+	}
+
+	// add remaining fields from API metadata (sorted by required first)
+	var remaining []jira.CreateMetaField
+	for _, mf := range meta {
+		if added[mf.FieldID] || skipCreateFields[mf.FieldID] {
+			continue
+		}
+		remaining = append(remaining, mf)
+	}
+	// required fields first
+	sort.SliceStable(remaining, func(i, j int) bool {
+		if remaining[i].Required != remaining[j].Required {
+			return remaining[i].Required
+		}
+		return false
+	})
+	for _, mf := range remaining {
+		ff := a.metaToFormField(mf)
+		if name, ok := cfgNames[mf.FieldID]; ok {
+			ff.Name = name
+		}
+		fields = append(fields, ff)
+	}
+
+	return fields
+}
+
+const schemaArray = "array"
+
+// metaToFormField converts one CreateMetaField to CreateFormField
+func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormField {
+	ft := components.CFFieldSingleText
+	switch {
+	case mf.Schema.System == "description":
+		ft = components.CFFieldMultiText
+	case mf.Schema.System == fldPriority || mf.Schema.System == "issuetype" || mf.Schema.System == fldSprint:
+		ft = components.CFFieldSingleSelect
+	case mf.Schema.System == fldAssignee || mf.Schema.System == "reporter":
+		ft = components.CFFieldPerson
+	case mf.Schema.System == fldLabels:
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.System == fldComponents:
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.Type == "option":
+		// custom single-select (Size, Project, etc)
+		ft = components.CFFieldSingleSelect
+	case mf.Schema.Type == schemaArray && mf.Schema.Items == "option":
+		// custom multi-select (Tags, Components custom, etc)
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.Type == schemaArray && mf.Schema.Items == "user":
+		// custom multi-user picker (Requestor, etc)
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.Type == schemaArray && mf.Schema.Items == "string":
+		// labels-like arrays
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.Type == schemaArray:
+		ft = components.CFFieldMultiSelect
+	case mf.Schema.Type == "user":
+		ft = components.CFFieldPerson
+	case len(mf.AllowedValues) > 0:
+		// has options, treat as select even if type is unknown
+		ft = components.CFFieldSingleSelect
+	}
+
+	allowed := make([]components.ModalItem, 0, len(mf.AllowedValues))
+	for _, v := range mf.AllowedValues {
+		allowed = append(allowed, components.ModalItem{ID: v.ID, Label: v.Name})
+	}
+
+	ff := components.CreateFormField{
+		Name:          mf.Name,
+		FieldID:       mf.FieldID,
+		Type:          ft,
+		Required:      mf.Required,
+		AllowedValues: allowed,
+		SchemaItems:   mf.Schema.Items,
+	}
+
+	// set sensible display defaults for known fields
+	if mf.FieldID == fldAssignee {
+		ff.DisplayValue = "None"
+	}
+
+	return ff
+}
+
+// handleIssueCreated closes form and refreshes issue list
+func (a *App) handleIssueCreated(msg issueCreatedMsg) (tea.Model, tea.Cmd) {
+	a.createForm.Hide()
+	a.createCtx = createCtx{}
+	if msg.issue != nil {
+		a.helpBar.SetStatusMsg("Created " + msg.issue.Key)
+		return a, tea.Batch(a.fetchActiveTab(), fetchIssueDetail(a.client, msg.issue.Key))
+	}
+	return a, a.fetchActiveTab()
 }
 
 // handleIssueUpdated re-fetches issue data after an update.

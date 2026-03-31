@@ -2,7 +2,7 @@ package theme
 
 import "github.com/charmbracelet/lipgloss"
 
-// Lazygit-style colors: standard ANSI 16 palette.
+// Lazygit-style standard ANSI 16 palette colors
 const (
 	ColorGreen  = lipgloss.Color("2")  // ANSI green — active borders, accents
 	ColorBlue   = lipgloss.Color("4")  // ANSI blue — help bar, selected bg

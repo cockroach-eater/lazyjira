@@ -337,7 +337,6 @@ func (m *Modal) handleSpace() (Modal, tea.Cmd) {
 			} else {
 				m.selected[id] = true
 			}
-			m.sortChecklist()
 		}
 		return *m, nil
 	}
@@ -406,7 +405,6 @@ func (m *Modal) handleMouse(msg tea.MouseMsg) (Modal, tea.Cmd) {
 					} else {
 						m.selected[id] = true
 					}
-					m.sortChecklist()
 					return *m, nil
 				}
 				selected := m.items[m.cursor]

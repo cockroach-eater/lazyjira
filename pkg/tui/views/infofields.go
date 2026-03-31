@@ -51,7 +51,7 @@ func buildInfoFields(issue *jira.Issue, customFields []config.CustomFieldConfig)
 	}
 	fields = append(fields, InfoField{Name: "Priority", FieldID: "priority", Type: FieldSingleSelect, Value: priorityName})
 
-	assignee := "Unassigned"
+	assignee := "None"
 	if issue.Assignee != nil {
 		assignee = issue.Assignee.DisplayName
 	}

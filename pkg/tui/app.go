@@ -16,7 +16,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// Version is set from main at startup.
+// Version is set from main at startup
 var Version = "dev"
 
 type focusPanel int
@@ -35,33 +35,57 @@ const (
 	sideRight
 )
 
-// editKind identifies the type of edit in progress.
+// Jira field IDs used in create and edit flows
+const (
+	fldPriority   = "priority"
+	fldSprint     = "sprint"
+	fldLabels     = "labels"
+	fldComponents = "components"
+	fldAssignee   = "assignee"
+	fldAccountID  = "accountId"
+	fldName       = "name"
+)
+
+// editKind identifies the type of edit in progress
 type editKind int
 
 const (
 	editNone       editKind = iota
 	editDesc                // description via $EDITOR
 	editCommentNew          // new comment via $EDITOR
-	editCommentMod          // edit existing comment via $EDITOR
+	editCommentMod          // existing comment via $EDITOR
 	editSummary             // summary via InputModal
 	editField               // custom field via InputModal
 	editFieldText           // multi-line custom field via $EDITOR
 	editBranch              // git branch via InputModal
+	editCreateField         // create form field via InputModal
+	editCreateDesc          // create form description via $EDITOR
 )
 
-// editCtx tracks what edit operation is in progress.
+// editCtx tracks what edit operation is in progress
 type editCtx struct {
-	kind      editKind
-	issueKey  string
-	commentID string // for editCommentMod
-	fieldID   string // for editField / editFieldText
+	kind       editKind
+	issueKey   string
+	commentID  string // for editCommentMod
+	fieldID    string // for editField or editFieldText
+	fieldIndex int    // for create form field editing
 }
 
-// Modal callback types for result dispatch.
+// createCtx tracks issue creation state
+type createCtx struct {
+	intent        bool
+	projectKey    string
+	projectID     string
+	issueTypeID   string
+	issueTypeName string
+	duplicateFrom *jira.Issue // source issue for ctrl+n duplication
+}
+
+// Modal callback types for result dispatch
 type onSelectFunc func(components.ModalItem) tea.Cmd
 type onChecklistFunc func([]components.ModalItem) tea.Cmd
 
-// Async messages.
+// Async messages
 type issuesLoadedMsg struct {
 	issues []jira.Issue
 	tab    int // which tab index this fetch was for
@@ -103,16 +127,17 @@ type App struct {
 	jqlModal   components.JQLModal
 	diffView   components.DiffView
 	inputModal components.InputModal
+	createForm components.CreateForm
 	overlays   components.OverlayStack
 
-	// JQL autocomplete cache.
+	// JQL autocomplete cache
 	jqlFields []jira.AutocompleteField
 
-	// Edit session state.
+	// Edit session state
 	editTempPath string // temp file path for cleanup
 	editContext  editCtx
 
-	// Modal callbacks: set before showing modal, consumed on result.
+	// Modal callbacks set before showing modal and consumed on result
 	onSelect    onSelectFunc
 	onChecklist onChecklistFunc
 
@@ -120,7 +145,7 @@ type App struct {
 	leftFocus   focusPanel
 	projectKey  string
 	projectID   string
-	boardID     int         // agile board for current project (0 = unknown)
+	boardID     int         // agile board for current project, 0 if unknown
 	boards      []jira.Board // cached boards from API
 	showHelp    bool
 	helpCursor  int
@@ -130,13 +155,14 @@ type App struct {
 	currentUser *jira.User
 	usersCache  map[string][]jira.User // project key -> assignable users
 	issueCache  map[string]*jira.Issue
+	createCtx   createCtx
 
-	// Git integration.
+	// Git integration
 	gitRepoPath    string // empty = not a git repo
 	gitBranch      string // current branch name
 	gitDetectedKey string // issue key from auto-detect (consumed once)
 
-	// Cached panel sizes for mouse hit-testing.
+	// Cached panel sizes for mouse hit testing
 	panelSideW     int
 	panelStatusH   int
 	panelIssuesH   int
@@ -149,7 +175,7 @@ type App struct {
 	height int
 }
 
-// AuthMethod describes how the user authenticated.
+// AuthMethod describes how the user authenticated
 type AuthMethod string
 
 const (
@@ -187,6 +213,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	diffView := components.NewDiffView()
 	inputModal := components.NewInputModal()
 	jqlModal := components.NewJQLModal()
+	createForm := components.NewCreateForm()
 
 	logFlag := new(bool) // shared with closure, set via app.logRequests
 	client.SetOnRequest(func(rl jira.RequestLog) {
@@ -236,6 +263,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		jqlModal:    jqlModal,
 		diffView:    diffView,
 		inputModal:  inputModal,
+		createForm:  createForm,
 		side:        sideLeft,
 		leftFocus:   focusIssues,
 		projectKey:  projectKey,
@@ -245,15 +273,21 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		usersCache:  make(map[string][]jira.User),
 		issueCache:  make(map[string]*jira.Issue),
 	}
-	// Overlay stack: checked in priority order for input interception and rendering.
+	isCloud := cfg.Jira.IsCloud()
+	app.createForm.SetDescRenderer(func(text string, width int) []string {
+		return views.RenderDescriptionPreview(text, width, isCloud)
+	})
+
+	// Overlay stack: checked in priority order for input interception and rendering
 	app.overlays = components.OverlayStack{
+		&app.createForm,
 		&app.jqlModal,
 		&app.inputModal,
 		&app.diffView,
 		&app.modal,
 	}
 
-	// Detect git repo (sync, <10ms).
+	// Detect git repo at startup
 	if git.GitAvailable() {
 		cwd, _ := os.Getwd()
 		if git.IsRepo(cwd) {
@@ -278,7 +312,7 @@ func (a *App) Init() tea.Cmd {
 	if cmd := a.fetchActiveTab(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	// Start autofetch timer.
+	// Start autofetch timer
 	cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
 		return autoFetchTickMsg{}
 	}))
@@ -286,8 +320,8 @@ func (a *App) Init() tea.Cmd {
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Search bar intercepts all keys when active, except arrow keys
-	// which pass through for navigating filtered results.
+	// Search bar intercepts all keys when active
+	// Arrow keys pass through for navigating filtered results
 	if a.searchBar.IsActive() {
 		if km, ok := msg.(tea.KeyMsg); ok && km.Type != tea.KeyUp && km.Type != tea.KeyDown {
 			updated, cmd := a.searchBar.Update(msg)
@@ -296,7 +330,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Overlays (JQL modal, input modal, diff view, selection modal) intercept input.
+	// Overlays intercept input before panels
 	if cmd, ok := a.overlays.Intercept(msg); ok {
 		return a, cmd
 	}
@@ -360,12 +394,35 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleComponentsLoaded(msg)
 	case issueTypesLoadedMsg:
 		return a.handleIssueTypesLoaded(msg)
+	case createMetaLoadedMsg:
+		return a.handleCreateMetaLoaded(msg)
+	case issueCreatedMsg:
+		return a.handleIssueCreated(msg)
+	case createErrorMsg:
+		a.createForm.SetError(msg.err.Error())
+		return a, nil
 	case issueUpdatedMsg:
 		return a.handleIssueUpdated(msg)
 	case commentAddedMsg:
 		return a, fetchIssueDetail(a.client, msg.issueKey)
 	case commentUpdatedMsg:
 		return a, fetchIssueDetail(a.client, msg.issueKey)
+
+	case components.CreateFormTypeSelectedMsg:
+		return a.handleCreateFormTypeSelected(msg)
+	case components.CreateFormEditTextMsg:
+		return a.handleCreateFormEditText(msg)
+	case components.CreateFormEditExternalMsg:
+		return a.handleCreateFormEditExternal(msg)
+	case components.CreateFormPickerMsg:
+		return a.handleCreateFormPicker(msg)
+	case components.CreateFormChecklistMsg:
+		return a.handleCreateFormChecklist(msg)
+	case components.CreateFormSubmitMsg:
+		return a.handleCreateFormSubmit(msg)
+	case components.CreateFormCancelMsg:
+		a.createCtx = createCtx{}
+		return a, nil
 
 	case components.ModalSelectedMsg:
 		return a.handleModalSelected(msg)
@@ -416,7 +473,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errorMsg:
 		errText := msg.err.Error()
 		a.statusPanel.SetError(errText)
-		// Show error modal so the user sees what went wrong.
+		// Show error modal so the user sees what went wrong
 		a.modal.ShowError("Error", []components.ModalItem{
 			{Label: errText},
 		})
@@ -440,7 +497,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Route remaining input to focused panel.
+	// Route remaining input to focused panel
 	return a, a.routeToPanel(msg)
 }
 
@@ -452,7 +509,7 @@ func (a *App) View() string {
 	var content string
 
 	if a.isVerticalLayout() {
-		// Vertical: all stacked.
+		// Vertical layout with all panels stacked
 		content = lipgloss.JoinVertical(lipgloss.Left,
 			a.statusPanel.View(),
 			a.issuesList.View(),
@@ -494,7 +551,7 @@ func (a *App) View() string {
 
 	full := lipgloss.JoinVertical(lipgloss.Left, content, bottomBar)
 
-	// Render the first visible overlay (mutually exclusive).
+	// Render all visible overlays (stacked, e.g. create form + picker modal)
 	full = a.overlays.Render(full, a.width, a.height)
 	if a.showHelp {
 		full = a.renderHelpOverlay(full)
@@ -515,14 +572,14 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 		case "status":
 			// Reuse transition flow.
 			return a, fetchTransitions(a.client, sel.Key)
-		case "priority":
+		case fldPriority:
 			return a, fetchPriorities(a.client)
 		case "issuetype":
 			if a.projectID != "" {
 				a.onSelect = a.makeFieldSelectCallback(sel.Key, "issuetype")
 				return a, fetchIssueTypes(a.client, a.projectID)
 			}
-		case "sprint":
+		case fldSprint:
 			if a.boardID != 0 {
 				return a, fetchSprints(a.client, a.boardID)
 			}
@@ -538,22 +595,22 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 	case views.FieldMultiSelect:
 		issueKey := sel.Key
 		switch field.FieldID {
-		case "labels":
+		case fldLabels:
 			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
 				labels := make([]string, 0, len(selected))
 				for _, item := range selected {
 					labels = append(labels, item.ID)
 				}
-				return updateIssueField(a.client, issueKey, "labels", labels)
+				return updateIssueField(a.client, issueKey, fldLabels, labels)
 			}
 			return a, fetchLabels(a.client)
-		case "components":
+		case fldComponents:
 			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
 				comps := make([]map[string]string, 0, len(selected))
 				for _, item := range selected {
 					comps = append(comps, map[string]string{"id": item.ID})
 				}
-				return updateIssueField(a.client, issueKey, "components", comps)
+				return updateIssueField(a.client, issueKey, fldComponents, comps)
 			}
 			return a, fetchComponents(a.client, a.projectKey)
 		}
@@ -605,9 +662,9 @@ func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
 		if item.ID == "" {
 			return updateIssueField(a.client, sel.Key, fieldID, nil)
 		}
-		key := "name"
+		key := fldName
 		if a.isCloud {
-			key = "accountId"
+			key = fldAccountID
 		}
 		return updateIssueField(a.client, sel.Key, fieldID, map[string]string{key: item.ID})
 	}

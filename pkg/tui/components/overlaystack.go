@@ -32,14 +32,15 @@ func (s OverlayStack) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// Render draws the first visible overlay on top of bg.
+// Render draws all visible overlays on top of bg, chained in stack order
 func (s OverlayStack) Render(bg string, w, h int) string {
+	result := bg
 	for _, o := range s {
 		if o.IsVisible() {
-			return o.Render(bg, w, h)
+			result = o.Render(result, w, h)
 		}
 	}
-	return bg
+	return result
 }
 
 // SetSize propagates terminal size to all overlays.
