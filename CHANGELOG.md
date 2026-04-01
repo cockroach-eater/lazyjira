@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- AUR PKGBUILD: pkgver() now uses git describe for tag-based versioning per Arch Wiki guidelines
+
 ## [2.6.7] - 2026-04-01
 
 ### Fixed
