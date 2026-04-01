@@ -74,7 +74,11 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 		style := headingStyle(level)
 		r.lines = append(r.lines, "")
 		prefix := strings.Repeat(" ", indent)
-		r.lines = append(r.lines, prefix+style.Render(text))
+		headW := max(r.width-indent, 10)
+		wrapped := lipgloss.NewStyle().Width(headW).Render(text)
+		for _, wl := range strings.Split(wrapped, "\n") {
+			r.lines = append(r.lines, prefix+style.Render(wl))
+		}
 
 	case adfBulletList:
 		for _, item := range content {
@@ -96,9 +100,15 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 			r.lines = append(r.lines, borderStyle.Render("  ┌ "+lang))
 		}
 		text := r.collectInlinePlain(content)
-		highlighted := highlightCode(text, lang)
-		for _, line := range strings.Split(highlighted, "\n") {
-			r.lines = append(r.lines, borderStyle.Render("  │ ")+line)
+		codeW := max(r.width-4, 10)
+		// Hard-wrap plain text before highlighting so ANSI codes stay intact
+		var wrappedLines []string
+		for _, line := range strings.Split(text, "\n") {
+			wrappedLines = append(wrappedLines, hardWrapLine(line, codeW)...)
+		}
+		highlighted := highlightCode(strings.Join(wrappedLines, "\n"), lang)
+		for _, hl := range strings.Split(highlighted, "\n") {
+			r.lines = append(r.lines, borderStyle.Render("  │ ")+hl)
 		}
 		if lang != "" {
 			r.lines = append(r.lines, borderStyle.Render("  └"))
@@ -438,6 +448,24 @@ func (r *adfRenderer) renderTable(rows []any) {
 			r.lines = append(r.lines, line)
 		}
 	}
+}
+
+// hardWrapLine splits a single line into chunks of at most width runes
+func hardWrapLine(line string, width int) []string {
+	if width <= 0 {
+		return []string{line}
+	}
+	runes := []rune(line)
+	if len(runes) <= width {
+		return []string{line}
+	}
+	var result []string
+	for len(runes) > width {
+		result = append(result, string(runes[:width]))
+		runes = runes[width:]
+	}
+	result = append(result, string(runes))
+	return result
 }
 
 // highlightCode applies syntax highlighting using chroma.
