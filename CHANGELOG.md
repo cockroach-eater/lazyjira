@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [2.6.7] - 2026-04-01
+
 ### Fixed
 
 - Text wrapping now measures display width of Unicode and emoji instead of counting bytes. Panels no longer overflow with multi-byte characters
@@ -217,7 +219,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Cross-platform: macOS, Linux, Windows
 - Homebrew install via tap
 
-[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.6.6...HEAD
+[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.6.7...HEAD
+[2.6.7]: https://github.com/textfuel/lazyjira/compare/v2.6.6...v2.6.7
 [2.6.6]: https://github.com/textfuel/lazyjira/compare/v2.6.5...v2.6.6
 [2.6.5]: https://github.com/textfuel/lazyjira/compare/v2.6.4...v2.6.5
 [2.6.4]: https://github.com/textfuel/lazyjira/compare/v2.6.3...v2.6.4
