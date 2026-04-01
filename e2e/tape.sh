@@ -4,7 +4,6 @@
 # Usage in .tape files:
 #   Source e2e/tape.sh    (ignored by VHS, parsed by preprocessor)
 #   @start                → Output + Set Shell/Width/Height/FontSize/Theme + launch demo
-#   @start_vertical       → same but narrow (550px) for vertical layout
 #   @down [N]             → Type "j" + Sleep (repeated N times, default 1)
 #   @up [N]               → Type "k" + Sleep
 #   @tab_next [N]         → Type "]" + Sleep
@@ -12,6 +11,7 @@
 #   @panel N              → Type "N" + Sleep (focus panel 0-3)
 #   @open                 → Type "l" + Sleep (open issue in detail)
 #   @select               → Space + Sleep (select item)
+#   @create               → Type "n" + Sleep (open create issue form)
 #   @transition           → Type "t" + Sleep + Enter + Sleep (pick first transition)
 #   @search TEXT          → Type "/" + Sleep + Type "TEXT" + Enter + Sleep
 #   @help                 → Type "?" + Sleep ... Escape + Sleep
@@ -27,12 +27,19 @@
 #   @comments             → Type "c" + Sleep (jump to comments tab)
 #   @priority             → Type "p" + Sleep (open priority picker)
 #
-# Run: ./e2e/tape.sh e2e/tapes/foo.tape | vhs -
+# Pipe mode:   ./e2e/tape.sh e2e/tapes/foo.tape.sh | vhs -
+# Env override: LAYOUT=vertical ./e2e/tape.sh file.tape.sh | vhs -
+# Subcommands:
+#   ./e2e/tape.sh generate e2e/tapes/foo.tape.sh     — write foo.tape + foo_vertical.tape
+#   ./e2e/tape.sh generate-all                        — generate all e2e/tapes/*.tape.sh
 
 set -euo pipefail
 
 DEFAULT_SLEEP=200
 LONG_SLEEP=400
+
+# LAYOUT controls width in @start: horizontal (default) or vertical
+LAYOUT="${LAYOUT:-horizontal}"
 
 repeat() {
     local n="${1:-1}"
@@ -51,8 +58,10 @@ process_line() {
 
     case "$line" in
         @start)
+            local width=1200
+            [[ "$LAYOUT" == "vertical" ]] && width=550
             echo 'Set Shell bash'
-            echo 'Set Width 1200'
+            echo "Set Width $width"
             echo 'Set Height 600'
             echo 'Set FontSize 14'
             echo 'Set TypingSpeed 0ms'
@@ -62,17 +71,16 @@ process_line() {
             echo 'Enter'
             echo 'Sleep 1s'
             ;;
-        @start_vertical)
-            echo 'Set Shell bash'
-            echo 'Set Width 550'
-            echo 'Set Height 600'
-            echo 'Set FontSize 14'
-            echo 'Set TypingSpeed 0ms'
-            echo 'Set Theme "Catppuccin Mocha"'
-            echo ''
-            echo 'Type "./lazyjira --demo"'
-            echo 'Enter'
-            echo 'Sleep 1s'
+        Output\ *)
+            if [[ "$LAYOUT" == "vertical" ]]; then
+                # insert _vertical before the extension
+                local path="${line#Output }"
+                local base="${path%.*}"
+                local ext="${path##*.}"
+                echo "Output ${base}_vertical.${ext}"
+            else
+                echo "$line"
+            fi
             ;;
         @down*)
             local n="${line#@down}"; n="${n// /}"; n="${n:-1}"
@@ -99,6 +107,9 @@ process_line() {
             ;;
         @select)
             printf 'Space\nSleep %sms\n' "$LONG_SLEEP"
+            ;;
+        @create)
+            printf 'Type "n"\nSleep %sms\n' "$LONG_SLEEP"
             ;;
         @transition)
             printf 'Type "t"\nSleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "500"
@@ -131,7 +142,7 @@ process_line() {
         @edit_type\ *)
             local text="${line#@edit_type }"
             printf 'Type "e"\nSleep %sms\n' "$LONG_SLEEP"
-            # Clear existing text: Home + Ctrl+K, then type new text
+            # clear existing text then type new value
             printf 'Ctrl+a\nCtrl+k\n'
             printf 'Set TypingSpeed 50ms\nType "%s"\nSet TypingSpeed 0ms\n' "$text"
             printf 'Sleep %sms\nEnter\nSleep %sms\n' "$LONG_SLEEP" "500"
@@ -161,14 +172,44 @@ process_line() {
     esac
 }
 
-# Main: read tape file, expand @-directives, pass through everything else
-input="${1:--}"
-if [[ "$input" == "-" ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        process_line "$line"
-    done
-else
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        process_line "$line"
-    done < "$input"
-fi
+process_file() {
+    local input="$1"
+    if [[ "$input" == "-" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            process_line "$line"
+        done
+    else
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            process_line "$line"
+        done < "$input"
+    fi
+}
+
+generate_one() {
+    local src="$1"
+    local dir base
+    dir="$(dirname "$src")"
+    base="$(basename "$src" .tape.sh)"
+
+    LAYOUT=horizontal process_file "$src" > "$dir/$base.tape"
+    echo "wrote $dir/$base.tape"
+
+    LAYOUT=vertical process_file "$src" > "$dir/${base}_vertical.tape"
+    echo "wrote $dir/${base}_vertical.tape"
+}
+
+# dispatch subcommands or default pipe mode
+case "${1:-}" in
+    generate)
+        generate_one "$2"
+        ;;
+    generate-all)
+        for f in e2e/tapes/*.tape.sh; do
+            generate_one "$f"
+        done
+        ;;
+    *)
+        # pipe mode: first arg is file path or - for stdin
+        process_file "${1:--}"
+        ;;
+esac

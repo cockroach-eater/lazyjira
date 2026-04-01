@@ -1,4 +1,4 @@
-.PHONY: build build-version build-demo lint lint-fix lint-docs vet clean check check-demo release preview e2e-gen-preview e2e e2e-gen e2e-update nix-deps
+.PHONY: build build-version build-demo lint lint-fix lint-docs vet clean check check-demo release preview e2e e2e-gen e2e-update nix-deps
 
 build:
 	go build -o lazyjira ./cmd/lazyjira
@@ -40,13 +40,8 @@ check-demo:
 	go vet -tags demo ./...
 	go build -tags demo -o lazyjira ./cmd/lazyjira
 
-preview: build-demo e2e-gen-preview
+preview: build-demo e2e-gen
 	@vhs -q e2e/tapes/00_preview.tape & vhs -q e2e/tapes/00_preview_vertical.tape & wait
-
-e2e-gen-preview:
-	@./e2e/tape.sh e2e/tapes/00_preview.tape.sh > e2e/tapes/00_preview.tape
-	@sed 's|Output e2e/golden/00_preview.gif|Output e2e/golden/00_preview_vertical.gif|;s|@start|@start_vertical|' \
-		e2e/tapes/00_preview.tape.sh | ./e2e/tape.sh - > e2e/tapes/00_preview_vertical.tape
 
 e2e: build-demo e2e-gen
 	@pids=""; fail=0; \
@@ -61,11 +56,7 @@ e2e: build-demo e2e-gen
 	@echo "All tapes passed."
 
 e2e-gen:
-	@for src in e2e/tapes/*.tape.sh; do \
-		[ -f "$$src" ] || continue; \
-		dst="$${src%.sh}"; \
-		./e2e/tape.sh "$$src" > "$$dst"; \
-	done
+	@./e2e/tape.sh generate-all
 
 nix-deps:
 	gomod2nix generate
