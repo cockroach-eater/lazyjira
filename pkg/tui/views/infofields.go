@@ -151,7 +151,7 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 			}
 		case "priority":
 			if styled && issue.Priority != nil {
-				val = priorityStyled(val, th)
+				val = theme.PriorityStyled(val)
 			}
 		case "assignee":
 			if styled && issue.Assignee != nil {
@@ -204,14 +204,3 @@ func formatCustomFieldValue(v any) string {
 	}
 }
 
-// priorityStyled applies priority color styling.
-func priorityStyled(name string, th *theme.Theme) string {
-	switch strings.ToLower(name) {
-	case "highest", "high", "critical", "blocker":
-		return th.PriorityHigh.Render(name)
-	case "medium":
-		return th.PriorityMedium.Render(name)
-	default:
-		return th.PriorityLow.Render(name)
-	}
-}

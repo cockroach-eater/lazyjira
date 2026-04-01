@@ -61,7 +61,7 @@ func (d *DiffView) Update(msg tea.Msg) (DiffView, tea.Cmd) {
 		case "esc", "q":
 			d.visible = false
 			return *d, func() tea.Msg { return DiffCancelledMsg{} }
-		case "j", "down":
+		case "j", keyDown:
 			d.offset++
 		case "k", "up":
 			if d.offset > 0 {

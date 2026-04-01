@@ -1,6 +1,10 @@
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Lazygit-style standard ANSI 16 palette colors
 const (
@@ -88,6 +92,18 @@ func defaultTheme() *Theme {
 
 		PriorityLow: lipgloss.NewStyle().
 			Foreground(ColorGreen),
+	}
+}
+
+// PriorityStyled applies priority color based on name
+func PriorityStyled(name string) string {
+	switch strings.ToLower(name) {
+	case "highest", "high", "critical", "blocker":
+		return Default.PriorityHigh.Render(name)
+	case "medium":
+		return Default.PriorityMedium.Render(name)
+	default:
+		return Default.PriorityLow.Render(name)
 	}
 }
 

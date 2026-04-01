@@ -46,8 +46,8 @@ type Modal struct {
 	offset    int
 	width     int
 	height    int
-	filter    string // current search query
-	searching bool   // whether search input is active
+	filterInput TextInput // current search input
+	searching   bool      // whether search input is active
 	isError   bool   // red border for error display
 }
 
@@ -65,7 +65,7 @@ func (m *Modal) show(title string, items []ModalItem, readOnly bool) {
 	m.readOnly = readOnly
 	m.checklist = false
 	m.selected = nil
-	m.filter = ""
+	m.filterInput.SetValue("")
 	m.searching = false
 	m.isError = false
 	// Skip initial separator.
@@ -177,10 +177,10 @@ func (m *Modal) moveCursor(delta int) {
 
 // applyFilter filters allItems by the current search query.
 func (m *Modal) applyFilter() {
-	if m.filter == "" {
+	if m.filterInput.Value() == "" {
 		m.items = m.allItems
 	} else {
-		q := strings.ToLower(m.filter)
+		q := strings.ToLower(m.filterInput.Value())
 		var filtered []ModalItem
 		for _, item := range m.allItems {
 			if item.Separator {
@@ -208,7 +208,7 @@ func (m *Modal) confirmSearch() {
 		matchedLabel = m.items[m.cursor].Label
 	}
 	m.searching = false
-	m.filter = ""
+	m.filterInput.SetValue("")
 	m.items = m.allItems
 	m.cursor = 0
 	for i, item := range m.items {
@@ -238,13 +238,8 @@ func (m *Modal) IsSearching() bool  { return m.searching }
 func (m *Modal) IsChecklist() bool  { return m.checklist }
 
 // SearchView renders the modal search bar for external use (e.g. bottom help bar).
-func (m *Modal) SearchView(width int) string {
-	searchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan
-	line := "/ " + m.filter
-	if m.searching {
-		line += "_"
-	}
-	return searchStyle.Width(width).Render(line)
+func (m *Modal) SearchView(_ int) string {
+	return RenderFilterBarInput(&m.filterInput)
 }
 
 func (m *Modal) SetSize(w, h int) {
@@ -274,17 +269,16 @@ func (m *Modal) handleSearchKey(msg tea.KeyMsg) (Modal, tea.Cmd) {
 		m.confirmSearch()
 	case "esc":
 		m.searching = false
-		m.filter = ""
+		m.filterInput.SetValue("")
 		m.applyFilter()
-	case "backspace":
-		if len(m.filter) > 0 {
-			m.filter = m.filter[:len(m.filter)-1]
-			m.applyFilter()
-		}
+	case keyDown:
+		m.moveCursor(1)
+	case "up":
+		m.moveCursor(-1)
 	default:
-		ch := msg.String()
-		if len(ch) == 1 || ch == " " {
-			m.filter += ch
+		updated, changed := m.filterInput.Update(msg)
+		m.filterInput = updated
+		if changed {
 			m.applyFilter()
 		}
 	}
@@ -296,7 +290,7 @@ func (m *Modal) handleKey(msg tea.KeyMsg) (Modal, tea.Cmd) {
 	case "/":
 		if !m.readOnly {
 			m.searching = true
-			m.filter = ""
+			m.filterInput.SetValue("")
 			return *m, nil
 		}
 	case "j", "down":

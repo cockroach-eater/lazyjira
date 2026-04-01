@@ -15,6 +15,11 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
+// RenderADFPreview renders raw ADF data to styled terminal lines for preview in create form
+func RenderADFPreview(adf any, width int) []string {
+	return renderADF(adf, width)
+}
+
 // renderADF converts raw ADF JSON (Atlassian Document Format) to styled terminal lines.
 // Returns nil if node is nil or not a valid ADF document.
 func renderADF(node any, width int) []string {

@@ -425,8 +425,14 @@ func (d *DemoClient) CreateIssue(_ context.Context, fields map[string]any) (*Iss
 	if s, ok := fields["summary"].(string); ok {
 		iss.Summary = s
 	}
-	if desc, ok := fields["description"].(string); ok {
-		iss.Description = desc
+	if desc := fields["description"]; desc != nil {
+		switch d := desc.(type) {
+		case string:
+			iss.Description = d
+		default:
+			iss.DescriptionADF = desc
+			iss.Description = extractADFText(desc)
+		}
 	}
 	if id := demoFieldStr(fields, "issuetype", "id"); id != "" {
 		types, _ := d.GetIssueTypes(context.Background(), "")

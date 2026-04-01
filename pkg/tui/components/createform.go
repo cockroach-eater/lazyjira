@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
 // key constants to satisfy goconst
@@ -69,6 +71,9 @@ type CreateFormCancelMsg struct{}
 // DescRenderFunc renders description text to styled terminal lines for preview
 type DescRenderFunc func(text string, width int) []string
 
+// DescADFRenderFunc renders raw ADF data to styled terminal lines for preview
+type DescADFRenderFunc func(adf any, width int) []string
+
 // CreateForm is a 3-panel accordion overlay for issue creation
 // Sub-panels are Summary (inline text), Description (preview + editor), Fields (scrollable list)
 type CreateForm struct {
@@ -89,9 +94,10 @@ type CreateForm struct {
 	summaryIdx    int // index in allFields, -1 if absent
 
 	// description sub-panel (preview only, e opens $EDITOR)
-	descIdx      int            // index in allFields, -1 if absent
-	descOffset   int            // scroll offset for description content
-	descRenderer DescRenderFunc // optional rich renderer for preview
+	descIdx         int               // index in allFields, -1 if absent
+	descOffset      int               // scroll offset for description content
+	descRenderer    DescRenderFunc    // optional rich renderer for preview
+	descADFRenderer DescADFRenderFunc // optional ADF renderer for raw ADF values
 
 	// fields sub-panel (everything except summary/description)
 	fieldIndices []int // indices into allFields
@@ -99,11 +105,11 @@ type CreateForm struct {
 	fieldOffset  int
 	fieldDblClick DblClickDetector
 
-	paused    bool
-	errorMsg  string
-	loading   bool
-	filter    string
-	filtering bool
+	paused      bool
+	errorMsg    string
+	loading     bool
+	filterInput TextInput
+	filtering   bool
 }
 
 func NewCreateForm() CreateForm {
@@ -119,8 +125,20 @@ func (f *CreateForm) Resume() { f.paused = false }
 // FocusedPanel returns which sub-panel is currently focused
 func (f *CreateForm) FocusedPanel() CreatePanel { return f.focusedPanel }
 
+// IsFiltering returns true when the fields filter input is active
+func (f *CreateForm) IsFiltering() bool { return f.filtering }
+
+// FilterQuery returns the current filter text
+func (f *CreateForm) FilterQuery() string { return f.filterInput.Value() }
+
+// FilterBarView renders the filter bar with cursor positioning
+func (f *CreateForm) FilterBarView() string { return RenderFilterBarInput(&f.filterInput) }
+
 // SetDescRenderer sets an optional rich renderer for description preview
 func (f *CreateForm) SetDescRenderer(r DescRenderFunc) { f.descRenderer = r }
+
+// SetDescADFRenderer sets an optional renderer for raw ADF description values
+func (f *CreateForm) SetDescADFRenderer(r DescADFRenderFunc) { f.descADFRenderer = r }
 
 func (f *CreateForm) ShowForm(fields []CreateFormField, issueTypeName, projectKey string) {
 	f.visible = true
@@ -135,7 +153,7 @@ func (f *CreateForm) ShowForm(fields []CreateFormField, issueTypeName, projectKe
 	f.descOffset = 0
 	f.errorMsg = ""
 	f.loading = false
-	f.filter = ""
+	f.filterInput.SetValue("")
 	f.filtering = false
 	f.focusedPanel = CreatePanelSummary
 
@@ -160,7 +178,7 @@ func (f *CreateForm) Hide() {
 	f.summaryText = nil
 	f.errorMsg = ""
 	f.loading = false
-	f.filter = ""
+	f.filterInput.SetValue("")
 	f.filtering = false
 }
 
@@ -169,6 +187,9 @@ func (f *CreateForm) SetFieldValue(index int, value any, display string) {
 		return
 	}
 	f.allFields[index].Value = value
+	if display == "" && !f.allFields[index].Required {
+		display = "None"
+	}
 	f.allFields[index].DisplayValue = display
 	f.allFields[index].HasError = false
 
@@ -374,6 +395,20 @@ func (f *CreateForm) renderDescLines(text string, innerW int) []string {
 	if text == "" {
 		return []string{""}
 	}
+	// try ADF renderer with raw Value if available and not a plain string
+	if f.descADFRenderer != nil && f.descIdx >= 0 {
+		if val := f.allFields[f.descIdx].Value; val != nil {
+			if _, isStr := val.(string); !isStr {
+				if lines := f.descADFRenderer(val, innerW-1); len(lines) > 0 {
+					result := make([]string, len(lines))
+					for i, l := range lines {
+						result[i] = " " + l
+					}
+					return result
+				}
+			}
+		}
+	}
 	if f.descRenderer != nil {
 		if lines := f.descRenderer(text, innerW-1); len(lines) > 0 {
 			// add leading space to each line
@@ -405,20 +440,26 @@ func (f *CreateForm) interceptFilter(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case keyEsc:
 		f.filtering = false
-		f.filter = ""
+		f.filterInput.SetValue("")
 		f.fieldCursor = 0
 		f.fieldOffset = 0
 	case keyEnter:
-		f.filtering = false
-	case "backspace":
-		if len(f.filter) > 0 {
-			f.filter = f.filter[:len(f.filter)-1]
-			f.fieldCursor = 0
-			f.fieldOffset = 0
+		f.confirmFilter()
+	case keyDown:
+		filtered := f.filteredFields()
+		if f.fieldCursor < len(filtered)-1 {
+			f.fieldCursor++
+			f.ensureFieldVisible()
+		}
+	case "up":
+		if f.fieldCursor > 0 {
+			f.fieldCursor--
+			f.ensureFieldVisible()
 		}
 	default:
-		if msg.Type == tea.KeyRunes {
-			f.filter += string(msg.Runes)
+		updated, changed := f.filterInput.Update(msg)
+		f.filterInput = updated
+		if changed {
 			f.fieldCursor = 0
 			f.fieldOffset = 0
 		}
@@ -535,9 +576,11 @@ func (f *CreateForm) interceptFields(msg tea.KeyMsg) (tea.Cmd, bool) {
 		f.ensureFieldVisible()
 	case "/":
 		f.filtering = true
-		f.filter = ""
-	case "e", " ", keyEnter:
+		f.filterInput.SetValue("")
+	case "e", " ":
 		return f.editCurrentField(filtered)
+	case keyEnter:
+		return f.submitForm()
 	case keyEsc, "q":
 		f.Hide()
 		return func() tea.Msg { return CreateFormCancelMsg{} }, true
@@ -565,10 +608,10 @@ func (f *CreateForm) fieldsInnerH() int {
 }
 
 func (f *CreateForm) filteredFields() []int {
-	if f.filter == "" {
+	if f.filterInput.Value() == "" {
 		return f.fieldIndices
 	}
-	lower := strings.ToLower(f.filter)
+	lower := strings.ToLower(f.filterInput.Value())
 	var indices []int
 	for _, idx := range f.fieldIndices {
 		fld := f.allFields[idx]
@@ -578,6 +621,26 @@ func (f *CreateForm) filteredFields() []int {
 		}
 	}
 	return indices
+}
+
+// confirmFilter restores full field list and places cursor on the matched field
+func (f *CreateForm) confirmFilter() {
+	filtered := f.filteredFields()
+	var matchedIdx int
+	if f.fieldCursor >= 0 && f.fieldCursor < len(filtered) {
+		matchedIdx = filtered[f.fieldCursor]
+	}
+	f.filtering = false
+	f.filterInput.SetValue("")
+	f.fieldCursor = 0
+	for i, idx := range f.fieldIndices {
+		if idx == matchedIdx {
+			f.fieldCursor = i
+			break
+		}
+	}
+	f.fieldOffset = 0
+	f.ensureFieldVisible()
 }
 
 func (f *CreateForm) editCurrentField(filtered []int) (tea.Cmd, bool) {
@@ -964,7 +1027,21 @@ func (f *CreateForm) renderFields(formW, panelH int) string {
 	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	reqMark := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true).Render("*")
 
-	labelW := 14
+	// label column = longest field name + 1 space gap (+ 1 for req mark / leading space)
+	labelW := 0
+	for _, idx := range filtered {
+		w := lipgloss.Width(f.allFields[idx].Name)
+		if w > labelW {
+			labelW = w
+		}
+	}
+	labelW += 2 // leading marker + trailing space
+
+	// cap label column to half the inner width so values always have room
+	maxLabelW := innerW / 2
+	if labelW > maxLabelW {
+		labelW = maxLabelW
+	}
 
 	end := min(f.fieldOffset+innerH, len(filtered))
 	var lines []string
@@ -978,27 +1055,35 @@ func (f *CreateForm) renderFields(formW, panelH int) string {
 		} else {
 			label = " " + label
 		}
+		// truncate long labels
+		if lipgloss.Width(label) > labelW {
+			label = TruncateEnd(label, labelW)
+		}
 		for lipgloss.Width(label) < labelW {
 			label += " "
 		}
 
 		val := fld.DisplayValue
-		maxVal := innerW - labelW - 2
+		maxVal := innerW - labelW - 1
 		if maxVal > 0 && lipgloss.Width(val) > maxVal {
 			val = TruncateEnd(val, maxVal)
 		}
 
-		line := " " + label + val
-		if fld.HasError {
-			line = " " + errStyle.Render(label) + val
-		}
-
+		var line string
 		if focused && ci == f.fieldCursor {
-			padded := line
-			for lipgloss.Width(padded) < innerW {
-				padded += " "
+			plain := " " + label + val
+			for lipgloss.Width(plain) < innerW {
+				plain += " "
 			}
-			line = selStyle.Render(padded)
+			line = selStyle.Render(plain)
+		} else {
+			if val != "" {
+				val = styleFieldValue(fld, val)
+			}
+			line = " " + label + val
+			if fld.HasError {
+				line = " " + errStyle.Render(label) + val
+			}
 		}
 
 		lines = append(lines, line)
@@ -1014,9 +1099,6 @@ func (f *CreateForm) renderFields(formW, panelH int) string {
 	if len(filtered) > 0 {
 		footer = fmt.Sprintf("%d of %d", f.fieldCursor+1, len(filtered))
 	}
-	if f.filtering {
-		footer = "/ " + f.filter
-	}
 
 	var scroll *ScrollInfo
 	if len(filtered) > innerH {
@@ -1029,6 +1111,23 @@ func (f *CreateForm) renderFields(formW, panelH int) string {
 
 	title := "Fields"
 	return RenderPanelFull(title, footer, content, formW, innerH, focused, scroll)
+}
+
+var noneStyle = lipgloss.NewStyle().Foreground(theme.ColorGray)
+
+func styleFieldValue(fld CreateFormField, val string) string {
+	if val == "None" {
+		return noneStyle.Render(val)
+	}
+	switch fld.FieldID {
+	case "priority":
+		return theme.PriorityStyled(val)
+	default:
+		if fld.Type == CFFieldPerson || fld.SchemaItems == "user" {
+			return theme.AuthorRender(val)
+		}
+		return val
+	}
 }
 
 // wrapTextLines wraps text to fit within maxWidth display columns

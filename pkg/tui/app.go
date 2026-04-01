@@ -277,6 +277,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	app.createForm.SetDescRenderer(func(text string, width int) []string {
 		return views.RenderDescriptionPreview(text, width, isCloud)
 	})
+	app.createForm.SetDescADFRenderer(views.RenderADFPreview)
 
 	// Overlay stack: checked in priority order for input interception and rendering
 	app.overlays = components.OverlayStack{
@@ -541,6 +542,8 @@ func (a *App) View() string {
 	switch {
 	case a.searchBar.IsActive():
 		bottomBar = a.searchBar.View()
+	case a.createForm.IsVisible() && a.createForm.IsFiltering():
+		bottomBar = a.createForm.FilterBarView()
 	case a.jqlModal.IsVisible():
 		bottomBar = a.helpBar.View()
 	case a.modal.IsVisible() && a.modal.IsSearching():

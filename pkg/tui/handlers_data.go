@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -465,7 +466,11 @@ func applyDuplicatePrefill(fields []components.CreateFormField, src *jira.Issue,
 			fields[i].Value = "Copy of " + src.Summary
 		case "description":
 			fields[i].DisplayValue = src.Description
-			fields[i].Value = src.Description
+			if src.DescriptionADF != nil {
+				fields[i].Value = stripADFMedia(src.DescriptionADF)
+			} else {
+				fields[i].Value = src.Description
+			}
 		case fldPriority:
 			if src.Priority != nil {
 				fields[i].DisplayValue = src.Priority.Name
@@ -505,12 +510,45 @@ func applyDuplicatePrefill(fields []components.CreateFormField, src *jira.Issue,
 			// custom fields
 			if strings.HasPrefix(fields[i].FieldID, "customfield_") {
 				if val, ok := src.CustomFields[fields[i].FieldID]; ok {
+					display := formatCustomVal(val)
+					if display == "" {
+						continue
+					}
 					fields[i].Value = val
-					fields[i].DisplayValue = formatCustomVal(val)
+					fields[i].DisplayValue = display
 				}
 			}
 		}
 	}
+}
+
+// stripADFMedia removes media nodes from ADF that reference source issue attachments
+func stripADFMedia(adf any) any {
+	doc, ok := adf.(map[string]any)
+	if !ok {
+		return adf
+	}
+	content, ok := doc["content"].([]any)
+	if !ok {
+		return adf
+	}
+	var filtered []any
+	for _, node := range content {
+		n, ok := node.(map[string]any)
+		if !ok {
+			filtered = append(filtered, node)
+			continue
+		}
+		nodeType, _ := n["type"].(string)
+		if nodeType == "mediaSingle" || nodeType == "mediaGroup" || nodeType == "media" {
+			continue
+		}
+		filtered = append(filtered, node)
+	}
+	result := make(map[string]any, len(doc))
+	maps.Copy(result, doc)
+	result["content"] = filtered
+	return result
 }
 
 // formatCustomVal converts a custom field value to display string
@@ -533,8 +571,15 @@ func formatCustomVal(v any) string {
 		if name, ok := val["name"].(string); ok {
 			return name
 		}
+		return ""
+	case []any:
+		var parts []string
+		for _, item := range val {
+			parts = append(parts, formatCustomVal(item))
+		}
+		return strings.Join(parts, ", ")
 	}
-	return fmt.Sprintf("%v", v)
+	return ""
 }
 
 // buildCreateFields converts create metadata to form fields
@@ -545,6 +590,19 @@ var skipCreateFields = map[string]bool{
 	"attachment": true,
 	"issuelinks": true,
 	"parent":     true,
+}
+
+// supported schema types for create form fields
+var supportedSchemaTypes = map[string]bool{
+	"string":   true,
+	"array":    true,
+	"priority": true,
+	"user":     true,
+	"option":   true,
+	"number":   true,
+	"date":     true,
+	"datetime": true,
+	"timetracking": true,
 }
 
 func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.CreateFormField {
@@ -585,6 +643,9 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 	var remaining []jira.CreateMetaField
 	for _, mf := range meta {
 		if added[mf.FieldID] || skipCreateFields[mf.FieldID] {
+			continue
+		}
+		if !supportedSchemaTypes[mf.Schema.Type] {
 			continue
 		}
 		remaining = append(remaining, mf)
@@ -658,8 +719,8 @@ func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormFiel
 		SchemaItems:   mf.Schema.Items,
 	}
 
-	// set sensible display defaults for known fields
-	if mf.FieldID == fldAssignee {
+	// empty optional fields show "None"
+	if !mf.Required && ff.DisplayValue == "" && ft != components.CFFieldMultiText {
 		ff.DisplayValue = "None"
 	}
 
