@@ -2,22 +2,28 @@ Output e2e/golden/01_create_issue.gif
 
 @start
 
-# select project and issue
+# select Platform Services project
 @panel 4
 @down
 @select
 
-# focus issues panel, press n to create
+# switch to Assigned tab, cursor lands on PLAT-3
 @panel 2
-@create
+@tab_next
+
+# duplicate with ctrl+n
+Ctrl+n
+Sleep 400ms
 
 # type picker: select Bug
 @down
 Enter
 Sleep 600ms
 
-# create form opens, summary focused
-# type the summary
+# create form opens with prefilled fields from PLAT-3
+# clear summary and type a new one
+Ctrl+a
+Ctrl+k
 Set TypingSpeed 40ms
 Type "Login page crashes on expired token refresh"
 Set TypingSpeed 0ms
@@ -31,56 +37,56 @@ Sleep 200ms
 Tab
 Sleep 200ms
 
-# edit priority: press e, select High
+# edit priority to High
 @edit
 @down
 @confirm
 
-# move to assignee, edit with e
+# assignee: pick Demo User (ourselves so it shows in Assigned tab)
 @down
 @edit
-
-# pick Alice Chen
-@down
-@down
 @confirm
 
-# move to labels, edit with e
+# labels: pick a few
 @down
 @edit
-
-# toggle two labels
 @toggle
 @down
 @toggle
-
-# confirm checklist
+@down
+@toggle
 @confirm
 
-# scroll down to see all fields
+# components: pick API and Frontend
 @down
+@edit
+@toggle
+@down
+@toggle
+@confirm
 
-# go back to summary to review
+# review: scroll through fields
+@down
+@wait 300
+
+# go back to summary
 Tab
-Sleep 200ms
 Sleep 300ms
 
-# tab to description
+# check description
 Tab
 Sleep 200ms
 
-# tab to fields
+# back to fields
 Tab
-Sleep 200ms
 Sleep 300ms
 
-# submit with enter from summary
+# submit
 Tab
 Sleep 200ms
 Enter
 Sleep 600ms
 
-# issue created, back to issues list
-Sleep 500ms
-Type "q"
-Sleep 300ms
+# issue created, detail view shows new issue immediately
+@wait 500
+@quit

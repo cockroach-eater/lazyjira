@@ -45,12 +45,18 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		a.issuesList.SelectByKey(detectedKey)
-		if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == detectedKey {
+		switch {
+		case a.issuesList.SelectByKey(detectedKey):
 			a.issuesList.SetActiveKey(detectedKey)
 			cmds = append(cmds, fetchIssueDetail(a.client, detectedKey))
+			a.gitDetectedKey = ""
+		case a.issuesList.GetTabIndex() != 0:
+			// not in current tab, try All tab
+			a.issuesList.SetTabIndex(0)
+			cmds = append(cmds, a.fetchActiveTab())
+		default:
+			a.gitDetectedKey = ""
 		}
-		a.gitDetectedKey = ""
 	}
 	return a, tea.Batch(cmds...)
 }
@@ -733,6 +739,12 @@ func (a *App) handleIssueCreated(msg issueCreatedMsg) (tea.Model, tea.Cmd) {
 	a.createCtx = createCtx{}
 	if msg.issue != nil {
 		a.helpBar.SetStatusMsg("Created " + msg.issue.Key)
+		if a.cfg.GUI.ShouldSelectCreatedIssue() {
+			a.gitDetectedKey = msg.issue.Key
+			// prepare detail view to accept the new issue when fetchIssueDetail returns
+			a.issuesList.SetActiveKey(msg.issue.Key)
+			a.detailView.SetIssue(nil)
+		}
 		return a, tea.Batch(a.fetchActiveTab(), fetchIssueDetail(a.client, msg.issue.Key))
 	}
 	return a, a.fetchActiveTab()

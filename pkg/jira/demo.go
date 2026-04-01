@@ -452,6 +452,39 @@ func (d *DemoClient) CreateIssue(_ context.Context, fields map[string]any) (*Iss
 			}
 		}
 	}
+	if aid := demoFieldStr(fields, "assignee", "accountId"); aid != "" {
+		users, _ := d.GetUsers(context.Background(), "")
+		for _, u := range users {
+			if u.AccountID == aid {
+				iss.Assignee = &User{AccountID: u.AccountID, DisplayName: u.DisplayName, Email: u.Email, Active: u.Active}
+				break
+			}
+		}
+	}
+	if v, ok := fields["labels"]; ok {
+		if arr, ok := v.([]any); ok {
+			for _, item := range arr {
+				if s, ok := item.(string); ok {
+					iss.Labels = append(iss.Labels, s)
+				}
+			}
+		}
+	}
+	if v, ok := fields["components"]; ok {
+		if arr, ok := v.([]any); ok {
+			demoComps, _ := d.GetComponents(context.Background(), "")
+			nameMap := make(map[string]string)
+			for _, dc := range demoComps {
+				nameMap[dc.ID] = dc.Name
+			}
+			for _, item := range arr {
+				if m, ok := item.(map[string]any); ok {
+					id, _ := m["id"].(string)
+					iss.Components = append(iss.Components, Component{ID: id, Name: nameMap[id]})
+				}
+			}
+		}
+	}
 	d.addIssue(projectKey, iss)
 	return iss, nil
 }

@@ -49,6 +49,7 @@ gui:
         - key
         - status
         - summary
+    selectCreatedIssue: true
 keybinding:
     universal:
         quit: q
@@ -154,6 +155,13 @@ gui:
 ```
 
 `sidePanelWidth` controls the left panel width in columns. It automatically shrinks on narrow terminals.
+
+`selectCreatedIssue` controls whether the app auto-selects a newly created issue in the list. If the issue does not match the current tab, the app switches to the All tab. Enabled by default.
+
+```yaml
+gui:
+  selectCreatedIssue: true
+```
 
 ### Issue list fields
 

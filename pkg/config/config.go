@@ -126,13 +126,19 @@ type GUIConfig struct {
 	DateFormat      string   `yaml:"dateFormat"` // TODO not yet wired up
 	Mouse           bool     `yaml:"mouse"`      // TODO not yet wired up
 	Borders         string   `yaml:"borders"`    // TODO not yet wired up
-	IssueListFields []string `yaml:"issueListFields"`
-	PrefillFromTab  *bool    `yaml:"prefillFromTab"` // default true when nil
+	IssueListFields    []string `yaml:"issueListFields"`
+	PrefillFromTab     *bool    `yaml:"prefillFromTab"`     // default true when nil
+	SelectCreatedIssue *bool    `yaml:"selectCreatedIssue"` // default true when nil
 }
 
 // ShouldPrefillFromTab returns true when creation form should prefill from tab JQL
 func (g GUIConfig) ShouldPrefillFromTab() bool {
 	return g.PrefillFromTab == nil || *g.PrefillFromTab
+}
+
+// ShouldSelectCreatedIssue returns true when the app should auto-select a newly created issue
+func (g GUIConfig) ShouldSelectCreatedIssue() bool {
+	return g.SelectCreatedIssue == nil || *g.SelectCreatedIssue
 }
 
 // TODO not yet wired up

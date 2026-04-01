@@ -160,7 +160,7 @@ type App struct {
 	// Git integration
 	gitRepoPath    string // empty = not a git repo
 	gitBranch      string // current branch name
-	gitDetectedKey string // issue key from auto-detect (consumed once)
+	gitDetectedKey string // issue key to auto-select after next tab refresh
 
 	// Cached panel sizes for mouse hit testing
 	panelSideW     int

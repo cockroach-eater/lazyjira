@@ -42,6 +42,7 @@ check-demo:
 
 preview: build-demo e2e-gen
 	@vhs -q e2e/tapes/00_preview.tape & vhs -q e2e/tapes/00_preview_vertical.tape & wait
+	@rm -f e2e/tapes/*.tape
 
 e2e: build-demo e2e-gen
 	@pids=""; fail=0; \
@@ -53,6 +54,7 @@ e2e: build-demo e2e-gen
 		wait $$pid || fail=1; \
 	done; \
 	if [ $$fail -eq 1 ]; then echo "SOME TAPES FAILED" && exit 1; fi
+	@rm -f e2e/tapes/*.tape
 	@echo "All tapes passed."
 
 e2e-gen:
@@ -68,4 +70,5 @@ e2e-update: build-demo e2e-gen
 		vhs -q $$tape & pids="$$pids $$!"; \
 	done; \
 	for pid in $$pids; do wait $$pid; done
+	@rm -f e2e/tapes/*.tape
 	@echo "Golden files updated. Review with: git diff e2e/golden/"

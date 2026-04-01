@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Custom field support in create form (select, multiselect, text, number)
 - Demo mode: issue creation with in-memory data, create metadata endpoint
 - Config: `gui.prefillFromTab` option (default true)
+- Auto-select newly created issue in the list. Switches to All tab if the issue does not match the current tab. Config: `gui.selectCreatedIssue` (default true)
 - e2e test tape for issue creation flow
 
 ### Fixed
