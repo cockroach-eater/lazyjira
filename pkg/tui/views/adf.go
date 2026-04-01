@@ -145,6 +145,7 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 		}
 		childType, _ := childBlock["type"].(string)
 
+		markerW := lipgloss.Width(marker)
 		switch childType {
 		case adfParagraph:
 			childContent, _ := childBlock["content"].([]any)
@@ -153,13 +154,13 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 				r.appendWrapped(text, indent, marker)
 				first = false
 			} else {
-				r.appendWrapped(text, indent+len(marker), "")
+				r.appendWrapped(text, indent+markerW, "")
 			}
 		case adfBulletList, adfOrderedList:
 			// Nested list — increase indent.
 			r.renderBlock(child, indent+2)
 		default:
-			r.renderBlock(child, indent+len(marker))
+			r.renderBlock(child, indent+markerW)
 		}
 	}
 }
@@ -197,6 +198,7 @@ func (r *adfRenderer) renderInline(node any) string {
 	switch nodeType {
 	case adfText:
 		text, _ := inline["text"].(string)
+		text = strings.ReplaceAll(text, "\r", "")
 		marks, _ := inline["marks"].([]any)
 		return applyMarks(text, marks)
 
@@ -238,7 +240,7 @@ func (r *adfRenderer) renderInlinePlain(node any) string {
 	switch nodeType {
 	case adfText:
 		text, _ := inline["text"].(string)
-		return text
+		return strings.ReplaceAll(text, "\r", "")
 	case adfMention:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if text, ok := attrs["text"].(string); ok {
@@ -315,8 +317,9 @@ func headingStyle(level int) lipgloss.Style {
 // Uses lipgloss for ANSI-aware wrapping so styled text (bold, links, code) isn't broken.
 func (r *adfRenderer) appendWrapped(text string, indent int, marker string) {
 	prefix := strings.Repeat(" ", indent)
-	contPrefix := prefix + strings.Repeat(" ", len(marker))
-	w := max(r.width-indent-len(marker), 10)
+	markerW := lipgloss.Width(marker)
+	contPrefix := prefix + strings.Repeat(" ", markerW)
+	w := max(r.width-indent-markerW, 10)
 
 	wrapStyle := lipgloss.NewStyle().Width(w)
 	first := true

@@ -5,8 +5,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/textfuel/lazyjira/pkg/config"
 	"github.com/textfuel/lazyjira/pkg/jira"
+	"github.com/textfuel/lazyjira/pkg/tui/components"
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
@@ -138,8 +141,8 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 	rows := make([]string, 0, len(fields))
 	for _, f := range fields {
 		val := f.Value
-		if maxVal := maxWidth - labelWidth; maxWidth > 0 && len(val) > maxVal && maxVal > 1 {
-			val = val[:maxVal-1] + "…"
+		if maxVal := maxWidth - labelWidth; maxWidth > 0 && lipgloss.Width(val) > maxVal && maxVal > 1 {
+			val = components.TruncateEnd(val, maxVal)
 		}
 		switch f.FieldID {
 		case fieldStatus:

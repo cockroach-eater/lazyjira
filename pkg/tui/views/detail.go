@@ -1142,7 +1142,7 @@ func cleanWikiMarkup(s string) string {
 	if s == "" {
 		return s
 	}
-	result := s
+	result := strings.ReplaceAll(s, "\r", "")
 
 	// [~accountid:UUID] → replace with @user (unresolved mentions)
 	for {
@@ -1205,23 +1205,41 @@ func wrapText(text string, width int) []string {
 	}
 	var lines []string
 	for _, paragraph := range strings.Split(text, "\n") {
-		if len(paragraph) <= width {
+		if lipgloss.Width(paragraph) <= width {
 			lines = append(lines, paragraph)
 			continue
 		}
-		for len(paragraph) > width {
-			cut := width
-			for cut > 0 && paragraph[cut] != ' ' {
-				cut--
+		runes := []rune(paragraph)
+		for len(runes) > 0 {
+			// Measure runes until we exceed width.
+			w := 0
+			cut := 0
+			for i, r := range runes {
+				rw := lipgloss.Width(string(r))
+				if w+rw > width {
+					break
+				}
+				w += rw
+				cut = i + 1
 			}
 			if cut == 0 {
-				cut = width
+				cut = 1 // at least one rune to avoid infinite loop
 			}
-			lines = append(lines, paragraph[:cut])
-			paragraph = strings.TrimLeft(paragraph[cut:], " ")
-		}
-		if paragraph != "" {
-			lines = append(lines, paragraph)
+			if cut < len(runes) {
+				// Back up to last space for word-wrap.
+				for j := cut - 1; j > 0; j-- {
+					if runes[j] == ' ' {
+						cut = j
+						break
+					}
+				}
+			}
+			lines = append(lines, string(runes[:cut]))
+			runes = runes[cut:]
+			// Trim leading spaces from next line.
+			for len(runes) > 0 && runes[0] == ' ' {
+				runes = runes[1:]
+			}
 		}
 	}
 	return lines
@@ -1242,6 +1260,9 @@ func wikiToPlain(s string) string {
 	if s == "" {
 		return s
 	}
+	// Strip carriage returns — Jira Server often sends \r\n which corrupts
+	// terminal output (\r moves cursor to column 0 causing text overlap).
+	s = strings.ReplaceAll(s, "\r", "")
 	s = wikiLinkRe.ReplaceAllString(s, "$1 ($2)")
 	s = wikiPlainLinkRe.ReplaceAllString(s, "$1")
 	s = wikiBoldRe.ReplaceAllString(s, "$1")
