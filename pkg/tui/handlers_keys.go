@@ -348,24 +348,7 @@ func (a *App) handleActionSelect() (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		if key := a.infoPanelSelectedKey(); key != "" {
-			if tab, found := a.issuesList.FindInAnyTab(key); found {
-				if tab != a.issuesList.GetTabIndex() {
-					a.issuesList.SetTabIndex(tab)
-				}
-			} else if cached, ok := a.issueCache[key]; ok {
-				a.issuesList.InjectIssue(*cached)
-				a.issuesList.SetTabIndex(0)
-			}
-			a.issuesList.SelectByKey(key)
-			a.issuesList.SetActiveKey(key)
-			a.side = sideRight
-			a.leftFocus = focusIssues
-			a.updateFocusState()
-			a.showCachedIssue(key)
-			return a, fetchIssueDetail(a.client, key)
-		}
-		return a, nil
+		return a.navigateToLinkedIssue()
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		return a.openProject()
 	}
@@ -384,14 +367,7 @@ func (a *App) handleActionOpen() (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
-		if key := a.infoPanelSelectedKey(); key != "" {
-			if cached, ok := a.issueCache[key]; ok {
-				a.detailView.SetIssue(cached)
-			} else {
-				return a, fetchIssueDetail(a.client, key)
-			}
-		}
-		return a, nil
+		return a.navigateToLinkedIssue()
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		return a.openProject()
 	}
@@ -415,6 +391,28 @@ func (a *App) openProject() (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.fetchActiveTab(), prefetch)
 	}
 	return a, nil
+}
+
+func (a *App) navigateToLinkedIssue() (tea.Model, tea.Cmd) {
+	key := a.infoPanelSelectedKey()
+	if key == "" {
+		return a, nil
+	}
+	if tab, found := a.issuesList.FindInAnyTab(key); found {
+		if tab != a.issuesList.GetTabIndex() {
+			a.issuesList.SetTabIndex(tab)
+		}
+	} else if cached, ok := a.issueCache[key]; ok {
+		a.issuesList.InjectIssue(*cached)
+		a.issuesList.SetTabIndex(0)
+	}
+	a.issuesList.SelectByKey(key)
+	a.issuesList.SetActiveKey(key)
+	a.side = sideRight
+	a.leftFocus = focusIssues
+	a.updateFocusState()
+	a.showCachedIssue(key)
+	return a, fetchIssueDetail(a.client, key)
 }
 
 // infoPanelSelectedKey returns the issue key under cursor in Lnk/Sub tabs, or ""

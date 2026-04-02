@@ -581,7 +581,7 @@ var supportedSchemaTypes = map[string]bool{
 	"string":       true,
 	"array":        true,
 	"priority":     true,
-	"user":         true,
+	schemaUser:     true,
 	"option":       true,
 	"number":       true,
 	"date":         true,
@@ -648,6 +648,7 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 }
 
 const schemaArray = "array"
+const schemaUser = "user"
 
 // metaToFormField converts one CreateMetaField to CreateFormField
 func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormField {
@@ -667,13 +668,13 @@ func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormFiel
 		ft = components.CFFieldSingleSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "option":
 		ft = components.CFFieldMultiSelect
-	case mf.Schema.Type == schemaArray && mf.Schema.Items == "user":
+	case mf.Schema.Type == schemaArray && mf.Schema.Items == schemaUser:
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "string":
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray:
 		ft = components.CFFieldMultiSelect
-	case mf.Schema.Type == "user":
+	case mf.Schema.Type == schemaUser:
 		ft = components.CFFieldPerson
 	case len(mf.AllowedValues) > 0:
 		ft = components.CFFieldSingleSelect

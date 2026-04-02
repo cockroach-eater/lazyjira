@@ -154,24 +154,26 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 
 		if styled && isNone {
 			val = noneStyle.Render(val)
-		} else {
+		} else if styled {
 			switch f.FieldID {
 			case fieldStatus:
-				if styled && issue.Status != nil {
+				if issue.Status != nil {
 					val = theme.StatusColor(issue.Status.CategoryKey).Render(val)
 				}
 			case "priority":
-				if styled && issue.Priority != nil {
+				if issue.Priority != nil {
 					val = theme.PriorityStyled(val)
 				}
 			case "assignee":
-				if styled && issue.Assignee != nil {
+				if issue.Assignee != nil {
 					val = theme.AuthorRender(val)
 				}
 			case "reporter":
-				if styled && issue.Reporter != nil {
+				if issue.Reporter != nil {
 					val = theme.AuthorRender(val)
 				}
+			default:
+				val = th.ValueStyle.Render(val)
 			}
 		}
 
@@ -219,6 +221,13 @@ func detectFieldTypeFromValue(v any) InfoFieldType {
 		return FieldMultiSelect
 	}
 	return FieldSingleText
+}
+
+func EditValueForInput(val string) string {
+	if val == noneLabelUpper || val == unknownLabel {
+		return ""
+	}
+	return val
 }
 
 func formatCustomFieldValue(v any) string {

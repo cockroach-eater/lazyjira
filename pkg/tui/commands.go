@@ -218,11 +218,14 @@ type issueCreatedMsg struct{ issue *jira.Issue }
 type createErrorMsg struct{ err error }
 
 type customFieldOptionsMsg struct {
-	issueKey  string
-	fieldID   string
-	fieldName string
-	fieldType views.InfoFieldType
-	options   []jira.CreateMetaValue
+	issueKey     string
+	fieldID      string
+	fieldName    string
+	fieldType    views.InfoFieldType
+	currentValue string
+	schemaType   string
+	schemaItems  string
+	options      []jira.CreateMetaValue
 }
 
 func updateIssueField(client jira.ClientInterface, issueKey, field string, value any) tea.Cmd {
@@ -275,6 +278,8 @@ func fetchCustomFieldOptions(client jira.ClientInterface, projectKey, issueTypeI
 		for _, f := range meta {
 			if f.FieldID == info.fieldID {
 				info.options = f.AllowedValues
+				info.schemaType = f.Schema.Type
+				info.schemaItems = f.Schema.Items
 				return info
 			}
 		}

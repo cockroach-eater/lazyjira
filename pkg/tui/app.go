@@ -568,7 +568,9 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			a.statusPanel.SetError("no agile board found for this project")
 			return a, nil
 		default:
-			return a.fetchCustomFieldOptionsForEdit(sel, field)
+			if isCustomField(field.FieldID) {
+				return a.fetchCustomFieldOptionsForEdit(sel, field)
+			}
 		}
 	case views.FieldPerson:
 		a.onSelect = a.makePersonSelectCallback(sel.Key, field.FieldID)
@@ -603,12 +605,15 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			}
 		}
 	case views.FieldSingleText:
-		a.inputModal.Show("Edit "+field.Name, field.Value)
+		if isCustomField(field.FieldID) {
+			return a.fetchCustomFieldOptionsForEdit(sel, field)
+		}
+		a.inputModal.Show("Edit "+field.Name, views.EditValueForInput(field.Value))
 		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, nil
 	case views.FieldMultiText:
 		a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
-		return a, launchEditor(field.Value, ".md")
+		return a, launchEditor(views.EditValueForInput(field.Value), ".md")
 	}
 	return a, nil
 }
@@ -665,22 +670,31 @@ func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoF
 		return a, nil
 	}
 	info := customFieldOptionsMsg{
-		issueKey:  sel.Key,
-		fieldID:   field.FieldID,
-		fieldName: field.Name,
-		fieldType: field.Type,
+		issueKey:     sel.Key,
+		fieldID:      field.FieldID,
+		fieldName:    field.Name,
+		fieldType:    field.Type,
+		currentValue: field.Value,
 	}
 	return a, fetchCustomFieldOptions(a.client, a.projectKey, sel.IssueType.ID, info)
 }
 
 func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, tea.Cmd) {
+	if a.isPersonSchema(msg.schemaType, msg.schemaItems) {
+		a.onSelect = a.makePersonSelectCallback(msg.issueKey, msg.fieldID)
+		if cached, ok := a.usersCache[a.projectKey]; ok {
+			return a.handleUsersLoaded(usersLoadedMsg{users: cached, issueKey: msg.issueKey})
+		}
+		return a, fetchUsers(a.client, a.projectKey, msg.issueKey)
+	}
+
 	items := make([]components.ModalItem, 0, len(msg.options))
 	for _, v := range msg.options {
 		items = append(items, components.ModalItem{ID: v.ID, Label: v.Name})
 	}
 
 	if len(items) == 0 {
-		a.inputModal.Show("Edit "+msg.fieldName, "")
+		a.inputModal.Show("Edit "+msg.fieldName, views.EditValueForInput(msg.currentValue))
 		a.editContext = editCtx{kind: editField, issueKey: msg.issueKey, fieldID: msg.fieldID}
 		return a, nil
 	}
@@ -712,6 +726,10 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 		a.modal.Show(msg.fieldName, items)
 	}
 	return a, nil
+}
+
+func (a *App) isPersonSchema(schemaType, schemaItems string) bool {
+	return schemaType == schemaUser || (schemaType == schemaArray && schemaItems == schemaUser)
 }
 
 func (a *App) renderHelpOverlay(base string) string {
