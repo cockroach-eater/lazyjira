@@ -89,8 +89,10 @@ func buildInfoFields(issue *jira.Issue, customFields []config.CustomFieldConfig)
 	}
 
 	for _, cf := range customFields {
-		val := formatCustomFieldValue(issue.CustomFields[cf.ID])
-		fields = append(fields, InfoField{Name: cf.Name, FieldID: cf.ID, Type: FieldSingleText, Value: val})
+		raw := issue.CustomFields[cf.ID]
+		val := formatCustomFieldValue(raw)
+		ft := resolveCustomFieldType(cf.Type, raw)
+		fields = append(fields, InfoField{Name: cf.Name, FieldID: cf.ID, Type: ft, Value: val})
 	}
 
 	return fields
@@ -124,44 +126,101 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 		return nil
 	}
 	styled := th != nil
-	style := func(s string) string {
-		if styled {
-			return th.ValueStyle.Render(s)
+	noneStyle := lipgloss.NewStyle().Foreground(theme.ColorGray)
+
+	fields := buildInfoFields(issue, customFields)
+
+	labelW := 0
+	for _, f := range fields {
+		if w := lipgloss.Width(f.Name) + 1; w > labelW {
+			labelW = w
 		}
-		return s
+	}
+	labelW += 2
+
+	if maxLabelW := maxWidth / 2; labelW > maxLabelW && maxLabelW > 0 {
+		labelW = maxLabelW
 	}
 
-	const labelWidth = 13
-	fields := buildInfoFields(issue, customFields)
 	rows := make([]string, 0, len(fields))
 	for _, f := range fields {
 		val := f.Value
-		if maxVal := maxWidth - labelWidth; maxWidth > 0 && lipgloss.Width(val) > maxVal && maxVal > 1 {
+		maxVal := maxWidth - labelW - 1
+		if maxVal > 0 && lipgloss.Width(val) > maxVal {
 			val = components.TruncateEnd(val, maxVal)
 		}
-		switch f.FieldID {
-		case fieldStatus:
-			if styled && issue.Status != nil {
-				val = theme.StatusColor(issue.Status.CategoryKey).Render(val)
+
+		isNone := val == noneLabelUpper || val == unknownLabel
+
+		if styled && isNone {
+			val = noneStyle.Render(val)
+		} else {
+			switch f.FieldID {
+			case fieldStatus:
+				if styled && issue.Status != nil {
+					val = theme.StatusColor(issue.Status.CategoryKey).Render(val)
+				}
+			case "priority":
+				if styled && issue.Priority != nil {
+					val = theme.PriorityStyled(val)
+				}
+			case "assignee":
+				if styled && issue.Assignee != nil {
+					val = theme.AuthorRender(val)
+				}
+			case "reporter":
+				if styled && issue.Reporter != nil {
+					val = theme.AuthorRender(val)
+				}
 			}
-		case "priority":
-			if styled && issue.Priority != nil {
-				val = theme.PriorityStyled(val)
-			}
-		case "assignee":
-			if styled && issue.Assignee != nil {
-				val = theme.AuthorRender(val)
-			}
-		case "reporter":
-			if styled && issue.Reporter != nil {
-				val = theme.AuthorRender(val)
-			}
-		default:
-			val = style(val)
 		}
-		rows = append(rows, fmt.Sprintf(" %-11s %s", f.Name+":", val))
+
+		label := " " + f.Name + ":"
+		for lipgloss.Width(label) < labelW {
+			label += " "
+		}
+		rows = append(rows, label+val)
 	}
 	return rows
+}
+
+func resolveCustomFieldType(configType string, raw any) InfoFieldType {
+	switch configType {
+	case "select":
+		return FieldSingleSelect
+	case "multiselect":
+		return FieldMultiSelect
+	case "user":
+		return FieldPerson
+	case "textarea":
+		return FieldMultiText
+	case "text":
+		return FieldSingleText
+	}
+	return detectFieldTypeFromValue(raw)
+}
+
+func detectFieldTypeFromValue(v any) InfoFieldType {
+	if v == nil {
+		return FieldSingleText
+	}
+	switch val := v.(type) {
+	case map[string]any:
+		if _, ok := val["displayName"]; ok {
+			return FieldPerson
+		}
+		if _, ok := val["value"]; ok {
+			return FieldSingleSelect
+		}
+		if _, ok := val["name"]; ok {
+			return FieldSingleSelect
+		}
+	case []any:
+		if len(val) > 0 {
+			return FieldMultiSelect
+		}
+	}
+	return FieldSingleText
 }
 
 func formatCustomFieldValue(v any) string {

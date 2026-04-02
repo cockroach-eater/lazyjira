@@ -216,6 +216,12 @@ type createMetaLoadedMsg struct{ fields []jira.CreateMetaField }
 type issueCreatedMsg struct{ issue *jira.Issue }
 type createErrorMsg struct{ err error }
 
+type customFieldOptionsMsg struct {
+	issueKey string
+	fieldID  string
+	options  []jira.CreateMetaValue
+}
+
 func updateIssueField(client jira.ClientInterface, issueKey, field string, value any) tea.Cmd {
 	return func() tea.Msg {
 		fields := map[string]any{field: value}
@@ -254,6 +260,21 @@ func fetchCreateMeta(client jira.ClientInterface, projectKey, issueTypeID string
 			return createErrorMsg{err: err}
 		}
 		return createMetaLoadedMsg{fields: fields}
+	}
+}
+
+func fetchCustomFieldOptions(client jira.ClientInterface, projectKey, issueTypeID, issueKey, fieldID string) tea.Cmd {
+	return func() tea.Msg {
+		fields, err := client.GetCreateMeta(context.Background(), projectKey, issueTypeID)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		for _, f := range fields {
+			if f.FieldID == fieldID {
+				return customFieldOptionsMsg{issueKey: issueKey, fieldID: fieldID, options: f.AllowedValues}
+			}
+		}
+		return customFieldOptionsMsg{issueKey: issueKey, fieldID: fieldID}
 	}
 }
 

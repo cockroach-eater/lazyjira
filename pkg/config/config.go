@@ -42,7 +42,7 @@ type IssueTabConfig struct {
 type CustomFieldConfig struct {
 	ID   string `yaml:"id"`
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // TODO not yet wired up. "select", "multiselect", "user", "text", "textarea" (default: "text")
+	Type string `yaml:"type"`
 }
 
 type KeybindingConfig struct {
