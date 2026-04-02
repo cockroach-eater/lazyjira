@@ -20,8 +20,7 @@ All keybindings can be remapped in `config.yml` under the `keybinding` section.
 
 | Key | Action |
 |-----|--------|
-| `space` | Select issue |
-| `enter` | Open issue preview |
+| `enter` | Open issue detail |
 | `t` | Transition status |
 | `e` | Edit (summary, description, or focused field) |
 | `p` | Change priority |

@@ -37,7 +37,6 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"j/k", "navigate up/down"},
 			Binding{"g/G", "go to top/bottom"},
 			Binding{"ctrl+d/u", "half-page down/up"},
-			a.bind(ActSelect, "select issue (mark active + open)"),
 			a.bind(ActOpen, "open issue detail"),
 			a.bind(ActFocusRight, "open issue detail"),
 			a.bind(ActTransition, "transition issue status"),
@@ -76,7 +75,6 @@ func (a *App) ContextBindings() []Binding {
 			Binding{"g/G", "go to top/bottom"},
 			Binding{"ctrl+d/u", "half-page down/up"},
 			a.bind(ActSelect, "select project and load issues"),
-			a.bind(ActOpen, "preview project"),
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
 		)
@@ -177,9 +175,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 	km := a.keymap
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
-		items := []components.HelpItem{
-			{Key: km.Keys(ActSelect), Description: "select"},
-		}
+		var items []components.HelpItem
 		if a.issuesList.IsJQLTab() {
 			items = append(items, components.HelpItem{Key: km.Keys(ActCloseJQLTab), Description: "close JQL"})
 		}

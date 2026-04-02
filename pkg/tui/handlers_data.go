@@ -46,7 +46,6 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case a.issuesList.SelectByKey(detectedKey):
-			a.issuesList.SetActiveKey(detectedKey)
 			cmds = append(cmds, fetchIssueDetail(a.client, detectedKey))
 			a.gitDetectedKey = ""
 		case a.issuesList.GetTabIndex() != 0:
@@ -706,7 +705,6 @@ func (a *App) handleIssueCreated(msg issueCreatedMsg) (tea.Model, tea.Cmd) {
 		a.helpBar.SetStatusMsg("Created " + msg.issue.Key)
 		if a.cfg.GUI.ShouldSelectCreatedIssue() {
 			a.gitDetectedKey = msg.issue.Key
-			a.issuesList.SetActiveKey(msg.issue.Key)
 			a.detailView.SetIssue(nil)
 		}
 		return a, tea.Batch(a.fetchActiveTab(), fetchIssueDetail(a.client, msg.issue.Key))

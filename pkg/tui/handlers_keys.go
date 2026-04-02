@@ -340,14 +340,6 @@ func (a *App) startCreateIssue() (tea.Model, tea.Cmd) {
 // Returns nil model on sideRight so the key falls through to the detail panel
 func (a *App) handleActionSelect() (tea.Model, tea.Cmd) {
 	switch {
-	case a.side == sideLeft && a.leftFocus == focusIssues:
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			a.issuesList.SetActiveKey(sel.Key)
-			a.side = sideRight
-			a.updateFocusState()
-			return a, fetchIssueDetail(a.client, sel.Key)
-		}
-		return a, nil
 	case a.side == sideLeft && a.leftFocus == focusInfo:
 		if a.infoPanel.ActiveTab() == views.InfoTabFields {
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
@@ -413,7 +405,10 @@ func (a *App) handleActionOpen() (tea.Model, tea.Cmd) {
 		return a, nil
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		if p := a.projectList.SelectedProject(); p != nil {
-			a.detailView.SetProject(p)
+			prefetch := a.selectProject(p)
+			a.leftFocus = focusIssues
+			a.updateFocusState()
+			return a, tea.Batch(a.fetchActiveTab(), prefetch)
 		}
 		return a, nil
 	}

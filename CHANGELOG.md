@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Disabled space key in issues panel, enter is now the only way to open issue detail (#25)
+- Enter in projects panel now selects project (same as space)
+- Double-click, git branch detection, and issue creation no longer mark issue as active
+
 ## [2.7.0] - 2026-04-01
 
 ### Added
