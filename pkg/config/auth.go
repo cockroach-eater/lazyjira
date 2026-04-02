@@ -11,7 +11,7 @@ type Credentials struct {
 	Host        string `json:"host"`
 	Email       string `json:"email"`
 	Token       string `json:"token"`
-	ServerType  string `json:"server_type,omitempty"` // "cloud", "server", "datacenter"
+	ServerType  string `json:"server_type,omitempty"`
 	LastProject string `json:"last_project,omitempty"`
 }
 
@@ -53,7 +53,7 @@ func SaveCredentials(creds *Credentials) error {
 	return os.WriteFile(AuthPath(), data, 0o600)
 }
 
-// ClearCredentials removes auth.json.
+// ClearCredentials removes auth.json
 func ClearCredentials() error {
 	err := os.Remove(AuthPath())
 	if err != nil && os.IsNotExist(err) {

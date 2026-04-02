@@ -468,6 +468,7 @@ func (d *DetailView) View() string {
 		}
 	}
 
+	totalLines := len(contentLines)
 	contentLines = d.clampAndSliceScroll(contentLines, visible)
 
 	body := strings.Join(contentLines, "\n")
@@ -476,7 +477,6 @@ func (d *DetailView) View() string {
 	if count := d.listTabItemCount(); count > 0 {
 		footer = fmt.Sprintf("%d of %d", d.listCursor+1, count)
 	}
-	totalLines := len(contentLines)
 	scroll := &components.ScrollInfo{Total: totalLines, Visible: visible, Offset: d.scrollY}
 	return components.RenderPanelFull(title, footer, body, d.width, innerH, d.focused, scroll)
 }

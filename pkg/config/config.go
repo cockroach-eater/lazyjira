@@ -137,7 +137,6 @@ func (g GUIConfig) ShouldPrefillFromTab() bool {
 }
 
 // ShouldSelectCreatedIssue returns true when the app should auto-select a newly created issue
-
 func (g GUIConfig) ShouldSelectCreatedIssue() bool {
 	return g.SelectCreatedIssue == nil || *g.SelectCreatedIssue
 }
@@ -214,7 +213,7 @@ func ConfigPath() string {
 }
 
 // Load reads the config file, merges it with defaults, and applies
-// environment variable overrides for Jira credentials.
+// environment variable overrides for Jira credentials
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -259,7 +258,7 @@ func Load() (*Config, error) {
 }
 
 // Save writes the config to the config file. The Jira API token is never
-// persisted because the Token field carries the yaml:"-" tag.
+// persisted because the Token field carries the yaml:"-" tag
 func Save(cfg *Config) error {
 	dir := ConfigDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

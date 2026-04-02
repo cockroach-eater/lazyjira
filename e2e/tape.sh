@@ -69,7 +69,7 @@ process_line() {
             echo ''
             echo 'Type "./lazyjira --demo"'
             echo 'Enter'
-            echo 'Sleep 1s'
+            echo 'Sleep 2s'
             ;;
         Output\ *)
             if [[ "$LAYOUT" == "vertical" ]]; then
