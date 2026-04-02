@@ -25,7 +25,7 @@ type ProjectList struct {
 	projects    []jira.Project
 	allProjects []jira.Project
 	filter      string
-	activeKey   string // the project currently in use
+	activeKey   string
 	theme       *theme.Theme
 }
 
@@ -134,10 +134,9 @@ func (p *ProjectList) View() string {
 		if proj.Lead != nil {
 			lead = " · " + proj.Lead.DisplayName
 		}
-		// Truncate name+lead to fit.
 		maxName := contentWidth - 10 - len(lead)
 		if maxName < 5 {
-			lead = "" // drop lead if no space
+			lead = ""
 			maxName = contentWidth - 10
 		}
 		namePart := proj.Name

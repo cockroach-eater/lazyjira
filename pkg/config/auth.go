@@ -6,21 +6,21 @@ import (
 	"path/filepath"
 )
 
-// Credentials stores Jira connection info.
+// Credentials stores Jira connection info
 type Credentials struct {
 	Host        string `json:"host"`
 	Email       string `json:"email"`
 	Token       string `json:"token"`
-	ServerType  string `json:"server_type,omitempty"` // "cloud", "server", "datacenter"
+	ServerType  string `json:"server_type,omitempty"`
 	LastProject string `json:"last_project,omitempty"`
 }
 
-// AuthPath returns the path to auth.json in the config directory.
+// AuthPath returns the path to auth.json in the config directory
 func AuthPath() string {
 	return filepath.Join(ConfigDir(), "auth.json")
 }
 
-// LoadCredentials reads saved credentials. Returns nil if not found.
+// LoadCredentials reads saved credentials. Returns nil if not found
 func LoadCredentials() (*Credentials, error) {
 	data, err := os.ReadFile(AuthPath())
 	if err != nil {
@@ -38,7 +38,7 @@ func LoadCredentials() (*Credentials, error) {
 	return &creds, nil
 }
 
-// SaveCredentials writes credentials to auth.json with 0600 permissions.
+// SaveCredentials writes credentials to auth.json with 0600 permissions
 func SaveCredentials(creds *Credentials) error {
 	dir := ConfigDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -53,7 +53,7 @@ func SaveCredentials(creds *Credentials) error {
 	return os.WriteFile(AuthPath(), data, 0o600)
 }
 
-// ClearCredentials removes auth.json.
+// ClearCredentials removes auth.json
 func ClearCredentials() error {
 	err := os.Remove(AuthPath())
 	if err != nil && os.IsNotExist(err) {

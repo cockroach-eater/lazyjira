@@ -10,45 +10,45 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// ModalItem is one option in the modal.
+// ModalItem is one option in the modal
 type ModalItem struct {
 	ID        string
 	Label     string
-	Hint      string // shown below the list when this item is selected
-	Internal  bool   // true = handled in-app (e.g. Jira issue), styled differently
-	Separator bool   // true = non-selectable section header
-	Active    bool   // true = current value, shown with green * marker
+	Hint      string
+	Internal  bool
+	Separator bool
+	Active    bool
 }
 
-// ModalSelectedMsg is sent when user picks an item.
+// ModalSelectedMsg is sent when user picks an item
 type ModalSelectedMsg struct {
 	Item ModalItem
 }
 
-// ModalCancelledMsg is sent when user presses Esc.
+// ModalCancelledMsg is sent when user presses Esc
 type ModalCancelledMsg struct{}
 
-// ChecklistConfirmedMsg is sent when user confirms a checklist selection.
+// ChecklistConfirmedMsg is sent when user confirms a checklist selection
 type ChecklistConfirmedMsg struct {
 	Selected []ModalItem
 }
 
-// Modal is a centered popup list for picking an option (transitions, etc).
+// Modal is a centered popup list for picking an option
 type Modal struct {
 	title     string
-	items     []ModalItem    // currently displayed (filtered) items
-	allItems  []ModalItem    // full unfiltered list
+	items     []ModalItem
+	allItems  []ModalItem
 	cursor    int
 	visible   bool
-	readOnly  bool // scroll-only, no selection highlight
-	checklist bool // multi-select checklist mode
-	selected  map[string]bool // checklist: currently selected item IDs
+	readOnly  bool
+	checklist bool
+	selected  map[string]bool
 	offset    int
 	width     int
 	height    int
-	filterInput TextInput // current search input
-	searching   bool      // whether search input is active
-	isError   bool   // red border for error display
+	filterInput TextInput
+	searching   bool
+	isError   bool
 }
 
 func NewModal() Modal {
@@ -68,7 +68,6 @@ func (m *Modal) show(title string, items []ModalItem, readOnly bool) {
 	m.filterInput.SetValue("")
 	m.searching = false
 	m.isError = false
-	// Skip initial separator.
 	if !readOnly && m.cursor < len(m.items) && m.items[m.cursor].Separator {
 		m.moveCursor(1)
 	}
@@ -77,13 +76,13 @@ func (m *Modal) show(title string, items []ModalItem, readOnly bool) {
 func (m *Modal) Show(title string, items []ModalItem)         { m.show(title, items, false) }
 func (m *Modal) ShowReadOnly(title string, items []ModalItem) { m.show(title, items, true) }
 
-// ShowError opens a read-only modal with red border.
+// ShowError opens a read-only modal with red border
 func (m *Modal) ShowError(title string, items []ModalItem) {
 	m.show(title, items, true)
 	m.isError = true
 }
 
-// ShowChecklist opens a multi-select checklist modal.
+// ShowChecklist opens a multi-select checklist modal
 func (m *Modal) ShowChecklist(title string, items []ModalItem, selected map[string]bool) {
 	sel := make(map[string]bool, len(selected))
 	for k, v := range selected {
@@ -97,8 +96,7 @@ func (m *Modal) ShowChecklist(title string, items []ModalItem, selected map[stri
 	m.sortChecklist()
 }
 
-// sortChecklist sorts items: selected first, then unselected, preserving relative order.
-// Separator items are excluded. Cursor follows the previously focused item.
+// sortChecklist sorts items with selected first then unselected preserving relative order
 func (m *Modal) sortChecklist() {
 	var cursorID, cursorLabel string
 	if m.cursor >= 0 && m.cursor < len(m.items) {
@@ -122,7 +120,6 @@ func (m *Modal) sortChecklist() {
 	sorted = append(sorted, unselItems...)
 	m.items = sorted
 
-	// Also sort allItems for filter restore.
 	var allSel, allUnsel []ModalItem
 	for _, item := range m.allItems {
 		if item.Separator {
@@ -139,7 +136,6 @@ func (m *Modal) sortChecklist() {
 	allSorted = append(allSorted, allUnsel...)
 	m.allItems = allSorted
 
-	// Restore cursor position.
 	for i, item := range m.items {
 		if item.ID == cursorID && item.Label == cursorLabel {
 			m.cursor = i
@@ -151,8 +147,7 @@ func (m *Modal) sortChecklist() {
 	}
 }
 
-// moveCursor advances cursor by delta, skipping separator items.
-// Wraps around: moving past the end goes to the first item, past the start goes to the last.
+// moveCursor advances cursor by delta skipping separator items and wrapping around
 func (m *Modal) moveCursor(delta int) {
 	n := len(m.items)
 	if n == 0 {
@@ -166,7 +161,7 @@ func (m *Modal) moveCursor(delta int) {
 			next = 0
 		}
 		if next == m.cursor {
-			return // full loop, all separators
+			return
 		}
 		m.cursor = next
 		if !m.items[m.cursor].Separator {
@@ -175,7 +170,7 @@ func (m *Modal) moveCursor(delta int) {
 	}
 }
 
-// applyFilter filters allItems by the current search query.
+// applyFilter filters allItems by the current search query
 func (m *Modal) applyFilter() {
 	if m.filterInput.Value() == "" {
 		m.items = m.allItems
@@ -194,13 +189,12 @@ func (m *Modal) applyFilter() {
 	}
 	m.cursor = 0
 	m.offset = 0
-	// Skip separator at cursor.
 	if m.cursor < len(m.items) && m.items[m.cursor].Separator {
 		m.moveCursor(1)
 	}
 }
 
-// confirmSearch restores full item list and places cursor on the matched item.
+// confirmSearch restores the full item list and places cursor on the matched item
 func (m *Modal) confirmSearch() {
 	var matchedID, matchedLabel string
 	if m.cursor >= 0 && m.cursor < len(m.items) {
@@ -220,7 +214,7 @@ func (m *Modal) confirmSearch() {
 	m.offset = 0
 }
 
-// selectionContentW returns the content width for selection-mode modals.
+// selectionContentW returns the content width for selection-mode modals
 func (m *Modal) selectionContentW() int {
 	contentW := lipgloss.Width(m.title) + 4
 	for _, item := range m.allItems {
@@ -237,7 +231,7 @@ func (m *Modal) IsVisible() bool    { return m.visible }
 func (m *Modal) IsSearching() bool  { return m.searching }
 func (m *Modal) IsChecklist() bool  { return m.checklist }
 
-// SearchView renders the modal search bar for external use (e.g. bottom help bar).
+// SearchView renders the modal search bar for external use
 func (m *Modal) SearchView(_ int) string {
 	return RenderFilterBarInput(&m.filterInput)
 }
@@ -384,9 +378,9 @@ func (m *Modal) handleMouse(msg tea.MouseMsg) (Modal, tea.Cmd) {
 	case msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft:
 		if !m.readOnly {
 			clickY := msg.Y
-			idx := clickY - 3 // rough: border + title + blank
+			idx := clickY - 3
 			if m.height > 0 {
-				mainBoxH := min(len(m.items)+4, m.height-2) + 2 // content + borders
+				mainBoxH := min(len(m.items)+4, m.height-2) + 2
 				topOffset := (m.height - mainBoxH) / 2
 				idx = clickY - topOffset - 3
 			}
@@ -421,7 +415,6 @@ func (m *Modal) View() string {
 }
 
 func (m *Modal) viewReadOnly() string {
-	// Auto-size width: fit content, max 70% of available width.
 	maxW := m.width * 7 / 10
 	if maxW < 40 {
 		maxW = min(m.width-4, 40)
@@ -436,8 +429,7 @@ func (m *Modal) viewReadOnly() string {
 		contentW = maxW
 	}
 
-	// Collect item lines, word-wrapped to fit (preserves ANSI colors).
-	innerW := contentW - 3 // border (2) + leading space (1)
+	innerW := contentW - 3
 	wrapStyle := lipgloss.NewStyle().Width(innerW)
 	var lines []string
 	for _, item := range m.items {
@@ -488,8 +480,6 @@ func (m *Modal) viewSelectable() string {
 		popupH = maxH
 	}
 
-	// Scroll so cursor stays visible
-	// First 2 lines are title + blank, items start at index 2
 	headerLines := 2
 	itemsH := popupH - headerLines
 	itemsH = max(itemsH, 1)
@@ -503,7 +493,6 @@ func (m *Modal) viewSelectable() string {
 		m.offset = 0
 	}
 
-	// Build visible lines: header + scrolled items
 	itemLines := lines[headerLines:]
 	if m.offset < len(itemLines) {
 		itemLines = itemLines[m.offset:]
@@ -522,10 +511,8 @@ func (m *Modal) viewSelectable() string {
 	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	bv := borderStyle.Render("│")
 
-	// Top border.
 	topLine := borderStyle.Render("╭" + strings.Repeat("─", contentW) + "╮")
 
-	// Content lines with side borders.
 	var body strings.Builder
 	body.WriteString(topLine + "\n")
 	for _, line := range lines {
@@ -536,7 +523,6 @@ func (m *Modal) viewSelectable() string {
 		body.WriteString(bv + line + bv + "\n")
 	}
 
-	// Bottom border with footer counter.
 	footerStyled := borderStyle.Render(footer)
 	footerLen := lipgloss.Width(footerStyled)
 	pad := max(contentW-footerLen, 0)
@@ -630,7 +616,7 @@ func (m *Modal) renderFooter() string {
 	return fmt.Sprintf("%d of %d", pos, total)
 }
 
-// Intercept handles a message if the modal is visible. Implements Overlay.
+// Intercept handles a message if the modal is visible and implements Overlay
 func (m *Modal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	if !m.visible {
 		return nil, false
@@ -644,7 +630,7 @@ func (m *Modal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// Render draws the modal centered on bg with optional hint box. Implements Overlay.
+// Render draws the modal centered on bg with optional hint box and implements Overlay
 func (m *Modal) Render(bg string, w, h int) string {
 	if !m.visible {
 		return bg
@@ -653,7 +639,7 @@ func (m *Modal) Render(bg string, w, h int) string {
 	return centerOverlayWithHint(bg, popup, m.HintView(), w, h)
 }
 
-// HintView returns the hint box for the currently selected item, or "" if none.
+// HintView returns the hint box for the currently selected item or empty string if none
 func (m *Modal) HintView() string {
 	if !m.visible || m.readOnly {
 		return ""

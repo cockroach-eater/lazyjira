@@ -36,7 +36,7 @@ func (a *App) extractIssueKey(url string) string {
 
 // navigateToIssue switches to the issue in the issues list.
 // If found in current tab (All/Assigned), selects it there.
-// If not, switches to All tab and tries again.
+// If not, switches to All tab and tries again
 func (a *App) navigateToIssue(key string) {
 	// Try current tab first.
 	if a.issuesList.SelectByKey(key) {

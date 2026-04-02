@@ -6,10 +6,10 @@ import (
 	"github.com/textfuel/lazyjira/pkg/config"
 )
 
-// Action represents a user-triggerable action.
+// Action represents a user-triggerable action
 type Action string
 
-// Actions — each can be remapped to different keys in the future via config.
+// Actions each can be remapped to different keys via config
 const (
 	ActQuit        Action = "quit"
 	ActHelp        Action = "help"
@@ -45,10 +45,10 @@ const (
 	ActDuplicateIssue Action = "duplicateIssue"
 )
 
-// Keymap maps actions to key strings. Multiple keys can trigger the same action.
+// Keymap maps actions to key strings. Multiple keys can trigger the same action
 type Keymap map[Action][]string
 
-// DefaultKeymap returns the default key bindings.
+// DefaultKeymap returns the default key bindings
 func DefaultKeymap() Keymap {
 	return Keymap{
 		ActQuit:        {"q", "ctrl+c"},
@@ -126,7 +126,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	return km
 }
 
-// Match returns the action for the given key, or "" if none.
+// Match returns the action for the given key, or "" if none
 func (km Keymap) Match(key string) Action {
 	for action, keys := range km {
 		if slices.Contains(keys, key) {
@@ -136,7 +136,7 @@ func (km Keymap) Match(key string) Action {
 	return ""
 }
 
-// Keys returns the first key bound to the action (for display in help).
+// Keys returns the first key bound to the action (for display in help)
 func (km Keymap) Keys(action Action) string {
 	if keys, ok := km[action]; ok && len(keys) > 0 {
 		k := keys[0]

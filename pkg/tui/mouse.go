@@ -83,7 +83,7 @@ func (a *App) hitTest(x, y int) (panelID, int) {
 }
 
 func (a *App) mouseScroll(panel panelID, delta int) (tea.Model, tea.Cmd) {
-	switch panel { //nolint:exhaustive // only scrollable panels handled
+	switch panel { //nolint:exhaustive
 	case panelIssues:
 		if a.side != sideLeft || a.leftFocus != focusIssues {
 			a.side = sideLeft
@@ -138,7 +138,7 @@ func (a *App) mouseScroll(panel panelID, delta int) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) mouseClick(panel panelID, relY int, x int) (tea.Model, tea.Cmd) {
-	switch panel { //nolint:exhaustive // only clickable panels handled
+	switch panel { //nolint:exhaustive
 	case panelStatus:
 		a.side = sideLeft
 		a.leftFocus = focusStatus

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// CreateBranch creates and checks out a new branch.
+// CreateBranch creates and checks out a new branch
 func CreateBranch(dir, name string) error {
 	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "checkout", "-b", name)
 	out, err := cmd.CombinedOutput()
@@ -17,7 +17,7 @@ func CreateBranch(dir, name string) error {
 	return nil
 }
 
-// Checkout switches to an existing branch.
+// Checkout switches to an existing branch
 func Checkout(dir, name string) error {
 	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "checkout", name)
 	out, err := cmd.CombinedOutput()
@@ -27,10 +27,8 @@ func Checkout(dir, name string) error {
 	return nil
 }
 
-// CheckoutTracking creates a local tracking branch from a remote branch and checks it out.
-// remoteBranch should be in format "origin/feat/PLAT-3".
+// CheckoutTracking creates a local tracking branch from a remote branch and checks it out
 func CheckoutTracking(dir, remoteBranch string) error {
-	// Parse remote prefix: "origin/feat/PLAT-3" → remote="origin", branch="feat/PLAT-3"
 	_, localName, ok := strings.Cut(remoteBranch, "/")
 	if !ok {
 		return fmt.Errorf("invalid remote branch format: %s", remoteBranch)
@@ -44,7 +42,7 @@ func CheckoutTracking(dir, remoteBranch string) error {
 	return nil
 }
 
-// LocalBranches returns all local branch names.
+// LocalBranches returns all local branch names
 func LocalBranches(dir string) ([]string, error) {
 	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "branch", "--format=%(refname:short)")
 	out, err := cmd.Output()
@@ -54,14 +52,13 @@ func LocalBranches(dir string) ([]string, error) {
 	return parseLines(out), nil
 }
 
-// RemoteBranches returns all remote branch names (e.g. "origin/main").
+// RemoteBranches returns all remote branch names
 func RemoteBranches(dir string) ([]string, error) {
 	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "branch", "-r", "--format=%(refname:short)")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
-	// Filter out HEAD pointers like "origin/HEAD -> origin/main".
 	lines := parseLines(out)
 	var result []string
 	for _, l := range lines {
@@ -72,7 +69,7 @@ func RemoteBranches(dir string) ([]string, error) {
 	return result, nil
 }
 
-// BranchExists returns true if a local branch with the given name exists.
+// BranchExists returns true if a local branch with the given name exists
 func BranchExists(dir, name string) bool {
 	cmd := exec.CommandContext(context.Background(), "git", "-C", dir, "rev-parse", "--verify", "refs/heads/"+name)
 	return cmd.Run() == nil

@@ -15,7 +15,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/jira"
 )
 
-// Git message types.
+// Git message types
 type gitBranchCreatedMsg struct{ name string }
 type gitCheckoutDoneMsg struct{ name string }
 type gitErrorMsg struct{ err error }
@@ -158,14 +158,14 @@ func doTransition(client jira.ClientInterface, key, transitionID string) tea.Cmd
 	}
 }
 
-// JQL search messages.
+// JQL search messages
 type jqlSearchResultMsg struct {
 	issues []jira.Issue
 	jql    string
 }
 type jqlSearchErrorMsg struct{ err string }
 
-// JQL autocomplete messages.
+// JQL autocomplete messages
 type jqlFieldsLoadedMsg struct{ fields []jira.AutocompleteField }
 type jqlSuggestionsMsg struct{ suggestions []jira.AutocompleteSuggestion }
 

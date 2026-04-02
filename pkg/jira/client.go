@@ -44,7 +44,7 @@ type ClientInterface interface {
 	SetCustomFields(ids []string)
 }
 
-// RequestLog contains info about a completed API request.
+// RequestLog contains info about a completed API request
 type RequestLog struct {
 	Method  string
 	Path    string
@@ -54,20 +54,20 @@ type RequestLog struct {
 
 type Client struct {
 	baseURL        string
-	hostURL        string // base host without API path, e.g. "https://jira.example.com"
+	hostURL        string
 	authHeader     string
 	httpClient     *http.Client
 	isCloud        bool
 	dryRun         bool
 	logger         io.Writer
-	onRequest      func(RequestLog) // callback for TUI log panel
+	onRequest      func(RequestLog)
 	customFieldIDs []string
 }
 
-// IsCloud returns true when the client targets Jira Cloud (API v3).
+// IsCloud returns true when the client targets Jira Cloud
 func (c *Client) IsCloud() bool { return c.isCloud }
 
-// UserFieldKey returns the JSON field name for user references: "accountId" (Cloud) or "name" (Server).
+// UserFieldKey returns the JSON field name for user references
 func (c *Client) UserFieldKey() string {
 	if c.isCloud {
 		return "accountId"
@@ -75,27 +75,26 @@ func (c *Client) UserFieldKey() string {
 	return "name"
 }
 
-// ClientOpts configures a new Client.
+// ClientOpts configures a new Client
 type ClientOpts struct {
 	Host       string
-	Email      string // Cloud: email, Server: username
-	Token      string // Cloud: API token, Server: PAT
+	Email      string
+	Token      string
 	IsCloud    bool
-	HTTPClient *http.Client // optional, for custom TLS
+	HTTPClient *http.Client
 }
 
-// SetCustomFields sets the list of custom field IDs to fetch from the API.
+// SetCustomFields sets the list of custom field IDs to fetch from the API
 func (c *Client) SetCustomFields(ids []string) { c.customFieldIDs = ids }
 
-// Compile-time check that Client implements ClientInterface.
 var _ ClientInterface = (*Client)(nil)
 
-// NewClient creates a Cloud (API v3) client. Shorthand for NewClientWithOpts.
+// NewClient creates a Cloud API v3 client
 func NewClient(host, email, token string) *Client {
 	return NewClientWithOpts(ClientOpts{Host: host, Email: email, Token: token, IsCloud: true})
 }
 
-// NewClientWithOpts creates a client for Cloud (API v3) or Server/Data Center (API v2).
+// NewClientWithOpts creates a client for Cloud API v3 or Server/Data Center API v2
 func NewClientWithOpts(opts ClientOpts) *Client {
 	host := strings.TrimRight(opts.Host, "/")
 	if !strings.HasPrefix(host, "http") {
@@ -129,7 +128,7 @@ func NewClientWithOpts(opts ClientOpts) *Client {
 	}
 }
 
-// NewOAuthClient creates a Cloud client using OAuth bearer token.
+// NewOAuthClient creates a Cloud client using an OAuth bearer token
 func NewOAuthClient(cloudID, accessToken string) *Client {
 	return &Client{
 		baseURL:    "https://api.atlassian.com/ex/jira/" + cloudID + "/rest/api/3",
@@ -140,22 +139,22 @@ func NewOAuthClient(cloudID, accessToken string) *Client {
 	}
 }
 
-// BaseURL returns the API base URL.
+// BaseURL returns the API base URL
 func (c *Client) BaseURL() string { return c.baseURL }
 
-// AuthHeader returns the Authorization header value.
+// AuthHeader returns the Authorization header value
 func (c *Client) AuthHeader() string { return c.authHeader }
 
-// HTTPClient returns the underlying HTTP client (useful for connection tests with TLS).
+// HTTPClient returns the underlying HTTP client
 func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 
-// SetDryRun enables dry-run mode: GET requests work normally, write operations (POST/PUT/DELETE) are skipped.
+// SetDryRun enables dry-run mode where write operations are skipped
 func (c *Client) SetDryRun(v bool) { c.dryRun = v }
 
-// SetLogger sets a writer for request logging.
+// SetLogger sets a writer for request logging
 func (c *Client) SetLogger(w io.Writer) { c.logger = w }
 
-// SetOnRequest sets a callback for each completed request (for TUI log panel).
+// SetOnRequest sets a callback invoked after each completed request
 func (c *Client) SetOnRequest(fn func(RequestLog)) { c.onRequest = fn }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, result any) error {
@@ -176,10 +175,8 @@ func (c *Client) doWithBase(ctx context.Context, baseURL, method, path string, b
 
 	fullURL := baseURL + path
 
-	// Log request.
 	c.log("%s %s %s\n", start.Format("15:04:05"), method, fullURL)
 
-	// Dry-run: skip write operations.
 	if c.dryRun && method != http.MethodGet {
 		c.log("  [DRY-RUN] skipped write operation\n")
 		return nil
@@ -221,7 +218,6 @@ func (c *Client) doWithBase(ctx context.Context, baseURL, method, path string, b
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Log error response body for debugging.
 		c.log("  BODY: %s\n", string(respBody))
 		return fmt.Errorf("request %s %s returned status %d: %s", method, path, resp.StatusCode, string(respBody))
 	}
@@ -257,7 +253,6 @@ func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResul
 		fields += "," + strings.Join(c.customFieldIDs, ",")
 	}
 
-	// Cloud v3: /search/jql?jql=..., Server v2: /search?jql=...&fields=...
 	var path string
 	if c.isCloud {
 		path = fmt.Sprintf("/search/jql?jql=%s&startAt=%d&maxResults=%d&fields=%s",
@@ -350,7 +345,6 @@ func (c *Client) AssignIssue(ctx context.Context, issueKey, accountID string) er
 func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
 	var raw []projectResponse
 	if c.isCloud {
-		// Cloud v3: GET /project/search → paginated {values:[...]}
 		err := c.do(ctx, http.MethodGet, "/project/search?maxResults=100", nil, &struct {
 			Values *[]projectResponse `json:"values"`
 		}{Values: &raw})
@@ -358,7 +352,6 @@ func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
 			return nil, fmt.Errorf("get projects: %w", err)
 		}
 	} else {
-		// Server v2: GET /project → [...]
 		err := c.do(ctx, http.MethodGet, "/project", nil, &raw)
 		if err != nil {
 			return nil, fmt.Errorf("get projects: %w", err)
@@ -371,7 +364,6 @@ func (c *Client) GetProjects(ctx context.Context) ([]Project, error) {
 	return projects, nil
 }
 
-// doAgile executes a request against the Jira Agile REST API.
 func (c *Client) doAgile(ctx context.Context, path string, result any) error {
 	return c.doAgileMethod(ctx, http.MethodGet, path, nil, result)
 }
@@ -582,7 +574,6 @@ func (c *Client) GetComments(ctx context.Context, issueKey string) ([]Comment, e
 
 func (c *Client) GetChangelog(ctx context.Context, issueKey string) ([]ChangelogEntry, error) {
 	if c.isCloud {
-		// Cloud v3: separate changelog endpoint.
 		var raw struct {
 			Values []changelogResponse `json:"values"`
 		}
@@ -597,7 +588,6 @@ func (c *Client) GetChangelog(ctx context.Context, issueKey string) ([]Changelog
 		return entries, nil
 	}
 
-	// Server v2: changelog is embedded in issue via expand parameter.
 	var raw struct {
 		Changelog struct {
 			Histories []changelogResponse `json:"histories"`
@@ -681,7 +671,6 @@ func (c *Client) GetComponents(ctx context.Context, projectKey string) ([]Compon
 
 func (c *Client) GetIssueTypes(ctx context.Context, projectID string) ([]IssueType, error) {
 	if c.isCloud {
-		// Cloud v3: GET /issuetype/project?projectId=...
 		var raw []IssueType
 		err := c.do(ctx, http.MethodGet, "/issuetype/project?projectId="+projectID, nil, &raw)
 		if err != nil {
@@ -690,7 +679,6 @@ func (c *Client) GetIssueTypes(ctx context.Context, projectID string) ([]IssueTy
 		return raw, nil
 	}
 
-	// Server v2: GET /issuetype returns all issue types, no per-project filter.
 	var raw []IssueType
 	err := c.do(ctx, http.MethodGet, "/issuetype", nil, &raw)
 	if err != nil {
@@ -698,8 +686,6 @@ func (c *Client) GetIssueTypes(ctx context.Context, projectID string) ([]IssueTy
 	}
 	return raw, nil
 }
-
-// Internal response types for proper JSON unmarshalling from Jira REST API v3.
 
 type issueResponse struct {
 	ID     string              `json:"id"`
@@ -780,7 +766,6 @@ func (r *issueResponse) toIssue() Issue {
 		issue.Status = r.Fields.Status.toStatus()
 	}
 
-	// API v3 description is ADF (JSON object), v2 is plain string.
 	if r.Fields.Description != nil {
 		if _, isMap := r.Fields.Description.(map[string]any); isMap {
 			issue.DescriptionADF = r.Fields.Description
@@ -820,56 +805,16 @@ func (r *issueResponse) toIssue() Issue {
 	return issue
 }
 
-// extractADFText recursively extracts plain text from Atlassian Document Format.
-//
-//nolint:gocognit // ADF parser complexity is inherent to the format
+// extractADFText recursively extracts plain text from an Atlassian Document Format node
 func extractADFText(v any) string {
 	switch node := v.(type) {
 	case map[string]any:
 		nodeType, _ := node["type"].(string)
 
-		switch nodeType {
-		case "text":
-			if text, ok := node["text"].(string); ok {
-				return text
-			}
-		case "mention":
-			// {"type":"mention","attrs":{"text":"@Name","id":"..."}}
-			// Wrap in markers so TUI can color the full name including spaces.
-			if attrs, ok := node["attrs"].(map[string]any); ok {
-				if text, ok := attrs["text"].(string); ok {
-					return "\x00MENTION:" + text + "\x00"
-				}
-			}
-		case "emoji":
-			if attrs, ok := node["attrs"].(map[string]any); ok {
-				if shortName, ok := attrs["shortName"].(string); ok {
-					return shortName
-				}
-			}
-		case "hardBreak":
-			return "\n"
-		case "inlineCard":
-			// {"type":"inlineCard","attrs":{"url":"..."}}
-			if attrs, ok := node["attrs"].(map[string]any); ok {
-				if url, ok := attrs["url"].(string); ok {
-					return url
-				}
-			}
-		case "listItem":
-			// Render list items with bullet.
-			if content, ok := node["content"].([]any); ok {
-				var parts []string
-				for _, child := range content {
-					if text := extractADFText(child); text != "" {
-						parts = append(parts, text)
-					}
-				}
-				return "• " + strings.Join(parts, "")
-			}
+		if text := adfNodeText(node, nodeType); text != "" {
+			return text
 		}
 
-		// Recurse into content array for container nodes.
 		if content, ok := node["content"].([]any); ok {
 			var parts []string
 			for _, child := range content {
@@ -895,6 +840,49 @@ func extractADFText(v any) string {
 
 	case string:
 		return node
+	}
+	return ""
+}
+
+func adfAttrString(node map[string]any, key string) string {
+	if attrs, ok := node["attrs"].(map[string]any); ok {
+		if val, ok := attrs[key].(string); ok {
+			return val
+		}
+	}
+	return ""
+}
+
+func adfNodeText(node map[string]any, nodeType string) string {
+	switch nodeType {
+	case "text":
+		if text, ok := node["text"].(string); ok {
+			return text
+		}
+	case "mention":
+		if text := adfAttrString(node, "text"); text != "" {
+			return "\x00MENTION:" + text + "\x00"
+		}
+	case "emoji":
+		if shortName := adfAttrString(node, "shortName"); shortName != "" {
+			return shortName
+		}
+	case "hardBreak":
+		return "\n"
+	case "inlineCard":
+		if url := adfAttrString(node, "url"); url != "" {
+			return url
+		}
+	case "listItem":
+		if content, ok := node["content"].([]any); ok {
+			var parts []string
+			for _, child := range content {
+				if text := extractADFText(child); text != "" {
+					parts = append(parts, text)
+				}
+			}
+			return "• " + strings.Join(parts, "")
+		}
 	}
 	return ""
 }

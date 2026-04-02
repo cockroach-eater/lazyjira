@@ -13,16 +13,16 @@ import (
 	"time"
 )
 
-// DemoServer serves a fake Jira REST API v3 backed by in-memory demo data.
-// Use with a real jira.Client for full-stack demo and testing.
+// DemoServer serves a fake Jira REST API v3 backed by in-memory demo data
+// Use with a real jira.Client for full-stack demo and testing
 type DemoServer struct {
 	data     *DemoClient
 	listener net.Listener
 	URL      string
 }
 
-// NewDemoServer starts an HTTP server on a random port and returns the server.
-// Call Close() when done.
+// NewDemoServer starts an HTTP server on a random port and returns the server
+// Call Close() when done
 func NewDemoServer() (*DemoServer, error) {
 	var lc net.ListenConfig
 	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
@@ -46,7 +46,7 @@ func NewDemoServer() (*DemoServer, error) {
 	return s, nil
 }
 
-// Close stops the demo server.
+// Close stops the demo server
 func (s *DemoServer) Close() error {
 	return s.listener.Close()
 }
@@ -434,7 +434,6 @@ func (s *DemoServer) handleAutocompleteSuggestions(w http.ResponseWriter, r *htt
 	writeJSON(w, map[string]any{"results": results})
 }
 
-//nolint:gocognit
 func (s *DemoServer) applyFieldUpdates(iss *Issue, fields map[string]any) {
 	if summary, ok := fields["summary"].(string); ok {
 		iss.Summary = summary
@@ -443,17 +442,7 @@ func (s *DemoServer) applyFieldUpdates(iss *Issue, fields map[string]any) {
 		iss.DescriptionADF = desc
 		iss.Description = extractADFText(desc)
 	}
-	if p, ok := fields["priority"].(map[string]any); ok {
-		if id, ok := p["id"].(string); ok {
-			priorities, _ := s.data.GetPriorities(context.Background())
-			for _, pr := range priorities {
-				if pr.ID == id {
-					iss.Priority = &Priority{ID: pr.ID, Name: pr.Name, IconURL: pr.IconURL}
-					break
-				}
-			}
-		}
-	}
+	s.applyPriorityField(iss, fields["priority"])
 	s.applyPersonField(iss, fields, "assignee")
 	s.applyPersonField(iss, fields, "reporter")
 	if labels, ok := fields["labels"].([]any); ok {
@@ -464,34 +453,66 @@ func (s *DemoServer) applyFieldUpdates(iss *Issue, fields map[string]any) {
 			}
 		}
 	}
-	if comps, ok := fields["components"].([]any); ok {
-		demoComps, _ := s.data.GetComponents(context.Background(), "")
-		nameMap := make(map[string]string)
-		for _, dc := range demoComps {
-			nameMap[dc.ID] = dc.Name
-		}
-		iss.Components = make([]Component, 0, len(comps))
-		for _, c := range comps {
-			if m, ok := c.(map[string]any); ok {
-				if id, ok := m["id"].(string); ok {
-					iss.Components = append(iss.Components, Component{ID: id, Name: nameMap[id]})
-				}
-			}
-		}
-	}
-	if it, ok := fields["issuetype"].(map[string]any); ok {
-		if id, ok := it["id"].(string); ok {
-			types, _ := s.data.GetIssueTypes(context.Background(), "")
-			for _, t := range types {
-				if t.ID == id {
-					iss.IssueType = &IssueType{ID: t.ID, Name: t.Name}
-					break
-				}
-			}
-		}
-	}
+	s.applyComponentsField(iss, fields["components"])
+	s.applyIssueTypeField(iss, fields["issuetype"])
 	if _, exists := fields["sprint"]; exists {
 		iss.Sprint = nil
+	}
+}
+
+func (s *DemoServer) applyPriorityField(iss *Issue, val any) {
+	p, ok := val.(map[string]any)
+	if !ok {
+		return
+	}
+	id, ok := p["id"].(string)
+	if !ok {
+		return
+	}
+	priorities, _ := s.data.GetPriorities(context.Background())
+	for _, pr := range priorities {
+		if pr.ID == id {
+			iss.Priority = &Priority{ID: pr.ID, Name: pr.Name, IconURL: pr.IconURL}
+			return
+		}
+	}
+}
+
+func (s *DemoServer) applyComponentsField(iss *Issue, val any) {
+	comps, ok := val.([]any)
+	if !ok {
+		return
+	}
+	demoComps, _ := s.data.GetComponents(context.Background(), "")
+	nameMap := make(map[string]string)
+	for _, dc := range demoComps {
+		nameMap[dc.ID] = dc.Name
+	}
+	iss.Components = make([]Component, 0, len(comps))
+	for _, c := range comps {
+		if m, ok := c.(map[string]any); ok {
+			if id, ok := m["id"].(string); ok {
+				iss.Components = append(iss.Components, Component{ID: id, Name: nameMap[id]})
+			}
+		}
+	}
+}
+
+func (s *DemoServer) applyIssueTypeField(iss *Issue, val any) {
+	it, ok := val.(map[string]any)
+	if !ok {
+		return
+	}
+	id, ok := it["id"].(string)
+	if !ok {
+		return
+	}
+	types, _ := s.data.GetIssueTypes(context.Background(), "")
+	for _, t := range types {
+		if t.ID == id {
+			iss.IssueType = &IssueType{ID: t.ID, Name: t.Name}
+			return
+		}
 	}
 }
 

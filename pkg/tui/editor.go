@@ -34,7 +34,7 @@ func resolveEditor() (string, error) {
 }
 
 // launchEditor writes content to a temp file and opens it in $EDITOR.
-// Returns a tea.Cmd that suspends the TUI via tea.ExecProcess.
+// Returns a tea.Cmd that suspends the TUI via tea.ExecProcess
 func launchEditor(content, suffix string) tea.Cmd {
 	editor, err := resolveEditor()
 	if err != nil {

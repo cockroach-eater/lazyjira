@@ -13,7 +13,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// LogEntry is a single log line.
+// LogEntry is a single log line
 type LogEntry struct {
 	Time    time.Time
 	Method  string
@@ -22,7 +22,7 @@ type LogEntry struct {
 	Elapsed time.Duration
 }
 
-// LogPanel shows API request logs under the main panel.
+// LogPanel shows API request logs under the main panel
 type LogPanel struct {
 	entries []LogEntry
 	mu      sync.Mutex

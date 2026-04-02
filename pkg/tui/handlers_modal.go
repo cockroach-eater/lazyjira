@@ -104,7 +104,7 @@ func (a *App) handleDiffCancelled() (tea.Model, tea.Cmd) {
 func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model, tea.Cmd) {
 	ctx := a.editContext
 	a.editContext = editCtx{}
-	switch ctx.kind { //nolint:exhaustive // only InputModal-based kinds handled here
+	switch ctx.kind { //nolint:exhaustive
 	case editCreateField:
 		a.createForm.Resume()
 		if msg.Text != "" {

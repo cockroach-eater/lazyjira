@@ -9,14 +9,14 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// ScrollInfo provides data for rendering a scrollbar in the right border.
+// ScrollInfo provides data for rendering a scrollbar in the right border
 type ScrollInfo struct {
-	Total   int // total items/lines
-	Visible int // visible items/lines
-	Offset  int // scroll offset (first visible item index)
+	Total   int
+	Visible int
+	Offset  int
 }
 
-// RenderCollapsedBar draws a single-line collapsed panel: ╶─[title]───footer─╴
+// RenderCollapsedBar draws a single-line collapsed panel
 func RenderCollapsedBar(title, footer string, width int, focused bool) string {
 	borderColor := theme.ColorNone
 	if focused {
@@ -34,31 +34,29 @@ func RenderCollapsedBar(title, footer string, width int, focused bool) string {
 	titleLen := lipgloss.Width(styledTitle)
 
 	if footer == "" {
-		// ╶─ title ───╴  = 2 + titleLen + padding + 1 = width
 		padding := max(width-3-titleLen, 0)
 		return borderStyle.Render("╶─") + styledTitle + borderStyle.Render(strings.Repeat("─", padding)+"╴")
 	}
 
 	styledFooter := borderStyle.Render(footer)
 	footerLen := lipgloss.Width(styledFooter)
-	// ╶─ title ── footer ─╴  = 2 + titleLen + padding + footerLen + 2 = width
 	padding := max(width-4-titleLen-footerLen, 0)
 	return borderStyle.Render("╶─") + styledTitle +
 		borderStyle.Render(strings.Repeat("─", padding)) +
 		styledFooter + borderStyle.Render("─╴")
 }
 
-// RenderPanel draws a bordered panel with title in the top border.
+// RenderPanel draws a bordered panel with title in the top border
 func RenderPanel(title, content string, width, innerHeight int, focused bool) string {
 	return RenderPanelFull(title, "", content, width, innerHeight, focused, nil)
 }
 
-// RenderPanelWithColor draws a panel with an explicit border color.
+// RenderPanelWithColor draws a panel with an explicit border color
 func RenderPanelWithColor(title, footer, content string, width, innerHeight int, scroll *ScrollInfo, color lipgloss.TerminalColor) string {
 	return renderPanelImpl(title, footer, content, width, innerHeight, color, scroll)
 }
 
-// RenderPanelFull draws a panel with title, footer, and optional scrollbar.
+// RenderPanelFull draws a panel with title, footer, and optional scrollbar
 func RenderPanelFull(title, footer, content string, width, innerHeight int, focused bool, scroll *ScrollInfo) string {
 	borderColor := theme.ColorNone
 	if focused {

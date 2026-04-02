@@ -14,10 +14,10 @@ const (
 )
 
 // LoadJQLHistory loads JQL queries from the history file.
-// Returns empty slice on error or missing file.
+// Returns empty slice on error or missing file
 func LoadJQLHistory() []string {
 	path := filepath.Join(config.ConfigDir(), jqlHistoryFile)
-	data, err := os.ReadFile(path) //nolint:gosec // path is constructed from trusted config dir constant
+	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return nil
 	}
@@ -31,7 +31,7 @@ func LoadJQLHistory() []string {
 	return result
 }
 
-// SaveJQLHistory writes queries to the history file.
+// SaveJQLHistory writes queries to the history file
 func SaveJQLHistory(queries []string) error {
 	dir := config.ConfigDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -43,7 +43,7 @@ func SaveJQLHistory(queries []string) error {
 }
 
 // AddToHistory prepends a new query to the history, deduplicating.
-// Returns the updated history capped at 50 entries.
+// Returns the updated history capped at 50 entries
 func AddToHistory(history []string, newQuery string) []string {
 	newQuery = strings.TrimSpace(newQuery)
 	if newQuery == "" {

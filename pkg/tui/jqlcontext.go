@@ -7,14 +7,14 @@ import (
 	"github.com/textfuel/lazyjira/pkg/jira"
 )
 
-// JQL context modes returned by parseJQLContext.
+// JQL context modes returned by parseJQLContext
 const (
 	jqlCtxField = "field"
 	jqlCtxValue = "value"
 	jqlCtxNone  = "none"
 )
 
-// JQLContext holds the result of JQL input analysis.
+// JQLContext holds the result of JQL input analysis
 type JQLContext struct {
 	Mode       string // jqlCtxField, jqlCtxValue, jqlCtxNone
 	FieldName  string // field name for value suggestions
@@ -124,8 +124,8 @@ func parseJQLContext(input string, cursorPos int) JQLContext {
 }
 
 // rawPartialAfterDelimiter returns the raw text between the last value delimiter
-// and the cursor, along with its rune length. Delimiters: (, , and operator+space boundaries.
-// This captures multi-word partials like "ready for de" correctly.
+// and the cursor, along with its rune length. Delimiters are (, , and operator+space boundaries.
+// This captures multi-word partials like "ready for de" correctly
 func rawPartialAfterDelimiter(runes []rune, cursorPos int) (string, int) {
 	// Scan backward from cursor to find the delimiter.
 	i := cursorPos - 1
@@ -201,7 +201,7 @@ func findFieldBeforeOperator(tokens []string) string {
 }
 
 // matchFieldSuggestions filters and ranks field suggestions by relevance.
-// Order: exact match, prefix match, contains match.
+// Results are ordered by exact match first, then prefix match, then contains match
 func matchFieldSuggestions(fields []jira.AutocompleteField, partial string) []string {
 	if partial == "" {
 		result := make([]string, len(fields))
@@ -233,7 +233,7 @@ func matchFieldSuggestions(fields []jira.AutocompleteField, partial string) []st
 }
 
 // tokenizeJQL splits JQL text into tokens, respecting double-quoted strings.
-// Parentheses and commas are emitted as separate tokens.
+// Parentheses and commas are emitted as separate tokens
 func tokenizeJQL(s string) []string {
 	var tokens []string
 	var current strings.Builder

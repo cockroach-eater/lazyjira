@@ -8,21 +8,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// InputConfirmedMsg is sent when the user presses Enter in the input modal.
+// InputConfirmedMsg is sent when the user presses Enter in the input modal
 type InputConfirmedMsg struct{ Text string }
 
-// InputCancelledMsg is sent when the user presses Esc.
+// InputCancelledMsg is sent when the user presses Esc
 type InputCancelledMsg struct{}
 
-// InputModal is a single-line text input popup (like lazygit branch rename).
-// Optionally shows a list of hints below the input (e.g. existing branches).
-// Tab toggles focus between input and hints list.
+// InputModal is a single-line text input popup with an optional hints list below the input
 type InputModal struct {
 	title      string
 	text       []rune
 	cursor     int
 	visible    bool
-	focusInput bool // true = input focused, false = hints focused
+	focusInput bool
 	hints      []string
 	hintCursor int
 	width      int
@@ -33,7 +31,7 @@ func NewInputModal() InputModal {
 	return InputModal{}
 }
 
-// Show opens the input modal with a title and pre-filled text.
+// Show opens the input modal with a title and pre-filled text
 func (m *InputModal) Show(title, prefill string) {
 	m.title = title
 	m.text = []rune(prefill)
@@ -44,7 +42,7 @@ func (m *InputModal) Show(title, prefill string) {
 	m.hintCursor = 0
 }
 
-// SetHints sets the optional hint items shown below the input.
+// SetHints sets the optional hint items shown below the input
 func (m *InputModal) SetHints(hints []string) {
 	m.hints = hints
 	m.hintCursor = 0
@@ -58,109 +56,111 @@ func (m *InputModal) SetSize(w, h int) {
 	m.height = h
 }
 
-//nolint:gocognit // input handling with cursor movement + hints navigation
 func (m *InputModal) Update(msg tea.Msg) (InputModal, tea.Cmd) {
 	if !m.visible {
 		return *m, nil
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		// Tab toggles focus between input and hints.
 		if msg.Type == tea.KeyTab && len(m.hints) > 0 {
 			m.focusInput = !m.focusInput
 			return *m, nil
 		}
-
 		if !m.focusInput {
-			// Hints list navigation.
-			switch msg.Type {
-			case tea.KeyEnter:
-				if m.hintCursor >= 0 && m.hintCursor < len(m.hints) {
-					m.visible = false
-					text := m.hints[m.hintCursor]
-					return *m, func() tea.Msg { return InputConfirmedMsg{Text: text} }
-				}
-			case tea.KeyEsc:
-				m.visible = false
-				return *m, func() tea.Msg { return InputCancelledMsg{} }
-			case tea.KeyDown:
-				if m.hintCursor < len(m.hints)-1 {
-					m.hintCursor++
-				}
-			case tea.KeyUp:
-				if m.hintCursor > 0 {
-					m.hintCursor--
-				}
-			default:
-				switch msg.String() {
-				case "q":
-					m.visible = false
-					return *m, func() tea.Msg { return InputCancelledMsg{} }
-				case "j":
-					if m.hintCursor < len(m.hints)-1 {
-						m.hintCursor++
-					}
-				case "k":
-					if m.hintCursor > 0 {
-						m.hintCursor--
-					}
-				}
-			}
-			return *m, nil
+			return m.handleHintKeys(msg)
 		}
+		return m.handleTextInput(msg)
+	}
+	return *m, nil
+}
 
-		// Input mode.
-		switch msg.Type {
-		case tea.KeyEnter:
+func (m *InputModal) handleHintKeys(msg tea.KeyMsg) (InputModal, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		if m.hintCursor >= 0 && m.hintCursor < len(m.hints) {
 			m.visible = false
-			text := string(m.text)
+			text := m.hints[m.hintCursor]
 			return *m, func() tea.Msg { return InputConfirmedMsg{Text: text} }
-		case tea.KeyEsc:
+		}
+	case tea.KeyEsc:
+		m.visible = false
+		return *m, func() tea.Msg { return InputCancelledMsg{} }
+	case tea.KeyDown:
+		if m.hintCursor < len(m.hints)-1 {
+			m.hintCursor++
+		}
+	case tea.KeyUp:
+		if m.hintCursor > 0 {
+			m.hintCursor--
+		}
+	default:
+		switch msg.String() {
+		case "q":
 			m.visible = false
 			return *m, func() tea.Msg { return InputCancelledMsg{} }
-		case tea.KeyBackspace:
-			if m.cursor > 0 {
-				m.text = append(m.text[:m.cursor-1], m.text[m.cursor:]...)
-				m.cursor--
+		case "j":
+			if m.hintCursor < len(m.hints)-1 {
+				m.hintCursor++
 			}
-		case tea.KeyDelete:
-			if m.cursor < len(m.text) {
-				m.text = append(m.text[:m.cursor], m.text[m.cursor+1:]...)
+		case "k":
+			if m.hintCursor > 0 {
+				m.hintCursor--
 			}
-		case tea.KeyLeft:
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case tea.KeyRight:
-			if m.cursor < len(m.text) {
-				m.cursor++
-			}
-		case tea.KeyHome, tea.KeyCtrlA:
-			m.cursor = 0
-		case tea.KeyEnd, tea.KeyCtrlE:
-			m.cursor = len(m.text)
-		case tea.KeyCtrlU:
-			m.text = m.text[m.cursor:]
-			m.cursor = 0
-		case tea.KeyCtrlK:
-			m.text = m.text[:m.cursor]
-		case tea.KeySpace:
-			newText := make([]rune, 0, len(m.text)+1)
-			newText = append(newText, m.text[:m.cursor]...)
-			newText = append(newText, ' ')
-			newText = append(newText, m.text[m.cursor:]...)
-			m.text = newText
-			m.cursor++
-		case tea.KeyRunes:
-			runes := msg.Runes
-			newText := make([]rune, 0, len(m.text)+len(runes))
-			newText = append(newText, m.text[:m.cursor]...)
-			newText = append(newText, runes...)
-			newText = append(newText, m.text[m.cursor:]...)
-			m.text = newText
-			m.cursor += len(runes)
-		default:
-			// Ignore other keys.
 		}
+	}
+	return *m, nil
+}
+
+func (m *InputModal) handleTextInput(msg tea.KeyMsg) (InputModal, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		m.visible = false
+		text := string(m.text)
+		return *m, func() tea.Msg { return InputConfirmedMsg{Text: text} }
+	case tea.KeyEsc:
+		m.visible = false
+		return *m, func() tea.Msg { return InputCancelledMsg{} }
+	case tea.KeyBackspace:
+		if m.cursor > 0 {
+			m.text = append(m.text[:m.cursor-1], m.text[m.cursor:]...)
+			m.cursor--
+		}
+	case tea.KeyDelete:
+		if m.cursor < len(m.text) {
+			m.text = append(m.text[:m.cursor], m.text[m.cursor+1:]...)
+		}
+	case tea.KeyLeft:
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case tea.KeyRight:
+		if m.cursor < len(m.text) {
+			m.cursor++
+		}
+	case tea.KeyHome, tea.KeyCtrlA:
+		m.cursor = 0
+	case tea.KeyEnd, tea.KeyCtrlE:
+		m.cursor = len(m.text)
+	case tea.KeyCtrlU:
+		m.text = m.text[m.cursor:]
+		m.cursor = 0
+	case tea.KeyCtrlK:
+		m.text = m.text[:m.cursor]
+	case tea.KeySpace:
+		newText := make([]rune, 0, len(m.text)+1)
+		newText = append(newText, m.text[:m.cursor]...)
+		newText = append(newText, ' ')
+		newText = append(newText, m.text[m.cursor:]...)
+		m.text = newText
+		m.cursor++
+	case tea.KeyRunes:
+		runes := msg.Runes
+		newText := make([]rune, 0, len(m.text)+len(runes))
+		newText = append(newText, m.text[:m.cursor]...)
+		newText = append(newText, runes...)
+		newText = append(newText, m.text[m.cursor:]...)
+		m.text = newText
+		m.cursor += len(runes)
+	default:
 	}
 	return *m, nil
 }
@@ -171,17 +171,15 @@ func (m *InputModal) View() string {
 	}
 
 	contentW := min(max(m.width*6/10, 30), m.width-4)
-	innerW := contentW - 2 // borders
+	innerW := contentW - 2
 
-	// Build wrapped lines from plain runes, then overlay cursor.
 	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	allRunes := append([]rune{' '}, m.text...) // leading space
-	cursorPos := m.cursor + 1                  // +1 for leading space
+	allRunes := append([]rune{' '}, m.text...)
+	cursorPos := m.cursor + 1
 
-	// Split runes into lines of innerW display columns.
 	type wrappedLine struct {
 		runes []rune
-		start int // rune offset in allRunes
+		start int
 	}
 	var wrapped []wrappedLine
 	off := 0
@@ -206,7 +204,6 @@ func (m *InputModal) View() string {
 		wrapped = append(wrapped, wrappedLine{})
 	}
 
-	// Render each line, inserting cursor on the right one.
 	var lines []string
 	cursorPlaced := false
 	for _, wl := range wrapped {
@@ -217,11 +214,9 @@ func (m *InputModal) View() string {
 			col := cursorPos - wl.start
 			switch {
 			case col >= len(wl.runes) && lineW >= innerW:
-				// Cursor past end of a full line: put cursor on a new line.
 				lines = append(lines, string(wl.runes))
 				lines = append(lines, cursorStyle.Render("█")+strings.Repeat(" ", innerW-1))
 			case col >= len(wl.runes):
-				// Cursor past end of a short line: append cursor block.
 				rendered := string(wl.runes) + cursorStyle.Render("█")
 				if w := lipgloss.Width(rendered); w < innerW {
 					rendered += strings.Repeat(" ", innerW-w)
@@ -252,7 +247,7 @@ func (m *InputModal) View() string {
 	return RenderPanelFull(m.title, "", body, contentW, len(lines), m.focusInput, nil)
 }
 
-// Intercept handles a message if the modal is visible. Implements Overlay.
+// Intercept handles a message if the modal is visible
 func (m *InputModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	if !m.visible {
 		return nil, false
@@ -265,7 +260,7 @@ func (m *InputModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// Render draws the input modal centered on bg with optional hint panel. Implements Overlay.
+// Render draws the input modal centered on bg with an optional hint panel
 func (m *InputModal) Render(bg string, w, h int) string {
 	if !m.visible {
 		return bg
@@ -274,15 +269,14 @@ func (m *InputModal) Render(bg string, w, h int) string {
 	return centerOverlayWithHint(bg, popup, m.HintView(), w, h)
 }
 
-// HintView returns a separate bordered panel with hint items (existing branches).
-// Returns "" if no hints are set.
+// HintView returns a bordered panel with hint items or an empty string if no hints are set
 func (m *InputModal) HintView() string {
 	if !m.visible || len(m.hints) == 0 {
 		return ""
 	}
 
 	contentW := min(max(m.width*6/10, 30), m.width-4)
-	innerW := contentW - 2 // borders
+	innerW := contentW - 2
 
 	selStyle := lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15"))
 	normalStyle := lipgloss.NewStyle()

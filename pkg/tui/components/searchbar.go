@@ -5,7 +5,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// SearchBar is a bottom search input that filters the current panel.
+// SearchBar is a bottom search input that filters the current panel
 type SearchBar struct {
 	input  TextInput
 	active bool
@@ -21,7 +21,7 @@ func (s *SearchBar) Query() string    { return s.input.Value() }
 func (s *SearchBar) Activate()        { s.active = true; s.input.SetValue("") }
 func (s *SearchBar) Deactivate()      { s.active = false; s.input.SetValue("") }
 
-// SearchChangedMsg is sent when the search query changes.
+// SearchChangedMsg is sent when the search query changes
 type SearchChangedMsg struct{ Query string }
 
 // SearchConfirmedMsg is sent when the user presses Enter.

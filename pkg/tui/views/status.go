@@ -52,7 +52,6 @@ func (s *StatusPanel) View() string {
 		indicator = theme.StatusColor("").Render("✗")
 	}
 
-	// Shrink user label to fit: " ✓ user → PROJECT" must fit in width-2
 	contentW := s.width - 2
 	userLabel := s.user
 	if userLabel == "" {

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// DemoClient implements ClientInterface with in-memory fake data for demo mode.
+// DemoClient implements ClientInterface with in-memory fake data for demo mode
 type DemoClient struct {
 	projects   []Project
 	issues     map[string][]*Issue  // projectKey → issues
@@ -21,10 +21,10 @@ type DemoClient struct {
 	onRequest  func(RequestLog)
 }
 
-// Compile-time check.
+// Compile-time check
 var _ ClientInterface = (*DemoClient)(nil)
 
-// NewDemoClient creates a DemoClient populated with realistic fake data.
+// NewDemoClient creates a DemoClient populated with realistic fake data
 func NewDemoClient() *DemoClient {
 	d := &DemoClient{
 		issues:     make(map[string][]*Issue),
@@ -1167,10 +1167,10 @@ Content-Type: application/json
 	)
 }
 
-// plat3ADF returns a rich ADF document for the PLAT-3 demo issue.
-// Showcases headings, bold, code blocks, lists, blockquote, rule, inline code, links.
+// plat3ADF returns a rich ADF document for the PLAT-3 demo issue
+// Showcases headings, bold, code blocks, lists, blockquote, rule, inline code, links
 //
-//nolint:funlen // demo data generator
+//nolint:funlen
 func plat3ADF() any {
 	text := func(t string) map[string]any {
 		return map[string]any{"type": "text", "text": t}

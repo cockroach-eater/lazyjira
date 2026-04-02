@@ -13,13 +13,13 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// InfoPanelTab identifies a tab within the Info panel.
+// InfoPanelTab identifies a tab within the Info panel
 type InfoPanelTab int
 
 const (
-	InfoTabFields   InfoPanelTab = iota // field key-value pairs
-	InfoTabLinks                        // issue links
-	InfoTabSubtasks                     // subtasks
+	InfoTabFields   InfoPanelTab = iota
+	InfoTabLinks
+	InfoTabSubtasks
 )
 
 type InfoPanel struct {
@@ -29,7 +29,7 @@ type InfoPanel struct {
 	filter          string
 	activeTab       InfoPanelTab
 	theme           *theme.Theme
-	filteredIndices []int // maps filtered cursor position → original data index; nil when no filter
+	filteredIndices []int
 }
 
 func NewInfoPanel() *InfoPanel {
@@ -50,7 +50,7 @@ func (p *InfoPanel) SetIssue(issue *jira.Issue) {
 	p.syncItemCount()
 }
 
-// IssueKey returns the key of the currently displayed issue, or "".
+// IssueKey returns the key of the currently displayed issue
 func (p *InfoPanel) IssueKey() string {
 	if p.issue != nil {
 		return p.issue.Key
@@ -67,7 +67,7 @@ func (p *InfoPanel) SetFilter(query string) {
 	p.filteredIndices = nil
 }
 
-// ClearFilter removes the search filter, preserving cursor on the same element.
+// ClearFilter removes the search filter preserving cursor on the same element
 func (p *InfoPanel) ClearFilter() {
 	origIdx := p.resolveOriginalIndex()
 	p.filter = ""
@@ -102,8 +102,6 @@ func (p *InfoPanel) SelectedInfoField() *InfoField {
 	return nil
 }
 
-// resolveOriginalIndex maps the current cursor to the original data index,
-// accounting for active filter. Returns -1 if out of bounds.
 func (p *InfoPanel) resolveOriginalIndex() int {
 	if p.filteredIndices != nil {
 		if p.Cursor >= 0 && p.Cursor < len(p.filteredIndices) {
@@ -114,7 +112,7 @@ func (p *InfoPanel) resolveOriginalIndex() int {
 	return p.Cursor
 }
 
-// SelectedLinkKey returns the issue key of the selected link, or "".
+// SelectedLinkKey returns the issue key of the selected link
 func (p *InfoPanel) SelectedLinkKey() string {
 	if p.issue == nil || p.activeTab != InfoTabLinks {
 		return ""
@@ -123,7 +121,6 @@ func (p *InfoPanel) SelectedLinkKey() string {
 	if target < 0 {
 		return ""
 	}
-	// Walk links matching renderLinkRowPairs order (one row per direction).
 	idx := 0
 	for _, link := range p.issue.IssueLinks {
 		if link.Type == nil {
@@ -145,7 +142,7 @@ func (p *InfoPanel) SelectedLinkKey() string {
 	return ""
 }
 
-// SelectedSubtaskKey returns the issue key of the selected subtask, or "".
+// SelectedSubtaskKey returns the issue key of the selected subtask
 func (p *InfoPanel) SelectedSubtaskKey() string {
 	if p.issue == nil || p.activeTab != InfoTabSubtasks {
 		return ""
@@ -254,7 +251,6 @@ func (p *InfoPanel) View() string {
 
 	styled, plain := p.renderTabRows(contentWidth)
 
-	// Apply filter (on plain text to avoid ANSI in search).
 	if p.filter != "" {
 		q := strings.ToLower(p.filter)
 		var fs, fp []string
@@ -272,7 +268,6 @@ func (p *InfoPanel) View() string {
 		p.filteredIndices = nil
 	}
 
-	// Clamp cursor.
 	if p.Cursor >= len(plain) {
 		p.Cursor = len(plain) - 1
 	}
@@ -286,7 +281,6 @@ func (p *InfoPanel) View() string {
 	end := min(p.Offset+innerHeight, len(plain))
 	for i := p.Offset; i < end; i++ {
 		if i == p.Cursor && p.Focused {
-			// Plain text for selected row — no inner ANSI to break background.
 			rendered = append(rendered, p.theme.SelectedItem.Width(contentWidth).Render(plain[i]))
 		} else {
 			rendered = append(rendered, p.theme.NormalItem.Width(contentWidth).Render(styled[i]))
@@ -326,16 +320,14 @@ func (p *InfoPanel) buildTitle() string {
 	return "[3] " + strings.Join(parts, sep)
 }
 
-// ClickTabAt switches tab based on x position in the title bar.
+// ClickTabAt switches tab based on x position in the title bar
 func (p *InfoPanel) ClickTabAt(x int) {
 	tabs := p.visibleTabs()
 	if len(tabs) <= 1 {
 		return
 	}
-	// Title format: "╭─[3] Info - Lnk - Sub─..."
-	// Tabs start after "[3] " prefix (border char "╭─" is col 0-1).
 	prefix := len("[3] ")
-	sepW := 3 // " - "
+	sepW := 3
 
 	pos := prefix
 	for _, t := range tabs {
@@ -366,7 +358,6 @@ func infoPanelTabLabel(tab InfoPanelTab) string {
 	return ""
 }
 
-// renderTabRows returns (styled, plain) row pairs for the active tab.
 func (p *InfoPanel) renderTabRows(width int) (styled, plain []string) {
 	switch p.activeTab {
 	case InfoTabFields:
@@ -380,7 +371,7 @@ func (p *InfoPanel) renderTabRows(width int) (styled, plain []string) {
 }
 
 func (p *InfoPanel) renderFieldRowPairs() (styled, plain []string) {
-	w := p.Width - 2 // panel borders
+	w := p.Width - 2
 	styled = renderInfoRows(p.issue, p.customFields, p.theme, w)
 	plain = renderInfoRowsPlain(p.issue, p.customFields, w)
 	return

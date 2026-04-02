@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TLSConfig holds client certificate and CA settings.
+// TLSConfig holds client certificate and CA settings
 type TLSConfig struct {
 	CertFile string
 	KeyFile  string
@@ -18,14 +18,14 @@ type TLSConfig struct {
 	Insecure bool
 }
 
-// HasCustomTLS returns true if any TLS option is set.
+// HasCustomTLS returns true if any TLS option is set
 func (t TLSConfig) HasCustomTLS() bool {
 	return t.CertFile != "" || t.CAFile != "" || t.Insecure
 }
 
-// BuildHTTPClient creates an *http.Client with the configured TLS settings.
+// BuildHTTPClient creates an *http.Client with the configured TLS settings
 func (t TLSConfig) BuildHTTPClient() (*http.Client, error) {
-	tlsCfg := &tls.Config{} //nolint:gosec // InsecureSkipVerify is opt-in by user
+	tlsCfg := &tls.Config{} //nolint:gosec
 
 	if t.CertFile != "" && t.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)

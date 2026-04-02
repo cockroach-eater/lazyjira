@@ -14,7 +14,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/components"
 )
 
-// handleIssuesLoaded processes newly fetched issues.
+// handleIssuesLoaded processes newly fetched issues
 func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 	a.statusPanel.SetError("")
 	*a.logFlag = false
@@ -28,7 +28,6 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, prefetchIssue(a.client, issue.Key))
 		}
 	}
-	// Auto-detect: select issue from git branch.
 	if a.gitDetectedKey != "" {
 		detectedKey := a.gitDetectedKey
 		projectKey := strings.SplitN(detectedKey, "-", 2)[0]
@@ -51,7 +50,6 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, fetchIssueDetail(a.client, detectedKey))
 			a.gitDetectedKey = ""
 		case a.issuesList.GetTabIndex() != 0:
-			// not in current tab, try All tab
 			a.issuesList.SetTabIndex(0)
 			cmds = append(cmds, a.fetchActiveTab())
 		default:
@@ -61,37 +59,32 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// handleIssueDetailLoaded updates the detail view with full issue data.
+// handleIssueDetailLoaded updates the detail view with full issue data
 func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.Cmd) {
 	a.statusPanel.SetError("")
 	*a.logFlag = false
 	a.statusPanel.SetOnline(true)
 	a.issueCache[msg.issue.Key] = msg.issue
-	// Only update detail view if it's showing this issue (don't clobber preview of a different issue).
 	if a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key {
 		a.detailView.UpdateIssueData(msg.issue)
 	}
-	// Keep info panel in sync — only if it's already showing this issue.
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
 		if a.infoPanel.IssueKey() == "" || a.infoPanel.IssueKey() == msg.issue.Key {
 			a.infoPanel.SetIssue(msg.issue)
 		}
 	}
-	// Update issue in the list so changes appear immediately.
 	a.issuesList.PatchIssue(msg.issue)
 
-	// Prefetch linked issues and subtasks for instant preview.
 	return a, a.prefetchRelated(msg.issue)
 }
 
-// handleIssuePrefetched caches prefetched issue data silently.
+// handleIssuePrefetched caches prefetched issue data silently
 func (a *App) handleIssuePrefetched(msg issuePrefetchedMsg) (tea.Model, tea.Cmd) {
 	if msg.issue == nil {
 		return a, nil
 	}
 	a.issueCache[msg.issue.Key] = msg.issue
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
-		// Only update panels if they're already showing this issue (don't clobber preview).
 		if a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key {
 			a.detailView.UpdateIssueData(msg.issue)
 		}
@@ -102,7 +95,7 @@ func (a *App) handleIssuePrefetched(msg issuePrefetchedMsg) (tea.Model, tea.Cmd)
 	return a, nil
 }
 
-// handleTransitionDone re-fetches data after a transition.
+// handleTransitionDone re-fetches data after a transition
 func (a *App) handleTransitionDone() (tea.Model, tea.Cmd) {
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
@@ -114,7 +107,7 @@ func (a *App) handleTransitionDone() (tea.Model, tea.Cmd) {
 	)
 }
 
-// handleTransitionsLoaded shows the transition picker modal.
+// handleTransitionsLoaded shows the transition picker modal
 func (a *App) handleTransitionsLoaded(msg transitionsLoadedMsg) (tea.Model, tea.Cmd) {
 	if len(msg.transitions) == 0 {
 		return a, nil
@@ -146,7 +139,6 @@ func (a *App) handlePrioritiesLoaded(msg prioritiesLoadedMsg) (tea.Model, tea.Cm
 	for _, p := range msg.priorities {
 		items = append(items, components.ModalItem{ID: p.ID, Label: p.Name})
 	}
-	// only set default callback if caller did not set one (e.g. create form sets its own)
 	if a.onSelect == nil {
 		a.onSelect = func(item components.ModalItem) tea.Cmd {
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
@@ -159,20 +151,16 @@ func (a *App) handlePrioritiesLoaded(msg prioritiesLoadedMsg) (tea.Model, tea.Cm
 	return a, nil
 }
 
-// handleUsersLoaded shows the assignee/reporter picker modal.
+// handleUsersLoaded shows the assignee/reporter picker modal
 func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
-	// Cache users for this project
 	if a.projectKey != "" && len(msg.users) > 0 {
 		a.usersCache[a.projectKey] = msg.users
 	}
-	// Prefetch only caches, no modal
 	if msg.issueKey == "" {
 		return a, nil
 	}
-	// create form user picker (single-select or checklist)
 	if msg.issueKey == createUsersSentinel {
 		if a.onChecklist != nil {
-			// multi-user field: show checklist with me at top
 			a.modal.ShowChecklist("Select users", a.buildUserItems(msg.users), nil)
 			return a, nil
 		}
@@ -194,7 +182,6 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 
 	var items []components.ModalItem
 
-	// Put current user first
 	if a.currentUser != nil {
 		meLabel := a.currentUser.DisplayName + " (me)"
 		meFound := false
@@ -210,10 +197,8 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Then unassigned option
 	items = append(items, components.ModalItem{ID: "", Label: "None", Active: currentAssigneeID == ""})
 
-	// Then everyone else, skip current user since already added
 	for _, u := range msg.users {
 		if u.AccountID == myAccountID {
 			continue
@@ -221,12 +206,11 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 		items = append(items, components.ModalItem{ID: u.AccountID, Label: u.DisplayName, Active: u.AccountID == currentAssigneeID})
 	}
 
-	// onSelect callback set at fetch time (ActAssignee or editInfoField)
 	a.modal.Show("Assignee: "+sel.Key, items)
 	return a, nil
 }
 
-// handleBoardsLoaded caches boards and resolves the board for the current project.
+// handleBoardsLoaded caches boards and resolves the board for the current project
 func (a *App) handleBoardsLoaded(msg boardsLoadedMsg) (tea.Model, tea.Cmd) {
 	a.boards = msg.boards
 	a.resolveBoardID()
@@ -243,7 +227,7 @@ func (a *App) resolveBoardID() {
 	}
 }
 
-// handleSprintsLoaded shows the sprint picker modal.
+// handleSprintsLoaded shows the sprint picker modal
 func (a *App) handleSprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
@@ -283,7 +267,7 @@ func (a *App) handleSprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// handleLabelsLoaded shows the labels checklist modal.
+// handleLabelsLoaded shows the labels checklist modal
 func (a *App) handleLabelsLoaded(msg labelsLoadedMsg) (tea.Model, tea.Cmd) {
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
@@ -305,7 +289,7 @@ func (a *App) handleLabelsLoaded(msg labelsLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// handleComponentsLoaded shows the components checklist modal.
+// handleComponentsLoaded shows the components checklist modal
 func (a *App) handleComponentsLoaded(msg componentsLoadedMsg) (tea.Model, tea.Cmd) {
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
@@ -329,7 +313,6 @@ func (a *App) handleComponentsLoaded(msg componentsLoadedMsg) (tea.Model, tea.Cm
 
 // handleIssueTypesLoaded shows the issue type picker modal or create form type picker
 func (a *App) handleIssueTypesLoaded(msg issueTypesLoadedMsg) (tea.Model, tea.Cmd) {
-	// if creating an issue, show type picker via the standard Modal
 	if a.createCtx.intent {
 		a.createCtx.intent = false
 		items := make([]components.ModalItem, 0, len(msg.issueTypes))
@@ -354,7 +337,7 @@ func (a *App) handleIssueTypesLoaded(msg issueTypesLoadedMsg) (tea.Model, tea.Cm
 	return a, nil
 }
 
-// handleProjectsLoaded processes the project list from API.
+// handleProjectsLoaded processes the project list from API
 func (a *App) handleProjectsLoaded(msg projectsLoadedMsg) (tea.Model, tea.Cmd) {
 	projects := msg.projects
 	if !a.demoMode {
@@ -379,7 +362,7 @@ func (a *App) handleProjectsLoaded(msg projectsLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// prefetchRelated batches a single JQL search for all linked issues and subtasks not yet in cache.
+// prefetchRelated batches a single JQL search for all linked issues and subtasks not yet in cache
 func (a *App) prefetchRelated(issue *jira.Issue) tea.Cmd {
 	if issue == nil {
 		return nil
@@ -414,7 +397,7 @@ func (a *App) prefetchRelated(issue *jira.Issue) tea.Cmd {
 	return batchPrefetch(a.client, keys)
 }
 
-// handleBatchPrefetched caches all issues from a batch prefetch.
+// handleBatchPrefetched caches all issues from a batch prefetch
 func (a *App) handleBatchPrefetched(msg batchPrefetchedMsg) (tea.Model, tea.Cmd) {
 	for i := range msg.issues {
 		a.issueCache[msg.issues[i].Key] = &msg.issues[i]
@@ -435,7 +418,6 @@ func (a *App) handleCreateFormTypeSelected(msg components.CreateFormTypeSelected
 func (a *App) handleCreateMetaLoaded(msg createMetaLoadedMsg) (tea.Model, tea.Cmd) {
 	fields := a.buildCreateFields(msg.fields)
 
-	// prefill from active tab JQL
 	if a.cfg.GUI.ShouldPrefillFromTab() {
 		tab := a.issuesList.ActiveTab()
 		if tab.JQL != "" {
@@ -445,14 +427,12 @@ func (a *App) handleCreateMetaLoaded(msg createMetaLoadedMsg) (tea.Model, tea.Cm
 		}
 	}
 
-	// duplicate mode: prefill from source issue (overrides JQL prefill)
 	if src := a.createCtx.duplicateFrom; src != nil {
 		applyDuplicatePrefill(fields, src, a.isCloud)
 	}
 
 	a.createForm.ShowForm(fields, a.createCtx.issueTypeName, a.createCtx.projectKey)
 
-	// prefetch users in background (not included in createmeta AllowedValues)
 	var cmds []tea.Cmd
 	if _, ok := a.usersCache[a.projectKey]; !ok {
 		cmds = append(cmds, fetchUsers(a.client, a.projectKey, ""))
@@ -513,7 +493,6 @@ func applyDuplicatePrefill(fields []components.CreateFormField, src *jira.Issue,
 				fields[i].Value = map[string]string{"id": strconv.Itoa(src.Sprint.ID)}
 			}
 		default:
-			// custom fields
 			if strings.HasPrefix(fields[i].FieldID, "customfield_") {
 				if val, ok := src.CustomFields[fields[i].FieldID]; ok {
 					display := formatCustomVal(val)
@@ -588,8 +567,6 @@ func formatCustomVal(v any) string {
 	return ""
 }
 
-// buildCreateFields converts create metadata to form fields
-// fields that are set automatically or not user-editable on creation
 var skipCreateFields = map[string]bool{
 	"project":    true,
 	"issuetype":  true,
@@ -598,21 +575,19 @@ var skipCreateFields = map[string]bool{
 	"parent":     true,
 }
 
-// supported schema types for create form fields
 var supportedSchemaTypes = map[string]bool{
-	"string":   true,
-	"array":    true,
-	"priority": true,
-	"user":     true,
-	"option":   true,
-	"number":   true,
-	"date":     true,
-	"datetime": true,
+	"string":       true,
+	"array":        true,
+	"priority":     true,
+	"user":         true,
+	"option":       true,
+	"number":       true,
+	"date":         true,
+	"datetime":     true,
 	"timetracking": true,
 }
 
 func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.CreateFormField {
-	// ordered known fields shown first
 	knownOrder := []string{"summary", "description", fldPriority, fldAssignee, fldLabels, fldComponents, fldSprint}
 	metaMap := make(map[string]jira.CreateMetaField)
 	for _, f := range meta {
@@ -625,7 +600,6 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 	for _, fid := range knownOrder {
 		mf, ok := metaMap[fid]
 		if !ok {
-			// always show summary and description even if not in metadata
 			switch fid {
 			case "summary":
 				mf = jira.CreateMetaField{FieldID: "summary", Name: "Summary", Required: true, Schema: jira.CreateMetaSchema{Type: "string", System: "summary"}}
@@ -639,13 +613,11 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 		added[fid] = true
 	}
 
-	// apply custom field name overrides from config
 	cfgNames := make(map[string]string)
 	for _, cf := range a.cfg.CustomFields {
 		cfgNames[cf.ID] = cf.Name
 	}
 
-	// add remaining fields from API metadata (sorted by required first)
 	var remaining []jira.CreateMetaField
 	for _, mf := range meta {
 		if added[mf.FieldID] || skipCreateFields[mf.FieldID] {
@@ -656,7 +628,6 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 		}
 		remaining = append(remaining, mf)
 	}
-	// required fields first
 	sort.SliceStable(remaining, func(i, j int) bool {
 		if remaining[i].Required != remaining[j].Required {
 			return remaining[i].Required
@@ -691,23 +662,18 @@ func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormFiel
 	case mf.Schema.System == fldComponents:
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == "option":
-		// custom single-select (Size, Project, etc)
 		ft = components.CFFieldSingleSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "option":
-		// custom multi-select (Tags, Components custom, etc)
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "user":
-		// custom multi-user picker (Requestor, etc)
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "string":
-		// labels-like arrays
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray:
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == "user":
 		ft = components.CFFieldPerson
 	case len(mf.AllowedValues) > 0:
-		// has options, treat as select even if type is unknown
 		ft = components.CFFieldSingleSelect
 	}
 
@@ -725,7 +691,6 @@ func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormFiel
 		SchemaItems:   mf.Schema.Items,
 	}
 
-	// empty optional fields show "None"
 	if !mf.Required && ff.DisplayValue == "" && ft != components.CFFieldMultiText {
 		ff.DisplayValue = "None"
 	}
@@ -741,7 +706,6 @@ func (a *App) handleIssueCreated(msg issueCreatedMsg) (tea.Model, tea.Cmd) {
 		a.helpBar.SetStatusMsg("Created " + msg.issue.Key)
 		if a.cfg.GUI.ShouldSelectCreatedIssue() {
 			a.gitDetectedKey = msg.issue.Key
-			// prepare detail view to accept the new issue when fetchIssueDetail returns
 			a.issuesList.SetActiveKey(msg.issue.Key)
 			a.detailView.SetIssue(nil)
 		}
@@ -750,9 +714,7 @@ func (a *App) handleIssueCreated(msg issueCreatedMsg) (tea.Model, tea.Cmd) {
 	return a, a.fetchActiveTab()
 }
 
-// handleIssueUpdated re-fetches issue data after an update.
-// Only refreshes the issue detail, not the tab — avoids cursor jumping
-// when the edited issue no longer matches the tab JQL (e.g. unassign on "Assigned" tab).
+// handleIssueUpdated re-fetches issue data after an update
 func (a *App) handleIssueUpdated(msg issueUpdatedMsg) (tea.Model, tea.Cmd) {
 	return a, fetchIssueDetail(a.client, msg.issueKey)
 }

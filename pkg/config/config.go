@@ -31,17 +31,17 @@ type BranchFormatRule struct {
 }
 
 type BranchFormatCondition struct {
-	Type string `yaml:"type"` // issue type name, "*" = any
+	Type string `yaml:"type"`
 }
 
 type IssueTabConfig struct {
 	Name string `yaml:"name"`
-	JQL  string `yaml:"jql"` // supports {{.ProjectKey}}, {{.UserEmail}}
+	JQL  string `yaml:"jql"`
 }
 
 type CustomFieldConfig struct {
-	ID   string `yaml:"id"`   // e.g. "customfield_10015"
-	Name string `yaml:"name"` // display name, e.g. "Story Points"
+	ID   string `yaml:"id"`
+	Name string `yaml:"name"`
 	Type string `yaml:"type"` // TODO not yet wired up. "select", "multiselect", "user", "text", "textarea" (default: "text")
 }
 
@@ -96,21 +96,21 @@ type DetailKeys struct {
 type JiraConfig struct {
 	Host       string    `yaml:"host"`
 	Email      string    `yaml:"email"`
-	Token      string    `yaml:"-"`          // never saved to file
-	ServerType string    `yaml:"serverType"` // "cloud" (default), "server", "datacenter"
+	Token      string    `yaml:"-"`
+	ServerType string    `yaml:"serverType"`
 	TLS        TLSConfig `yaml:"tls"`
 }
 
-// IsCloud returns true if this is a Jira Cloud instance (or unset, which defaults to Cloud).
+// IsCloud returns true if this is a Jira Cloud instance (or unset, which defaults to Cloud)
 func (j JiraConfig) IsCloud() bool {
 	return j.ServerType == "" || j.ServerType == "cloud"
 }
 
 type TLSConfig struct {
-	CertFile string `yaml:"certFile"` // client certificate PEM
-	KeyFile  string `yaml:"keyFile"`  // client private key PEM
-	CAFile   string `yaml:"caFile"`   // custom CA bundle PEM
-	Insecure bool   `yaml:"insecure"` // skip TLS verification
+	CertFile string `yaml:"certFile"`
+	KeyFile  string `yaml:"keyFile"`
+	CAFile   string `yaml:"caFile"`
+	Insecure bool   `yaml:"insecure"`
 }
 
 type ProjectConfig struct {
@@ -127,11 +127,11 @@ type GUIConfig struct {
 	Mouse           bool     `yaml:"mouse"`      // TODO not yet wired up
 	Borders         string   `yaml:"borders"`    // TODO not yet wired up
 	IssueListFields    []string `yaml:"issueListFields"`
-	PrefillFromTab     *bool    `yaml:"prefillFromTab"`     // default true when nil
-	SelectCreatedIssue *bool    `yaml:"selectCreatedIssue"` // default true when nil
+	PrefillFromTab     *bool    `yaml:"prefillFromTab"`
+	SelectCreatedIssue *bool    `yaml:"selectCreatedIssue"`
 }
 
-// ShouldPrefillFromTab returns true when creation form should prefill from tab JQL
+// ShouldPrefillFromTab returns true when the creation form should prefill from tab JQL
 func (g GUIConfig) ShouldPrefillFromTab() bool {
 	return g.PrefillFromTab == nil || *g.PrefillFromTab
 }
@@ -153,7 +153,7 @@ type RefreshConfig struct {
 	Interval    string `yaml:"interval"`
 }
 
-// DefaultConfig returns a Config populated with sensible defaults.
+// DefaultConfig returns a Config populated with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
 		GUI: GUIConfig{
@@ -180,7 +180,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// DefaultIssueTabs returns the default issue tab configuration.
+// DefaultIssueTabs returns the default issue tab configuration
 func DefaultIssueTabs() []IssueTabConfig {
 	return []IssueTabConfig{
 		{Name: "All", JQL: "project = {{.ProjectKey}} AND statusCategory != Done ORDER BY updated DESC"},
@@ -188,8 +188,8 @@ func DefaultIssueTabs() []IssueTabConfig {
 	}
 }
 
-// ConfigDir returns the lazyjira configuration directory path.
-// Priority: CONFIG_DIR env > XDG_CONFIG_HOME/lazyjira > os.UserConfigDir()/lazyjira > ~/.config/lazyjira
+// ConfigDir returns the lazyjira configuration directory path
+// Order of precedence: CONFIG_DIR env, XDG_CONFIG_HOME/lazyjira, os.UserConfigDir()/lazyjira, ~/.config/lazyjira
 func ConfigDir() string {
 	if dir := os.Getenv("CONFIG_DIR"); dir != "" {
 		return dir
@@ -207,13 +207,13 @@ func ConfigDir() string {
 	return filepath.Join(home, ".config", "lazyjira")
 }
 
-// ConfigPath returns the full path to the config file.
+// ConfigPath returns the full path to the config file
 func ConfigPath() string {
 	return filepath.Join(ConfigDir(), "config.yml")
 }
 
 // Load reads the config file, merges it with defaults, and applies
-// environment variable overrides for Jira credentials.
+// environment variable overrides for Jira credentials
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -258,7 +258,7 @@ func Load() (*Config, error) {
 }
 
 // Save writes the config to the config file. The Jira API token is never
-// persisted because the Token field carries the yaml:"-" tag.
+// persisted because the Token field carries the yaml:"-" tag
 func Save(cfg *Config) error {
 	dir := ConfigDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

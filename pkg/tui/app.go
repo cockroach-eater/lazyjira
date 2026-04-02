@@ -16,7 +16,6 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// Version is set from main at startup
 var Version = "dev"
 
 type focusPanel int
@@ -35,7 +34,6 @@ const (
 	sideRight
 )
 
-// Jira field IDs used in create and edit flows
 const (
 	fldPriority   = "priority"
 	fldSprint     = "sprint"
@@ -46,49 +44,45 @@ const (
 	fldName       = "name"
 )
 
-// editKind identifies the type of edit in progress
 type editKind int
 
 const (
 	editNone       editKind = iota
-	editDesc                // description via $EDITOR
-	editCommentNew          // new comment via $EDITOR
-	editCommentMod          // existing comment via $EDITOR
-	editSummary             // summary via InputModal
-	editField               // custom field via InputModal
-	editFieldText           // multi-line custom field via $EDITOR
-	editBranch              // git branch via InputModal
-	editCreateField         // create form field via InputModal
-	editCreateDesc          // create form description via $EDITOR
+	editDesc
+	editCommentNew
+	editCommentMod
+	editSummary
+	editField
+	editFieldText
+	editBranch
+	editCreateField
+	editCreateDesc
 )
 
-// editCtx tracks what edit operation is in progress
 type editCtx struct {
 	kind       editKind
 	issueKey   string
-	commentID  string // for editCommentMod
-	fieldID    string // for editField or editFieldText
-	fieldIndex int    // for create form field editing
+	commentID  string
+	fieldID    string
+	fieldIndex int
 }
 
-// createCtx tracks issue creation state
 type createCtx struct {
 	intent        bool
 	projectKey    string
 	projectID     string
 	issueTypeID   string
 	issueTypeName string
-	duplicateFrom *jira.Issue // source issue for ctrl+n duplication
+	duplicateFrom *jira.Issue
 }
 
-// Modal callback types for result dispatch
 type onSelectFunc func(components.ModalItem) tea.Cmd
 type onChecklistFunc func([]components.ModalItem) tea.Cmd
 
-// Async messages
+
 type issuesLoadedMsg struct {
 	issues []jira.Issue
-	tab    int // which tab index this fetch was for
+	tab    int
 }
 type issueDetailLoadedMsg struct{ issue *jira.Issue }
 type transitionDoneMsg struct{}
@@ -130,14 +124,11 @@ type App struct {
 	createForm components.CreateForm
 	overlays   components.OverlayStack
 
-	// JQL autocomplete cache
 	jqlFields []jira.AutocompleteField
 
-	// Edit session state
-	editTempPath string // temp file path for cleanup
+	editTempPath string
 	editContext  editCtx
 
-	// Modal callbacks set before showing modal and consumed on result
 	onSelect    onSelectFunc
 	onChecklist onChecklistFunc
 
@@ -145,24 +136,22 @@ type App struct {
 	leftFocus   focusPanel
 	projectKey  string
 	projectID   string
-	boardID     int         // agile board for current project, 0 if unknown
-	boards      []jira.Board // cached boards from API
+	boardID     int
+	boards      []jira.Board
 	showHelp    bool
 	helpCursor  int
 	logFlag     *bool
 	isCloud     bool
 	demoMode    bool
 	currentUser *jira.User
-	usersCache  map[string][]jira.User // project key -> assignable users
+	usersCache  map[string][]jira.User
 	issueCache  map[string]*jira.Issue
 	createCtx   createCtx
 
-	// Git integration
-	gitRepoPath    string // empty = not a git repo
-	gitBranch      string // current branch name
-	gitDetectedKey string // issue key to auto-select after next tab refresh
+	gitRepoPath    string
+	gitBranch      string
+	gitDetectedKey string
 
-	// Cached panel sizes for mouse hit testing
 	panelSideW     int
 	panelStatusH   int
 	panelIssuesH   int
@@ -215,7 +204,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	jqlModal := components.NewJQLModal()
 	createForm := components.NewCreateForm()
 
-	logFlag := new(bool) // shared with closure, set via app.logRequests
+	logFlag := new(bool)
 	client.SetOnRequest(func(rl jira.RequestLog) {
 		if *logFlag {
 			logPanel.AddEntry(views.LogEntry{
@@ -279,7 +268,6 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	})
 	app.createForm.SetDescADFRenderer(views.RenderADFPreview)
 
-	// Overlay stack: checked in priority order for input interception and rendering
 	app.overlays = components.OverlayStack{
 		&app.createForm,
 		&app.jqlModal,
@@ -288,7 +276,6 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		&app.modal,
 	}
 
-	// Detect git repo at startup
 	if git.GitAvailable() {
 		cwd, _ := os.Getwd()
 		if git.IsRepo(cwd) {
@@ -313,7 +300,6 @@ func (a *App) Init() tea.Cmd {
 	if cmd := a.fetchActiveTab(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	// Start autofetch timer
 	cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
 		return autoFetchTickMsg{}
 	}))
@@ -321,8 +307,6 @@ func (a *App) Init() tea.Cmd {
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Search bar intercepts all keys when active
-	// Arrow keys pass through for navigating filtered results
 	if a.searchBar.IsActive() {
 		if km, ok := msg.(tea.KeyMsg); ok && km.Type != tea.KeyUp && km.Type != tea.KeyDown {
 			updated, cmd := a.searchBar.Update(msg)
@@ -331,7 +315,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Overlays intercept input before panels
 	if cmd, ok := a.overlays.Intercept(msg); ok {
 		return a, cmd
 	}
@@ -380,7 +363,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sprintsLoadedMsg:
 		return a.handleSprintsLoaded(msg)
 	case prefetchUsersMsg:
-		// Only fetch if still on the same project and not cached yet
 		if msg.projectKey == a.projectKey {
 			if _, ok := a.usersCache[msg.projectKey]; !ok {
 				return a, fetchUsers(a.client, msg.projectKey, "")
@@ -476,7 +458,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.createForm.Resume()
 		errText := msg.err.Error()
 		a.statusPanel.SetError(errText)
-		// Show error modal so the user sees what went wrong
 		a.modal.ShowError("Error", []components.ModalItem{
 			{Label: errText},
 		})
@@ -500,7 +481,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	// Route remaining input to focused panel
 	return a, a.routeToPanel(msg)
 }
 
@@ -512,7 +492,6 @@ func (a *App) View() string {
 	var content string
 
 	if a.isVerticalLayout() {
-		// Vertical layout with all panels stacked
 		content = lipgloss.JoinVertical(lipgloss.Left,
 			a.statusPanel.View(),
 			a.issuesList.View(),
@@ -537,7 +516,6 @@ func (a *App) View() string {
 		content = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
 	}
 
-	// Refresh help bar hints for current context (overlays, panels).
 	a.helpBar.SetItems(a.helpBarItems())
 
 	var bottomBar string
@@ -556,7 +534,6 @@ func (a *App) View() string {
 
 	full := lipgloss.JoinVertical(lipgloss.Left, content, bottomBar)
 
-	// Render all visible overlays (stacked, e.g. create form + picker modal)
 	full = a.overlays.Render(full, a.width, a.height)
 	if a.showHelp {
 		full = a.renderHelpOverlay(full)
@@ -564,7 +541,6 @@ func (a *App) View() string {
 	return full
 }
 
-// editInfoField dispatches field editing by type when `e` is pressed on the Info panel or tab.
 func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 	field := a.infoPanel.SelectedInfoField()
 	if field == nil {
@@ -575,7 +551,6 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 	case views.FieldSingleSelect:
 		switch field.FieldID {
 		case "status":
-			// Reuse transition flow.
 			return a, fetchTransitions(a.client, sel.Key)
 		case fldPriority:
 			return a, fetchPriorities(a.client)
@@ -620,30 +595,26 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			return a, fetchComponents(a.client, a.projectKey)
 		}
 	case views.FieldSingleText:
-		// InputModal for single-line text (summary, custom fields).
 		a.inputModal.Show("Edit "+field.Name, field.Value)
 		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, nil
 	case views.FieldMultiText:
-		// $EDITOR for multi-line text.
 		a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, launchEditor(field.Value, ".md")
 	}
 	return a, nil
 }
 
-// applyEdit sends the edited content to the Jira API based on editContext.
 func (a *App) applyEdit(mdContent string) tea.Cmd {
 	ctx := a.editContext
-	a.editContext = editCtx{} // clear
+	a.editContext = editCtx{}
 
-	// Cloud sends ADF, Server sends plain text.
 	var body any = mdContent
 	if a.isCloud {
 		body = views.MarkdownToADF(mdContent)
 	}
 
-	switch ctx.kind { //nolint:exhaustive // only editor-based kinds handled here
+	switch ctx.kind { //nolint:exhaustive
 	case editDesc:
 		return updateIssueField(a.client, ctx.issueKey, "description", body)
 	case editCommentNew:
@@ -657,7 +628,6 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 }
 
 
-// makePersonSelectCallback creates a callback for person field (assignee/reporter).
 func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
 		sel := a.issuesList.SelectedIssue()
@@ -675,7 +645,6 @@ func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
 	}
 }
 
-// makeFieldSelectCallback creates a callback for simple field selection (priority, issuetype).
 func (a *App) makeFieldSelectCallback(issueKey, fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
 		return updateIssueField(a.client, issueKey, fieldID, map[string]string{"id": item.ID})

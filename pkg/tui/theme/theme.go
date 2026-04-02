@@ -37,10 +37,10 @@ type Theme struct {
 	PriorityLow    lipgloss.Style
 }
 
-// Default is the singleton theme instance.
+// Default is the singleton theme instance
 var Default = defaultTheme()
 
-// DefaultTheme returns the singleton theme. Kept for compatibility.
+// DefaultTheme returns the singleton theme. Kept for compatibility
 func DefaultTheme() *Theme { return Default }
 
 func defaultTheme() *Theme {

@@ -20,8 +20,6 @@ func RenderADFPreview(adf any, width int) []string {
 	return renderADF(adf, width)
 }
 
-// renderADF converts raw ADF JSON (Atlassian Document Format) to styled terminal lines.
-// Returns nil if node is nil or not a valid ADF document.
 func renderADF(node any, width int) []string {
 	doc, ok := node.(map[string]any)
 	if !ok {
@@ -43,9 +41,7 @@ type adfRenderer struct {
 	lines []string
 }
 
-// renderBlock handles block-level ADF nodes.
-//
-//nolint:gocognit // ADF block dispatcher complexity is inherent to the format
+//nolint:gocognit
 func (r *adfRenderer) renderBlock(node any, indent int) {
 	block, ok := node.(map[string]any)
 	if !ok {
@@ -101,7 +97,6 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 		}
 		text := r.collectInlinePlain(content)
 		codeW := max(r.width-4, 10)
-		// Hard-wrap plain text before highlighting so ANSI codes stay intact
 		var wrappedLines []string
 		for _, line := range strings.Split(text, "\n") {
 			wrappedLines = append(wrappedLines, hardWrapLine(line, codeW)...)
@@ -118,7 +113,6 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 		quoteStyle := lipgloss.NewStyle().Foreground(theme.ColorGray)
 		bar := quoteStyle.Render("│ ")
 		for _, child := range content {
-			// Render child blocks, then prepend quote bar.
 			sub := &adfRenderer{width: r.width - 4}
 			sub.renderBlock(child, 0)
 			for _, line := range sub.lines {
@@ -134,18 +128,16 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 	case adfTable:
 		r.renderTable(content)
 
-	case "mediaSingle", "mediaGroup": //nolint:goconst // rare node types not worth constants
+	case "mediaSingle", "mediaGroup":
 		r.lines = append(r.lines, lipgloss.NewStyle().Foreground(theme.ColorGray).Render("  [media]"))
 
 	default:
-		// Unknown block — recurse into content as fallback.
 		for _, child := range content {
 			r.renderBlock(child, indent)
 		}
 	}
 }
 
-// renderListItem renders a single list item with marker and indent.
 func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 	item, ok := node.(map[string]any)
 	if !ok {
@@ -172,7 +164,6 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 				r.appendWrapped(text, indent+markerW, "")
 			}
 		case adfBulletList, adfOrderedList:
-			// Nested list — increase indent.
 			r.renderBlock(child, indent+2)
 		default:
 			r.renderBlock(child, indent+markerW)
@@ -180,7 +171,6 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 	}
 }
 
-// collectInline concatenates inline nodes into a single styled string.
 func (r *adfRenderer) collectInline(content []any) string {
 	var parts []string
 	for _, child := range content {
@@ -191,7 +181,6 @@ func (r *adfRenderer) collectInline(content []any) string {
 	return strings.Join(parts, "")
 }
 
-// collectInlinePlain concatenates inline nodes as plain text (no ANSI).
 func (r *adfRenderer) collectInlinePlain(content []any) string {
 	var parts []string
 	for _, child := range content {
@@ -202,7 +191,6 @@ func (r *adfRenderer) collectInlinePlain(content []any) string {
 	return strings.Join(parts, "")
 }
 
-// renderInline returns a styled string for an inline ADF node.
 func (r *adfRenderer) renderInline(node any) string {
 	inline, ok := node.(map[string]any)
 	if !ok {
@@ -244,7 +232,6 @@ func (r *adfRenderer) renderInline(node any) string {
 	return ""
 }
 
-// renderInlinePlain returns plain text (no ANSI) for an inline ADF node.
 func (r *adfRenderer) renderInlinePlain(node any) string {
 	inline, ok := node.(map[string]any)
 	if !ok {
@@ -280,7 +267,6 @@ func (r *adfRenderer) renderInlinePlain(node any) string {
 	return ""
 }
 
-// applyMarks applies ADF text marks (bold, italic, code, etc.) to text.
 func applyMarks(text string, marks []any) string {
 	for _, m := range marks {
 		mark, ok := m.(map[string]any)
@@ -312,7 +298,6 @@ func applyMarks(text string, marks []any) string {
 	return text
 }
 
-// headingStyle returns the lipgloss style for a heading level.
 func headingStyle(level int) lipgloss.Style {
 	switch level {
 	case 1:
@@ -328,8 +313,6 @@ func headingStyle(level int) lipgloss.Style {
 	}
 }
 
-// appendWrapped word-wraps text and appends to lines with indent and optional marker on first line.
-// Uses lipgloss for ANSI-aware wrapping so styled text (bold, links, code) isn't broken.
 func (r *adfRenderer) appendWrapped(text string, indent int, marker string) {
 	prefix := strings.Repeat(" ", indent)
 	markerW := lipgloss.Width(marker)
@@ -338,7 +321,6 @@ func (r *adfRenderer) appendWrapped(text string, indent int, marker string) {
 
 	wrapStyle := lipgloss.NewStyle().Width(w)
 	first := true
-	// Split by explicit newlines (hardBreak), then wrap each paragraph.
 	for _, para := range strings.Split(text, "\n") {
 		wrapped := wrapStyle.Render(para)
 		for _, line := range strings.Split(wrapped, "\n") {
@@ -353,7 +335,6 @@ func (r *adfRenderer) appendWrapped(text string, indent int, marker string) {
 	}
 }
 
-// renderTable renders an ADF table (basic implementation).
 func (r *adfRenderer) renderTable(rows []any) {
 	if len(rows) == 0 {
 		return
@@ -468,8 +449,8 @@ func hardWrapLine(line string, width int) []string {
 	return result
 }
 
-// highlightCode applies syntax highlighting using chroma.
-// Falls back to plain text if language is unknown or highlighting fails.
+// highlightCode applies syntax highlighting using chroma
+// falls back to plain text if language is unknown or highlighting fails
 func highlightCode(code, lang string) string {
 	if lang == "" {
 		return code
@@ -494,58 +475,58 @@ func highlightCode(code, lang string) string {
 	return strings.TrimRight(buf.String(), "\n")
 }
 
-// extractADFURLs recursively extracts all URLs from an ADF document.
-// Finds URLs in link marks, inlineCard nodes, and plain text.
-//
-//nolint:gocognit // recursive ADF walker with multiple node types
+// extractADFURLs recursively extracts all URLs from an ADF document
 func extractADFURLs(node any) []string {
-	var urls []string
 	switch v := node.(type) {
 	case map[string]any:
-		nodeType, _ := v["type"].(string)
-
-		// inlineCard: {"type":"inlineCard","attrs":{"url":"..."}}
-		if nodeType == "inlineCard" {
-			if attrs, ok := v["attrs"].(map[string]any); ok {
-				if u, ok := attrs["url"].(string); ok {
-					urls = append(urls, u)
-				}
-			}
-		}
-
-		// text with link mark: {"type":"text","marks":[{"type":"link","attrs":{"href":"..."}}]}
-		if marks, ok := v["marks"].([]any); ok {
-			for _, m := range marks {
-				if mark, ok := m.(map[string]any); ok {
-					if mt, _ := mark["type"].(string); mt == "link" {
-						if attrs, ok := mark["attrs"].(map[string]any); ok {
-							if href, ok := attrs["href"].(string); ok {
-								urls = append(urls, href)
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Also find plain-text URLs in text nodes.
-		if nodeType == "text" {
-			if text, ok := v["text"].(string); ok {
-				urls = append(urls, findURLs(text)...)
-			}
-		}
-
-		// Recurse into content.
+		urls := extractNodeURLs(v)
 		if content, ok := v["content"].([]any); ok {
 			for _, child := range content {
 				urls = append(urls, extractADFURLs(child)...)
 			}
 		}
-
+		return urls
 	case []any:
+		var urls []string
 		for _, child := range v {
 			urls = append(urls, extractADFURLs(child)...)
 		}
+		return urls
 	}
+	return nil
+}
+
+func extractNodeURLs(node map[string]any) []string {
+	var urls []string
+	nodeType, _ := node["type"].(string)
+
+	if nodeType == "inlineCard" {
+		if attrs, ok := node["attrs"].(map[string]any); ok {
+			if u, ok := attrs["url"].(string); ok {
+				urls = append(urls, u)
+			}
+		}
+	}
+
+	if marks, ok := node["marks"].([]any); ok {
+		for _, m := range marks {
+			if mark, ok := m.(map[string]any); ok {
+				if mt, _ := mark["type"].(string); mt == "link" {
+					if attrs, ok := mark["attrs"].(map[string]any); ok {
+						if href, ok := attrs["href"].(string); ok {
+							urls = append(urls, href)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if nodeType == "text" {
+		if text, ok := node["text"].(string); ok {
+			urls = append(urls, findURLs(text)...)
+		}
+	}
+
 	return urls
 }

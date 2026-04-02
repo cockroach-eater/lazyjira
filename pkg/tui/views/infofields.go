@@ -13,29 +13,27 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// Jira field IDs used across views.
 const fieldStatus = "status"
 
-// InfoFieldType determines which editor to use for a field.
+// InfoFieldType determines which editor to use for a field
 type InfoFieldType int
 
 const (
-	FieldSingleSelect InfoFieldType = iota // priority, status, issue type, sprint
-	FieldMultiSelect                       // labels, components
-	FieldPerson                            // assignee, reporter
-	FieldSingleText                        // summary, single-line custom fields
-	FieldMultiText                         // environment, multi-line custom fields
+	FieldSingleSelect InfoFieldType = iota
+	FieldMultiSelect
+	FieldPerson
+	FieldSingleText
+	FieldMultiText
 )
 
-// InfoField represents an editable field in the Info panel.
+// InfoField represents an editable field in the Info panel
 type InfoField struct {
-	Name    string        // display label (e.g. "Priority")
-	FieldID string        // API field name (e.g. "priority", "labels", "customfield_10015")
-	Type    InfoFieldType // determines which modal/editor to open
-	Value   string        // current display value
+	Name    string
+	FieldID string
+	Type    InfoFieldType
+	Value   string
 }
 
-// buildInfoFields returns the list of info fields for an issue.
 func buildInfoFields(issue *jira.Issue, customFields []config.CustomFieldConfig) []InfoField {
 	if issue == nil {
 		return nil
@@ -98,12 +96,11 @@ func buildInfoFields(issue *jira.Issue, customFields []config.CustomFieldConfig)
 	return fields
 }
 
-// infoFieldCount returns the number of info fields for an issue.
 func infoFieldCount(issue *jira.Issue, customFields []config.CustomFieldConfig) int {
 	if issue == nil {
 		return 0
 	}
-	count := 6 // Status, Priority, Assignee, Reporter, Type, Sprint
+	count := 6
 	if len(issue.Labels) > 0 {
 		count++
 	}
@@ -114,12 +111,10 @@ func infoFieldCount(issue *jira.Issue, customFields []config.CustomFieldConfig) 
 	return count
 }
 
-// renderInfoRows renders info field lines with styling (used by both InfoPanel and DetailView).
 func renderInfoRows(issue *jira.Issue, customFields []config.CustomFieldConfig, th *theme.Theme, maxWidth int) []string {
 	return renderInfoRowsImpl(issue, customFields, th, maxWidth)
 }
 
-// renderInfoRowsPlain renders info field lines as plain text (no ANSI) for selected-row display.
 func renderInfoRowsPlain(issue *jira.Issue, customFields []config.CustomFieldConfig, maxWidth int) []string {
 	return renderInfoRowsImpl(issue, customFields, nil, maxWidth)
 }
@@ -136,7 +131,7 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 		return s
 	}
 
-	const labelWidth = 13 // " %-11s " = 1 + 11 + 1
+	const labelWidth = 13
 	fields := buildInfoFields(issue, customFields)
 	rows := make([]string, 0, len(fields))
 	for _, f := range fields {
@@ -169,7 +164,6 @@ func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConf
 	return rows
 }
 
-// formatCustomFieldValue formats a custom field value for display.
 func formatCustomFieldValue(v any) string {
 	if v == nil {
 		return noneLabelUpper

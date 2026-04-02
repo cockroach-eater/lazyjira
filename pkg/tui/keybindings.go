@@ -5,7 +5,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// Binding represents a single keybinding with context.
+// Binding represents a single keybinding with context
 type Binding struct {
 	Key         string
 	Description string
@@ -15,7 +15,7 @@ func (a *App) bind(action Action, desc string) Binding {
 	return Binding{a.keymap.Keys(action), desc}
 }
 
-// ContextBindings returns keybindings for the current focus context.
+// ContextBindings returns keybindings for the current focus context
 func (a *App) ContextBindings() []Binding {
 	km := a.keymap
 	global := []Binding{
@@ -125,7 +125,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 			{Key: "enter", Description: "submit"},
 			{Key: "esc", Description: "cancel"},
 		}
-		switch a.createForm.FocusedPanel() { //nolint:exhaustive // summary has no extra hints
+		switch a.createForm.FocusedPanel() { //nolint:exhaustive
 		case components.CreatePanelFields:
 			items = append(items,
 				components.HelpItem{Key: "e", Description: "edit"},

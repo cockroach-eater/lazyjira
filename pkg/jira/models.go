@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// JiraTime handles Jira's timestamp format which uses +0300 instead of +03:00.
+// JiraTime handles Jira's timestamp format which uses +0300 instead of +03:00
 type JiraTime struct {
 	time.Time
 }
@@ -65,14 +65,14 @@ type Issue struct {
 	CustomFields map[string]any   `json:"-"`
 }
 
-// ChangelogEntry represents a single change in issue history.
+// ChangelogEntry represents a single change in issue history
 type ChangelogEntry struct {
 	Author  *User
 	Created time.Time
 	Items   []ChangeItem
 }
 
-// ChangeItem is one field change within a changelog entry.
+// ChangeItem is one field change within a changelog entry
 type ChangeItem struct {
 	Field      string
 	FromString string
