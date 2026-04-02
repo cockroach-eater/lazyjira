@@ -8,19 +8,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// TextInput is a readline-style text input component.
+// TextInput is a readline-style text input component
 type TextInput struct {
-	value  string
-	cursor int // 0 = before first char
-	width  int
-
-	// Highlighter, if set, is called with visible runes and returns styled segments.
-	// Each segment covers a contiguous range of runes.
-	// The TextInput will render cursor overlay on top of the highlighted output.
+	value       string
+	cursor      int
+	width       int
 	Highlighter func(text []rune) []StyledSegment
 }
 
-// StyledSegment is a contiguous run of text with a style.
+// StyledSegment is a contiguous run of text with a style
 type StyledSegment struct {
 	Text  string
 	Style lipgloss.Style
@@ -69,7 +65,7 @@ func (t *TextInput) InsertAtCursor(s string) {
 	t.cursor += len(inserted)
 }
 
-// Update handles key events. Returns the updated TextInput and whether the value changed.
+// Update handles key events and returns the updated TextInput and whether the value changed
 func (t *TextInput) Update(msg tea.Msg) (TextInput, bool) {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
@@ -167,7 +163,7 @@ func (t *TextInput) Update(msg tea.Msg) (TextInput, bool) {
 	}
 }
 
-// View renders the text with a visible cursor block at the cursor position.
+// View renders the text with a visible cursor block at the cursor position
 func (t *TextInput) View() string {
 	cursorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("6"))
@@ -183,7 +179,6 @@ func (t *TextInput) View() string {
 	}
 	textAvail := max(avail-1, 1)
 
-	// Compute sliding window.
 	start := 0
 	end := runeLen
 
@@ -204,7 +199,6 @@ func (t *TextInput) View() string {
 		return t.viewHighlighted(visible, cursorInWindow, cursorStyle, cursorBlock)
 	}
 
-	// Plain rendering (no highlighter).
 	var b strings.Builder
 	if cursorInWindow >= 0 && cursorInWindow < len(visible) {
 		b.WriteString(string(visible[:cursorInWindow]))
@@ -218,19 +212,17 @@ func (t *TextInput) View() string {
 	return b.String()
 }
 
-// viewHighlighted renders with syntax highlighting + cursor overlay.
 func (t *TextInput) viewHighlighted(visible []rune, cursorInWindow int, cursorStyle lipgloss.Style, cursorBlock string) string {
 	segments := t.Highlighter(visible)
 
 	var b strings.Builder
-	pos := 0 // current rune position within visible
+	pos := 0
 
 	for _, seg := range segments {
 		segRunes := []rune(seg.Text)
 		segEnd := pos + len(segRunes)
 
 		if cursorInWindow >= pos && cursorInWindow < segEnd {
-			// Cursor is inside this segment — split it.
 			before := segRunes[:cursorInWindow-pos]
 			at := segRunes[cursorInWindow-pos]
 			after := segRunes[cursorInWindow-pos+1:]
@@ -238,7 +230,6 @@ func (t *TextInput) viewHighlighted(visible []rune, cursorInWindow int, cursorSt
 			if len(before) > 0 {
 				b.WriteString(seg.Style.Render(string(before)))
 			}
-			// Cursor char: use cursor color, keep segment background.
 			b.WriteString(cursorStyle.Render(string(at)))
 			if len(after) > 0 {
 				b.WriteString(seg.Style.Render(string(after)))
@@ -249,7 +240,6 @@ func (t *TextInput) viewHighlighted(visible []rune, cursorInWindow int, cursorSt
 		pos = segEnd
 	}
 
-	// Cursor at end.
 	if cursorInWindow >= pos {
 		b.WriteString(cursorBlock)
 	}

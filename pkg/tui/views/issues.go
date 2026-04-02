@@ -17,7 +17,7 @@ import (
 type IssuesLoadedMsg struct{ Issues []jira.Issue }
 type IssueSelectedMsg struct{ Issue *jira.Issue }
 
-// TabSwitchedMsg is sent when the user switches issue tabs.
+// TabSwitchedMsg is sent when the user switches issue tabs
 type TabSwitchedMsg struct {
 	Tab config.IssueTabConfig
 }
@@ -30,24 +30,24 @@ type IssuesList struct {
 	allIssues   []jira.Issue
 	filter      string
 	tabs        []config.IssueTabConfig
-	tab         int // active tab index
-	tabCache    map[int][]jira.Issue // per-tab cached issues
+	tab         int
+	tabCache    map[int][]jira.Issue
 	userEmail   string
-	activeKey   string // the issue currently being viewed
+	activeKey   string
 	keyColWidth int
 	fields      []string
 	theme       *theme.Theme
-	jqlQuery    string // raw JQL for the JQL tab (empty = no JQL tab)
-	jqlTabIdx   int    // index in tabs where JQL tab lives (-1 = none)
+	jqlQuery    string
+	jqlTabIdx   int
 }
 
 func NewIssuesList() *IssuesList {
 	return &IssuesList{theme: theme.Default, jqlTabIdx: -1}
 }
 
-func (m *IssuesList) SetFields(fields []string)             { m.fields = fields }
-func (m *IssuesList) SetTabs(tabs []config.IssueTabConfig)  { m.tabs = tabs }
-func (m *IssuesList) SetUserEmail(email string)              { m.userEmail = email }
+func (m *IssuesList) SetFields(fields []string)            { m.fields = fields }
+func (m *IssuesList) SetTabs(tabs []config.IssueTabConfig) { m.tabs = tabs }
+func (m *IssuesList) SetUserEmail(email string)            { m.userEmail = email }
 func (m *IssuesList) ActiveTab() config.IssueTabConfig {
 	if m.tab >= 0 && m.tab < len(m.tabs) {
 		return m.tabs[m.tab]
@@ -60,16 +60,13 @@ func (m *IssuesList) SetActiveKey(key string) {
 }
 func (m *IssuesList) ClearActiveKey() { m.activeKey = "" }
 
-// AddJQLTab creates or replaces the JQL tab with the given query.
-// The JQL tab is always the last tab.
+// AddJQLTab creates or replaces the JQL tab with the given query
 func (m *IssuesList) AddJQLTab(jql string) {
 	if m.jqlTabIdx >= 0 {
-		// Replace existing JQL tab
 		m.jqlQuery = jql
 		m.tab = m.jqlTabIdx
 		return
 	}
-	// Append JQL tab
 	m.tabs = append(m.tabs, config.IssueTabConfig{Name: "JQL", JQL: ""})
 	m.jqlTabIdx = len(m.tabs) - 1
 	m.jqlQuery = jql
@@ -77,13 +74,12 @@ func (m *IssuesList) AddJQLTab(jql string) {
 	m.loadFromCache()
 }
 
-// RemoveJQLTab removes the JQL tab and switches to tab 0.
+// RemoveJQLTab removes the JQL tab and switches to tab 0
 func (m *IssuesList) RemoveJQLTab() {
 	if m.jqlTabIdx < 0 {
 		return
 	}
 	m.tabs = m.tabs[:m.jqlTabIdx]
-	// Clean up cache for the removed tab
 	if m.tabCache != nil {
 		delete(m.tabCache, m.jqlTabIdx)
 	}
@@ -93,17 +89,17 @@ func (m *IssuesList) RemoveJQLTab() {
 	m.loadFromCache()
 }
 
-// HasJQLTab returns true if a JQL tab currently exists.
+// HasJQLTab returns true if a JQL tab currently exists
 func (m *IssuesList) HasJQLTab() bool {
 	return m.jqlTabIdx >= 0
 }
 
-// IsJQLTab returns true if the currently active tab is the JQL tab.
+// IsJQLTab returns true if the currently active tab is the JQL tab
 func (m *IssuesList) IsJQLTab() bool {
 	return m.jqlTabIdx >= 0 && m.tab == m.jqlTabIdx
 }
 
-// JQLQuery returns the raw JQL query for the JQL tab.
+// JQLQuery returns the raw JQL query for the JQL tab
 func (m *IssuesList) JQLQuery() string {
 	return m.jqlQuery
 }
@@ -124,7 +120,6 @@ func (m *IssuesList) PrevTab() {
 	m.loadFromCache()
 }
 
-// loadFromCache switches display to cached data for current tab, if available.
 func (m *IssuesList) loadFromCache() {
 	if m.tabCache != nil {
 		if cached, ok := m.tabCache[m.tab]; ok {
@@ -134,14 +129,13 @@ func (m *IssuesList) loadFromCache() {
 			return
 		}
 	}
-	// No cache — clear list, will be populated by fetch.
 	m.allIssues = nil
 	m.applyFilter()
 }
 
 func (m *IssuesList) GetTabIndex() int { return m.tab }
 
-// SetTabIndex switches to the given tab and loads from cache if available.
+// SetTabIndex switches to the given tab and loads from cache if available
 func (m *IssuesList) SetTabIndex(idx int) {
 	if idx < 0 || idx >= len(m.tabs) {
 		return
@@ -151,13 +145,11 @@ func (m *IssuesList) SetTabIndex(idx int) {
 }
 
 func (m *IssuesList) SetIssues(issues []jira.Issue) {
-	// Remember current selection to preserve position.
 	var selectedKey string
 	if sel := m.SelectedIssue(); sel != nil {
 		selectedKey = sel.Key
 	}
 
-	// Store in per-tab cache.
 	if m.tabCache == nil {
 		m.tabCache = make(map[int][]jira.Issue)
 	}
@@ -167,13 +159,12 @@ func (m *IssuesList) SetIssues(issues []jira.Issue) {
 	m.updateKeyColWidth(issues)
 	m.applyFilter()
 
-	// Restore cursor position.
 	if selectedKey != "" {
 		m.SelectByKey(selectedKey)
 	}
 }
 
-// PatchIssue updates a single issue in the current list and tab cache by key.
+// PatchIssue updates a single issue in the current list and tab cache by key
 func (m *IssuesList) PatchIssue(updated *jira.Issue) {
 	patch := func(issues []jira.Issue) {
 		for i, iss := range issues {
@@ -206,7 +197,7 @@ func (m *IssuesList) updateKeyColWidth(issues []jira.Issue) {
 	}
 }
 
-// HasCachedTab returns true if the current tab has cached data.
+// HasCachedTab returns true if the current tab has cached data
 func (m *IssuesList) HasCachedTab() bool {
 	if m.tabCache == nil {
 		return false
@@ -215,7 +206,7 @@ func (m *IssuesList) HasCachedTab() bool {
 	return ok
 }
 
-// SetIssuesForTab stores issues in the cache for a specific tab without updating the display.
+// SetIssuesForTab stores issues in the cache for a specific tab without updating the display
 func (m *IssuesList) SetIssuesForTab(tab int, issues []jira.Issue) {
 	if m.tabCache == nil {
 		m.tabCache = make(map[int][]jira.Issue)
@@ -223,7 +214,7 @@ func (m *IssuesList) SetIssuesForTab(tab int, issues []jira.Issue) {
 	m.tabCache[tab] = issues
 }
 
-// InvalidateTabCache clears all cached tab data (e.g. on project switch).
+// InvalidateTabCache clears all cached tab data
 func (m *IssuesList) InvalidateTabCache() {
 	m.tabCache = nil
 	if m.jqlTabIdx >= 0 {
@@ -241,7 +232,7 @@ func (m *IssuesList) SetFilter(query string) {
 	m.applyFilter()
 }
 
-// ClearFilter removes the search filter but keeps tab filter. Cursor preserved via SelectByKey.
+// ClearFilter removes the search filter and preserves cursor position
 func (m *IssuesList) ClearFilter() {
 	m.filter = ""
 	m.applyFilterKeepCursor()
@@ -258,15 +249,13 @@ func (m *IssuesList) applyFilterKeepCursor() {
 	}
 }
 
-// FindInAnyTab checks all tab caches for the given key. Returns (tabIndex, true) if found.
+// FindInAnyTab checks all tab caches for the given key and returns (tabIndex, true) if found
 func (m *IssuesList) FindInAnyTab(key string) (int, bool) {
-	// Current tab first.
 	for _, issue := range m.issues {
 		if issue.Key == key {
 			return m.tab, true
 		}
 	}
-	// Other tabs.
 	for tab, issues := range m.tabCache {
 		if tab == m.tab {
 			continue
@@ -280,15 +269,12 @@ func (m *IssuesList) FindInAnyTab(key string) (int, bool) {
 	return -1, false
 }
 
-// InjectIssue adds an issue to tab 0 (All) cache if not present in any tab.
-// Switches to tab 0 and refreshes display. Returns true if injected or already found.
+// InjectIssue adds an issue to tab 0 cache if not already present
 func (m *IssuesList) InjectIssue(issue jira.Issue) {
 	if m.tabCache == nil {
 		m.tabCache = make(map[int][]jira.Issue)
 	}
-	// Prepend to tab 0 cache.
 	cached := m.tabCache[0]
-	// Avoid duplicate.
 	for _, iss := range cached {
 		if iss.Key == issue.Key {
 			return
@@ -297,7 +283,7 @@ func (m *IssuesList) InjectIssue(issue jira.Issue) {
 	m.tabCache[0] = append([]jira.Issue{issue}, cached...)
 }
 
-// SelectByKey moves cursor to the issue with the given key. Returns true if found.
+// SelectByKey moves cursor to the issue with the given key and returns true if found
 func (m *IssuesList) SelectByKey(key string) bool {
 	for i, issue := range m.issues {
 		if issue.Key == key {
@@ -310,8 +296,6 @@ func (m *IssuesList) SelectByKey(key string) bool {
 }
 
 func (m *IssuesList) applyFilter() {
-	// With config-driven tabs, all tab filtering is server-side via JQL.
-	// Only apply text search filter client-side.
 	source := m.allIssues
 
 	if m.filter == "" {
@@ -330,7 +314,6 @@ func (m *IssuesList) applyFilter() {
 		}
 		m.issues = filtered
 	}
-	// Pin active (selected) issue to top of the list.
 	if m.activeKey != "" {
 		for i, issue := range m.issues {
 			if issue.Key == m.activeKey {
@@ -347,7 +330,7 @@ func (m *IssuesList) applyFilter() {
 	m.SetItemCount(len(m.issues))
 }
 
-// ContentHeight returns natural height: items + 2 borders. Min 7 before data loads.
+// ContentHeight returns natural height: items + 2 borders with minimum 7
 func (m *IssuesList) ContentHeight() int {
 	return m.ListBase.ContentHeight(7)
 }
@@ -403,14 +386,13 @@ func (m *IssuesList) View() string {
 	return components.RenderPanelFull(title, footer, content, m.Width, visible, m.Focused, scroll)
 }
 
-// ClickTabAt handles clicks on the title bar to switch tabs.
-// Returns true if the tab actually changed.
+// ClickTabAt handles clicks on the title bar to switch tabs and returns true if the tab changed
 func (m *IssuesList) ClickTabAt(x int) bool {
 	if len(m.tabs) == 0 {
 		return false
 	}
-	prefix := 4 // "[2] "
-	sepW := 3   // " - "
+	prefix := 4
+	sepW := 3
 	pos := prefix
 	for i, t := range m.tabs {
 		labelW := len(t.Name)
@@ -418,7 +400,7 @@ func (m *IssuesList) ClickTabAt(x int) bool {
 		if i < len(m.tabs)-1 {
 			zoneEnd = pos + labelW + sepW
 		} else {
-			zoneEnd = pos + labelW + 10 // generous zone for last tab
+			zoneEnd = pos + labelW + 10
 		}
 		if x >= pos && x < zoneEnd {
 			if m.tab != i {
@@ -459,18 +441,16 @@ func (m *IssuesList) renderIssueRow(issue jira.Issue, width int, selected bool) 
 		fields = []string{"key", fieldStatus, "summary"}
 	}
 
-	// Calculate fixed column widths.
-	// Line format: marker(1) + field1 + " " + field2 + " " + ...
-	fixedWidth := 1 // active marker char
+	fixedWidth := 1
 	if len(fields) > 1 {
-		fixedWidth += len(fields) - 1 // spaces between fields
+		fixedWidth += len(fields) - 1
 	}
 	for _, f := range fields {
 		switch f {
 		case "key":
 			fixedWidth += m.keyColWidth
 		case fieldStatus:
-			fixedWidth += 1 // single emoji char
+			fixedWidth += 1
 		case "priority":
 			fixedWidth += 8
 		case "assignee":
@@ -480,7 +460,6 @@ func (m *IssuesList) renderIssueRow(issue jira.Issue, width int, selected bool) 
 		case "updated":
 			fixedWidth += 8
 		case "summary":
-			// elastic — calculated after
 		}
 	}
 	summaryWidth := max(width-fixedWidth, 5)
@@ -539,7 +518,7 @@ func (m *IssuesList) renderIssueRow(issue jira.Issue, width int, selected bool) 
 	return m.theme.NormalItem.Width(width).Render(line)
 }
 
-// padRight pads s with spaces to width w, using visible (ANSI-aware) width.
+// padRight pads s with spaces to width w using visible ANSI-aware width
 func padRight(s string, w int) string {
 	vis := lipgloss.Width(s)
 	if vis >= w {
@@ -548,7 +527,7 @@ func padRight(s string, w int) string {
 	return s + strings.Repeat(" ", w-vis)
 }
 
-// issueTimeAgo returns a short relative time string for the given timestamp.
+// issueTimeAgo returns a short relative time string for the given timestamp
 func issueTimeAgo(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -566,7 +545,7 @@ func issueTimeAgo(t time.Time) string {
 	}
 }
 
-// statusEmojiPlain returns uncolored status char for selected rows.
+// statusEmojiPlain returns uncolored status char for selected rows
 func statusEmojiPlain(status *jira.Status) string {
 	if status == nil {
 		return statusOpen

@@ -10,7 +10,6 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// key constants to satisfy goconst
 const (
 	keyEsc    = "esc"
 	keyEnter  = "enter"
@@ -33,16 +32,15 @@ const (
 type CreateFormField struct {
 	Name          string
 	FieldID       string
-	Type          int // matches views.InfoFieldType values
+	Type          int
 	Value         any
 	DisplayValue  string
 	Required      bool
 	AllowedValues []ModalItem
 	HasError      bool
-	SchemaItems   string // "user", "option", "string", etc for array fields
+	SchemaItems   string
 }
 
-// matches views.InfoFieldType
 const (
 	CFFieldSingleSelect = iota
 	CFFieldMultiSelect
@@ -75,7 +73,6 @@ type DescRenderFunc func(text string, width int) []string
 type DescADFRenderFunc func(adf any, width int) []string
 
 // CreateForm is a 3-panel accordion overlay for issue creation
-// Sub-panels are Summary (inline text), Description (preview + editor), Fields (scrollable list)
 type CreateForm struct {
 	visible bool
 	width   int
@@ -85,24 +82,20 @@ type CreateForm struct {
 	projectKey    string
 	focusedPanel  CreatePanel
 
-	// all fields in original order for FieldAt/SetFieldValue lookup
 	allFields []CreateFormField
 
-	// summary sub-panel (inline text editing)
 	summaryText   []rune
 	summaryCursor int
-	summaryIdx    int // index in allFields, -1 if absent
+	summaryIdx    int
 
-	// description sub-panel (preview only, e opens $EDITOR)
-	descIdx         int               // index in allFields, -1 if absent
-	descOffset      int               // scroll offset for description content
-	descRenderer    DescRenderFunc    // optional rich renderer for preview
-	descADFRenderer DescADFRenderFunc // optional ADF renderer for raw ADF values
+	descIdx         int
+	descOffset      int
+	descRenderer    DescRenderFunc
+	descADFRenderer DescADFRenderFunc
 
-	// fields sub-panel (everything except summary/description)
-	fieldIndices []int // indices into allFields
-	fieldCursor  int
-	fieldOffset  int
+	fieldIndices  []int
+	fieldCursor   int
+	fieldOffset   int
 	fieldDblClick DblClickDetector
 
 	paused      bool
@@ -139,6 +132,7 @@ func (f *CreateForm) SetDescRenderer(r DescRenderFunc) { f.descRenderer = r }
 
 // SetDescADFRenderer sets an optional renderer for raw ADF description values
 func (f *CreateForm) SetDescADFRenderer(r DescADFRenderFunc) { f.descADFRenderer = r }
+
 
 func (f *CreateForm) ShowForm(fields []CreateFormField, issueTypeName, projectKey string) {
 	f.visible = true
@@ -218,8 +212,6 @@ func (f *CreateForm) FieldAt(index int) *CreateFormField {
 	return &f.allFields[index]
 }
 
-// OverlayPanel interface
-
 func (f *CreateForm) IsVisible() bool { return f.visible }
 
 func (f *CreateForm) SetSize(w, h int) {
@@ -254,7 +246,6 @@ func (f *CreateForm) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 		return f.interceptFilter(km)
 	}
 
-	// tab cycling between panels
 	switch km.Type { //nolint:exhaustive // only tab keys handled here
 	case tea.KeyTab:
 		f.focusedPanel = CreatePanel((int(f.focusedPanel) + 1) % createPanelCount)
@@ -276,7 +267,6 @@ func (f *CreateForm) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 }
 
 func (f *CreateForm) interceptMouse(mm tea.MouseMsg) (tea.Cmd, bool) {
-	// wheel scrolls focused panel
 	switch mm.Button { //nolint:exhaustive // only wheel and click
 	case tea.MouseButtonWheelUp:
 		f.scrollFocused(-3)
@@ -292,7 +282,6 @@ func (f *CreateForm) interceptMouse(mm tea.MouseMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
-	// left click: determine which panel was clicked and focus it
 	availH := f.height - 1
 	if f.errorMsg != "" {
 		availH--
@@ -309,7 +298,6 @@ func (f *CreateForm) interceptMouse(mm tea.MouseMsg) (tea.Cmd, bool) {
 	relX := mm.X - formX
 	relY := mm.Y - formY
 
-	// outside form bounds
 	if relX < 0 || relX >= formW || relY < 0 || relY >= totalH {
 		return nil, true
 	}
@@ -321,7 +309,6 @@ func (f *CreateForm) interceptMouse(mm tea.MouseMsg) (tea.Cmd, bool) {
 		f.focusedPanel = CreatePanelDescription
 	case relY < summaryH+descH+fieldsH:
 		f.focusedPanel = CreatePanelFields
-		// click a specific field row (relY within fields panel, minus top border)
 		rowInPanel := relY - summaryH - descH - 1
 		innerH := max(fieldsH-2, 1)
 		if rowInPanel >= 0 && rowInPanel < innerH {

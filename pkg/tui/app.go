@@ -16,7 +16,6 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// Version is set from main at startup
 var Version = "dev"
 
 type focusPanel int
@@ -35,7 +34,6 @@ const (
 	sideRight
 )
 
-// Jira field IDs used in create and edit flows
 const (
 	fldPriority   = "priority"
 	fldSprint     = "sprint"
@@ -46,46 +44,42 @@ const (
 	fldName       = "name"
 )
 
-// editKind identifies the type of edit in progress
 type editKind int
 
 const (
 	editNone       editKind = iota
-	editDesc                // description via $EDITOR
-	editCommentNew          // new comment via $EDITOR
-	editCommentMod          // existing comment via $EDITOR
-	editSummary             // summary via InputModal
-	editField               // custom field via InputModal
-	editFieldText           // multi-line custom field via $EDITOR
-	editBranch              // git branch via InputModal
-	editCreateField         // create form field via InputModal
-	editCreateDesc          // create form description via $EDITOR
+	editDesc
+	editCommentNew
+	editCommentMod
+	editSummary
+	editField
+	editFieldText
+	editBranch
+	editCreateField
+	editCreateDesc
 )
 
-// editCtx tracks what edit operation is in progress
 type editCtx struct {
 	kind       editKind
 	issueKey   string
-	commentID  string // for editCommentMod
-	fieldID    string // for editField or editFieldText
-	fieldIndex int    // for create form field editing
+	commentID  string
+	fieldID    string
+	fieldIndex int
 }
 
-// createCtx tracks issue creation state
 type createCtx struct {
 	intent        bool
 	projectKey    string
 	projectID     string
 	issueTypeID   string
 	issueTypeName string
-	duplicateFrom *jira.Issue // source issue for ctrl+n duplication
+	duplicateFrom *jira.Issue
 }
 
-// Modal callback types for result dispatch
 type onSelectFunc func(components.ModalItem) tea.Cmd
 type onChecklistFunc func([]components.ModalItem) tea.Cmd
 
-// Async messages
+
 type issuesLoadedMsg struct {
 	issues []jira.Issue
 	tab    int // which tab index this fetch was for

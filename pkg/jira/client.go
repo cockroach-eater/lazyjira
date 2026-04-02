@@ -54,13 +54,13 @@ type RequestLog struct {
 
 type Client struct {
 	baseURL        string
-	hostURL        string // base host without API path, e.g. "https://jira.example.com"
+	hostURL        string
 	authHeader     string
 	httpClient     *http.Client
 	isCloud        bool
 	dryRun         bool
 	logger         io.Writer
-	onRequest      func(RequestLog) // callback for TUI log panel
+	onRequest      func(RequestLog)
 	customFieldIDs []string
 }
 

@@ -8,13 +8,13 @@ import (
 	"unicode"
 )
 
-// BranchTemplateData holds data available in branch name templates.
+// BranchTemplateData holds data available in branch name templates
 type BranchTemplateData struct {
-	Key        string // e.g. "PLAT-3"
-	ProjectKey string // e.g. "PLAT"
-	Number     string // e.g. "3"
-	Summary    string // sanitized slug, e.g. "add-some-apis"
-	Type       string // issue type name, e.g. "Story"
+	Key        string
+	ProjectKey string
+	Number     string
+	Summary    string
+	Type       string
 }
 
 const defaultTemplate = "{{.Key}}-{{.Summary}}"
@@ -30,7 +30,7 @@ var (
 )
 
 // GenerateBranchName creates a branch name from issue data using the given template.
-// Pass "" for tmplStr to use the default "{{.Key}}-{{.Summary}}" template.
+// Pass an empty string for tmplStr to use the default template.
 func GenerateBranchName(data BranchTemplateData, tmplStr string, asciiOnly bool) string {
 	if tmplStr == "" {
 		tmplStr = defaultTemplate
@@ -51,19 +51,13 @@ func GenerateBranchName(data BranchTemplateData, tmplStr string, asciiOnly bool)
 	return Sanitize(buf.String(), asciiOnly)
 }
 
-// Sanitize cleans a branch name to be a valid git ref.
+// Sanitize cleans a branch name to be a valid git ref
 func Sanitize(name string, asciiOnly bool) string {
-	// Replace spaces with hyphens.
 	name = strings.ReplaceAll(name, " ", "-")
-
-	// Remove invalid git ref chars.
 	name = invalidChars.ReplaceAllString(name, "")
-
-	// Remove .. and @{ sequences.
 	name = strings.ReplaceAll(name, "..", ".")
 	name = atBrace.ReplaceAllString(name, "")
 
-	// Strip non-ASCII if requested.
 	if asciiOnly {
 		var b strings.Builder
 		for _, r := range name {
@@ -74,15 +68,11 @@ func Sanitize(name string, asciiOnly bool) string {
 		name = b.String()
 	}
 
-	// Collapse consecutive hyphens and dots.
 	name = multiHyphens.ReplaceAllString(name, "-")
 	name = multiDots.ReplaceAllString(name, ".")
-
-	// Strip trailing dot, slash, .lock.
 	name = strings.TrimRight(name, "./")
 	name = strings.TrimSuffix(name, ".lock")
 
-	// Truncate.
 	if len(name) > maxBranchLen {
 		name = name[:maxBranchLen]
 		name = strings.TrimRight(name, "-./")

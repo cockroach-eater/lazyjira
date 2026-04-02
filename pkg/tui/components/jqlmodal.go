@@ -10,39 +10,36 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
-// JQLSubmitMsg is sent when the user submits a JQL query.
+// JQLSubmitMsg is sent when the user submits a JQL query
 type JQLSubmitMsg struct{ Query string }
 
-// JQLCancelMsg is sent when the user cancels the JQL modal.
+// JQLCancelMsg is sent when the user cancels the JQL modal
 type JQLCancelMsg struct{}
 
-// JQLInputChangedMsg is sent when the input text changes (for autocomplete).
+// JQLInputChangedMsg is sent when the input text changes for autocomplete
 type JQLInputChangedMsg struct {
 	Text      string
 	CursorPos int
 }
 
-// Bottom panel modes.
 const (
 	jqlModeHistory      = "history"
 	jqlModeAutocomplete = "autocomplete"
 )
 
-// JQLModal is a full-screen two-panel modal for JQL search.
-// Top panel: TextInput for JQL query.
-// Bottom panel: suggestions (autocomplete) or history list.
+// JQLModal is a full-screen two-panel modal for JQL search
 type JQLModal struct {
 	input      TextInput
-	items      []string // current items (history or suggestions)
-	cursor     int      // cursor in items list
-	offset     int      // scroll offset in items list
-	focusInput bool     // true = input focused, false = list focused
+	items      []string
+	cursor     int
+	offset     int
+	focusInput bool
 	visible    bool
-	loading    bool   // search in progress
-	acLoading  bool   // autocomplete loading
-	errorMsg   string // error from last search
-	mode       string // jqlModeHistory or jqlModeAutocomplete
-	partialLen int    // length of partial text to replace on suggestion insert
+	loading    bool
+	acLoading  bool
+	errorMsg   string
+	mode       string
+	partialLen int
 	width      int
 	height     int
 }
@@ -57,7 +54,7 @@ func NewJQLModal() JQLModal {
 	}
 }
 
-// Show opens the modal with prefilled text and history items.
+// Show opens the modal with prefilled text and history items
 func (m *JQLModal) Show(prefill string, history []string) {
 	m.visible = true
 	m.focusInput = true
@@ -71,7 +68,7 @@ func (m *JQLModal) Show(prefill string, history []string) {
 	m.mode = jqlModeHistory
 }
 
-// Hide closes the modal.
+// Hide closes the modal
 func (m *JQLModal) Hide() {
 	m.visible = false
 }
@@ -81,7 +78,7 @@ func (m *JQLModal) IsVisible() bool { return m.visible }
 func (m *JQLModal) SetSize(w, h int) {
 	m.width = w
 	m.height = h
-	m.input.SetWidth(w - 6) // border + padding
+	m.input.SetWidth(w - 6)
 }
 
 func (m *JQLModal) SetLoading(v bool) { m.loading = v }
@@ -90,7 +87,7 @@ func (m *JQLModal) SetError(msg string) {
 	m.loading = false
 }
 
-// SetSuggestions switches the bottom panel to autocomplete mode with suggestions.
+// SetSuggestions switches the bottom panel to autocomplete mode with suggestions
 func (m *JQLModal) SetSuggestions(suggestions []string) {
 	m.items = suggestions
 	m.mode = jqlModeAutocomplete
@@ -99,7 +96,7 @@ func (m *JQLModal) SetSuggestions(suggestions []string) {
 	m.acLoading = false
 }
 
-// SetHistory switches the bottom panel to history mode.
+// SetHistory switches the bottom panel to history mode
 func (m *JQLModal) SetHistory(history []string) {
 	m.items = history
 	m.mode = jqlModeHistory
@@ -108,16 +105,16 @@ func (m *JQLModal) SetHistory(history []string) {
 	m.acLoading = false
 }
 
-// SetACLoading sets autocomplete loading state.
+// SetACLoading sets autocomplete loading state
 func (m *JQLModal) SetACLoading(v bool) { m.acLoading = v }
 
-// SetPartialLen sets how many characters of partial text to replace on insert.
+// SetPartialLen sets how many characters of partial text to replace on insert
 func (m *JQLModal) SetPartialLen(n int) { m.partialLen = n }
 
-// InputValue returns the current input text.
+// InputValue returns the current input text
 func (m *JQLModal) InputValue() string { return m.input.Value() }
 
-// InputCursorPos returns the cursor position in the input.
+// InputCursorPos returns the cursor position in the input
 func (m *JQLModal) InputCursorPos() int { return m.input.CursorPos() }
 
 func (m *JQLModal) listHeight() int {
@@ -128,7 +125,7 @@ func (m *JQLModal) listHeight() int {
 	return max(h, 3)
 }
 
-// Update handles key/mouse events. Returns updated modal and optional command.
+// Update handles key and mouse events and returns the updated modal and an optional command
 func (m *JQLModal) Update(msg tea.Msg) (JQLModal, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -140,7 +137,6 @@ func (m *JQLModal) Update(msg tea.Msg) (JQLModal, tea.Cmd) {
 }
 
 func (m *JQLModal) handleKey(msg tea.KeyMsg) (JQLModal, tea.Cmd) {
-	// Clear error on any keystroke when input focused.
 	if m.errorMsg != "" && m.focusInput {
 		m.errorMsg = ""
 	}
@@ -155,7 +151,6 @@ func (m *JQLModal) handleKey(msg tea.KeyMsg) (JQLModal, tea.Cmd) {
 		return *m, func() tea.Msg { return JQLCancelMsg{} }
 
 	case tea.KeyTab:
-		// If exactly 1 suggestion and input is focused, auto-insert it.
 		if m.focusInput && m.mode == jqlModeAutocomplete && len(m.items) == 1 {
 			m.insertSuggestion(m.items[0])
 			return *m, func() tea.Msg {
@@ -171,7 +166,6 @@ func (m *JQLModal) handleKey(msg tea.KeyMsg) (JQLModal, tea.Cmd) {
 	case tea.KeyEnter:
 		return m.handleEnter()
 	default:
-		// handled below
 	}
 
 	if m.focusInput {
@@ -188,7 +182,6 @@ func (m *JQLModal) handleKey(msg tea.KeyMsg) (JQLModal, tea.Cmd) {
 		return *m, nil
 	}
 
-	// List navigation (j/k/g/G and arrow keys).
 	m.handleListNav(msg)
 	return *m, nil
 }
@@ -205,7 +198,6 @@ func (m *JQLModal) handleEnter() (JQLModal, tea.Cmd) {
 		m.loading = true
 		return *m, func() tea.Msg { return JQLSubmitMsg{Query: q} }
 	}
-	// List focused — select item.
 	if m.cursor >= 0 && m.cursor < len(m.items) {
 		selected := m.items[m.cursor]
 		if m.mode == jqlModeHistory {
@@ -213,7 +205,6 @@ func (m *JQLModal) handleEnter() (JQLModal, tea.Cmd) {
 			m.focusInput = true
 			return *m, nil
 		}
-		// Autocomplete — insert suggestion at cursor, replacing partial text.
 		m.insertSuggestion(selected)
 		m.focusInput = true
 		return *m, func() tea.Msg {
@@ -280,21 +271,16 @@ func (m *JQLModal) handleMouse(msg tea.MouseMsg) (JQLModal, tea.Cmd) {
 	return *m, nil
 }
 
-// jqlOperators lists JQL operators for context detection during insertion.
 var jqlOperators = map[string]bool{
 	"=": true, "!=": true, "~": true, "!~": true,
 	">": true, ">=": true, "<": true, "<=": true,
 	"is": true, "in": true, "not": true, "was": true,
 }
 
-// insertSuggestion replaces the partial text before the cursor with the selected suggestion.
-// Context-aware: auto-adds parentheses for IN lists, auto-quotes values with spaces.
 func (m *JQLModal) insertSuggestion(value string) {
-	// Strip existing surrounding quotes (API may return pre-quoted values).
 	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
 		value = value[1 : len(value)-1]
 	}
-	// Auto-quote if value contains spaces or special chars.
 	if strings.ContainsAny(value, " \"=!~<>()[]") {
 		value = `"` + value + `"`
 	}
@@ -303,44 +289,31 @@ func (m *JQLModal) insertSuggestion(value string) {
 	runes := []rune(text)
 	cursor := min(m.input.CursorPos(), len(runes))
 
-	// Use partialLen to determine how much text to replace.
-	// partialLen is set by the autocomplete context parser and accounts for
-	// multi-word partials like "ready for de" correctly.
 	start := max(cursor-m.partialLen, 0)
 
-	// The token being replaced.
 	tokenBeingReplaced := strings.ToLower(string(runes[start:cursor]))
 
-	// If the token is an operator (e.g. "in", "="), don't replace it — append after it.
 	if jqlOperators[tokenBeingReplaced] {
-		start = cursor // don't replace the operator
+		start = cursor
 	}
 
-	// Detect what's immediately before the insertion point (skip spaces).
 	beforePartial := strings.TrimRight(string(runes[:start]), " ")
 	beforeLower := strings.ToLower(beforePartial)
 
-	// Determine prefix and suffix based on context.
-	prefix := " " // default: space before value
-	suffix := " " // default: space after value
+	prefix := " "
+	suffix := " "
 
 	switch {
 	case strings.HasSuffix(beforeLower, " in") || strings.HasSuffix(beforeLower, "\tin"):
-		// After "in" operator — open paren, value, comma for next.
 		prefix = " ("
 		suffix = ", "
 	case len(beforePartial) > 0 && beforePartial[len(beforePartial)-1] == '(':
-		// Right after opening paren.
 		prefix = ""
 		suffix = ", "
 	case len(beforePartial) > 0 && beforePartial[len(beforePartial)-1] == ',':
-		// After comma inside IN list.
 		prefix = " "
 		suffix = ", "
 	default:
-		// After a regular operator like "=", "~", etc.
-		// If start == cursor (we didn't replace anything), add a space before.
-		// If start < cursor (we replaced a partial), no extra space needed.
 		if start < cursor {
 			prefix = ""
 		}
@@ -362,7 +335,7 @@ func (m *JQLModal) adjustListOffset() {
 	}
 }
 
-// Intercept handles a message if the modal is visible. Implements Overlay.
+// Intercept handles a message if the modal is visible and implements Overlay
 func (m *JQLModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	if !m.visible {
 		return nil, false
@@ -376,7 +349,7 @@ func (m *JQLModal) Intercept(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// Render draws the JQL modal centered on bg. Implements Overlay.
+// Render draws the JQL modal centered on bg and implements Overlay
 func (m *JQLModal) Render(bg string, w, h int) string {
 	if !m.visible {
 		return bg
@@ -384,7 +357,7 @@ func (m *JQLModal) Render(bg string, w, h int) string {
 	return Overlay(bg, m.View(), w, h)
 }
 
-// SelectedSuggestion returns the currently selected suggestion (for autocomplete mode).
+// SelectedSuggestion returns the currently selected suggestion in autocomplete mode
 func (m *JQLModal) SelectedSuggestion() string {
 	if m.mode != jqlModeAutocomplete || m.focusInput {
 		return ""
@@ -395,7 +368,7 @@ func (m *JQLModal) SelectedSuggestion() string {
 	return ""
 }
 
-// View renders the full-screen JQL modal overlay.
+// View renders the full-screen JQL modal overlay
 func (m *JQLModal) View() string {
 	if !m.visible || m.width == 0 || m.height == 0 {
 		return ""
@@ -404,21 +377,18 @@ func (m *JQLModal) View() string {
 	contentW := max(m.width-4, 10)
 	borderStyle := lipgloss.NewStyle().Foreground(theme.ColorGreen)
 
-	// === Top Panel: Input ===
 	inputContent := m.input.View()
 	if m.loading {
 		inputContent += lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("  Searching...")
 	}
 	inputPanel := RenderPanelFull("JQL Query", "", inputContent, m.width-2, 1, m.focusInput, nil)
 
-	// Error line.
 	errorLine := ""
 	if m.errorMsg != "" {
 		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 		errorLine = " " + errStyle.Render(m.errorMsg)
 	}
 
-	// === Bottom Panel: List ===
 	listH := m.listHeight()
 	listContent := m.renderListContent(listH, contentW)
 
@@ -433,7 +403,6 @@ func (m *JQLModal) View() string {
 	scroll := &ScrollInfo{Total: len(m.items), Visible: listH, Offset: m.offset}
 	listPanel := RenderPanelFull(listTitle, listFooter, listContent, m.width-2, listH, !m.focusInput, scroll)
 
-	// === Combine ===
 	var parts []string
 	parts = append(parts, inputPanel)
 	if errorLine != "" {
@@ -442,7 +411,6 @@ func (m *JQLModal) View() string {
 	parts = append(parts, listPanel)
 	inner := strings.Join(parts, "\n")
 
-	// Wrap in outer border.
 	innerLines := strings.Split(inner, "\n")
 	topLine := borderStyle.Render("╭" + strings.Repeat("─", m.width-2) + "╮")
 	bottomLine := borderStyle.Render("╰" + strings.Repeat("─", m.width-2) + "╯")
