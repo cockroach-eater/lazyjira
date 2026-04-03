@@ -51,7 +51,12 @@ func run() error {
 	demo := flag.Bool("demo", false, "Run with demo data (no Jira account needed)")
 	flag.Parse()
 
-	cfg, _ := config.Load()
+	var cfg *config.Config
+	if *demo {
+		cfg = config.DefaultConfig()
+	} else {
+		cfg, _ = config.Load()
+	}
 
 	var client jira.ClientInterface
 	var authMethod tui.AuthMethod
