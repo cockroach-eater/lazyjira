@@ -19,6 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Space on issues panel opens issue detail
 - Info panel label width adjusts to fit custom field names
 - None and Unknown values shown in gray
+- Ctrl+J / Ctrl+K as alternative navigation keys everywhere (lists, modals, search)
 
 ### Fixed
 
