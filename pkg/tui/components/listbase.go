@@ -1,5 +1,10 @@
 package components
 
+const (
+	KeyCtrlJ = "ctrl+j"
+	KeyCtrlK = "ctrl+k"
+)
+
 // ListBase provides shared cursor, offset, and scroll logic for list panels.
 // Embed it in a view struct and call SetItemCount when the data changes.
 type ListBase struct {
@@ -59,18 +64,16 @@ func (l *ListBase) ClickAt(relY int) bool {
 	return false
 }
 
-// KeyNav handles j/k/g/G/ctrl+d/ctrl+u navigation.
-// Returns true if the cursor moved.
 func (l *ListBase) KeyNav(key string) bool {
 	prev := l.Cursor
 	switch key {
-	case "j", "down":
+	case "j", "down", KeyCtrlJ:
 		if l.Cursor < l.itemCount-1 {
 			l.Cursor++
 		} else if l.itemCount > 0 {
 			l.Cursor = 0
 		}
-	case "k", "up":
+	case "k", "up", KeyCtrlK:
 		if l.Cursor > 0 {
 			l.Cursor--
 		} else if l.itemCount > 0 {
@@ -95,6 +98,15 @@ func (l *ListBase) KeyNav(key string) bool {
 	}
 	l.AdjustOffset()
 	return l.Cursor != prev
+}
+
+func IsNavKey(key string) bool {
+	switch key {
+	case "j", "down", KeyCtrlJ, "k", "up", KeyCtrlK,
+		"g", "home", "G", "end", "ctrl+d", "ctrl+u":
+		return true
+	}
+	return false
 }
 
 func (l *ListBase) clampCursor() {

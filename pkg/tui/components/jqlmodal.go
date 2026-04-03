@@ -218,8 +218,8 @@ func (m *JQLModal) handleEnter() (JQLModal, tea.Cmd) {
 }
 
 func (m *JQLModal) handleListNav(msg tea.KeyMsg) {
-	moveDown := msg.String() == "j" || msg.Type == tea.KeyDown
-	moveUp := msg.String() == "k" || msg.Type == tea.KeyUp
+	moveDown := msg.String() == "j" || msg.Type == tea.KeyDown || msg.Type == tea.KeyCtrlJ
+	moveUp := msg.String() == "k" || msg.Type == tea.KeyUp || msg.Type == tea.KeyCtrlK
 	switch {
 	case moveDown:
 		if m.cursor < len(m.items)-1 {

@@ -522,7 +522,7 @@ func extractNodeURLs(node map[string]any) []string {
 		}
 	}
 
-	if nodeType == "text" {
+	if nodeType == adfText {
 		if text, ok := node["text"].(string); ok {
 			urls = append(urls, findURLs(text)...)
 		}

@@ -265,9 +265,9 @@ func (m *Modal) handleSearchKey(msg tea.KeyMsg) (Modal, tea.Cmd) {
 		m.searching = false
 		m.filterInput.SetValue("")
 		m.applyFilter()
-	case keyDown:
+	case keyDown, KeyCtrlJ:
 		m.moveCursor(1)
-	case "up":
+	case "up", KeyCtrlK:
 		m.moveCursor(-1)
 	default:
 		updated, changed := m.filterInput.Update(msg)
@@ -287,13 +287,13 @@ func (m *Modal) handleKey(msg tea.KeyMsg) (Modal, tea.Cmd) {
 			m.filterInput.SetValue("")
 			return *m, nil
 		}
-	case "j", "down":
+	case "j", "down", KeyCtrlJ:
 		if m.readOnly {
 			m.offset++
 		} else {
 			m.moveCursor(1)
 		}
-	case "k", "up":
+	case "k", "up", KeyCtrlK:
 		if m.readOnly {
 			if m.offset > 0 {
 				m.offset--

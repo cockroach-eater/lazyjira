@@ -430,13 +430,13 @@ func (f *CreateForm) interceptFilter(msg tea.KeyMsg) (tea.Cmd, bool) {
 		f.fieldOffset = 0
 	case keyEnter:
 		f.confirmFilter()
-	case keyDown:
+	case keyDown, KeyCtrlJ:
 		filtered := f.filteredFields()
 		if f.fieldCursor < len(filtered)-1 {
 			f.fieldCursor++
 			f.ensureFieldVisible()
 		}
-	case "up":
+	case "up", KeyCtrlK:
 		if f.fieldCursor > 0 {
 			f.fieldCursor--
 			f.ensureFieldVisible()
@@ -514,9 +514,9 @@ func (f *CreateForm) interceptDescription(msg tea.KeyMsg) (tea.Cmd, bool) {
 			idx := f.descIdx
 			return func() tea.Msg { return CreateFormEditExternalMsg{FieldIndex: idx} }, true
 		}
-	case "j", keyDown:
+	case "j", keyDown, KeyCtrlJ:
 		f.scrollDesc(1)
-	case "k", "up":
+	case "k", "up", KeyCtrlK:
 		f.scrollDesc(-1)
 	case "g":
 		f.descOffset = 0
@@ -533,12 +533,12 @@ func (f *CreateForm) interceptDescription(msg tea.KeyMsg) (tea.Cmd, bool) {
 func (f *CreateForm) interceptFields(msg tea.KeyMsg) (tea.Cmd, bool) {
 	filtered := f.filteredFields()
 	switch msg.String() {
-	case "j", keyDown:
+	case "j", keyDown, KeyCtrlJ:
 		if f.fieldCursor < len(filtered)-1 {
 			f.fieldCursor++
 			f.ensureFieldVisible()
 		}
-	case "k", "up":
+	case "k", "up", KeyCtrlK:
 		if f.fieldCursor > 0 {
 			f.fieldCursor--
 			f.ensureFieldVisible()

@@ -78,16 +78,14 @@ func (a *App) handleAutoFetch() (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// selectProject sets the active project, clearing issue state.
-// Returns a command to prefetch assignable users in background
 func (a *App) selectProject(p *jira.Project) tea.Cmd {
 	a.projectKey = p.Key
 	a.projectID = p.ID
 	a.statusPanel.SetProject(p.Key)
 	a.projectList.SetActiveKey(p.Key)
-	a.issuesList.ClearActiveKey()
 	a.issuesList.InvalidateTabCache()
 	a.issueCache = make(map[string]*jira.Issue)
+	a.createMetaCache = make(map[string][]jira.CreateMetaField)
 	a.infoPanel.SetIssue(nil)
 	a.resolveBoardID()
 	if !a.demoMode {

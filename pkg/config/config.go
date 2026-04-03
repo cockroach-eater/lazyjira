@@ -15,8 +15,9 @@ type Config struct {
 	IssueTabs    []IssueTabConfig    `yaml:"issueTabs"`
 	Cache        CacheConfig         `yaml:"cache"`
 	Refresh      RefreshConfig       `yaml:"refresh"`
-	CustomFields []CustomFieldConfig `yaml:"customFields"`
-	Git          GitConfig           `yaml:"git"`
+	Fields           []FieldConfig      `yaml:"fields"`
+	DeprecatedFields []FieldConfig      `yaml:"customFields,omitempty"`
+	Git              GitConfig          `yaml:"git"`
 }
 
 type GitConfig struct {
@@ -39,10 +40,11 @@ type IssueTabConfig struct {
 	JQL  string `yaml:"jql"`
 }
 
-type CustomFieldConfig struct {
-	ID   string `yaml:"id"`
-	Name string `yaml:"name"`
-	Type string `yaml:"type"` // TODO not yet wired up. "select", "multiselect", "user", "text", "textarea" (default: "text")
+type FieldConfig struct {
+	ID     string `yaml:"id"`
+	Name   string `yaml:"name"`
+	Type   string `yaml:"type"`
+	Multiline bool   `yaml:"multiline"`
 }
 
 type KeybindingConfig struct {
@@ -226,6 +228,11 @@ func Load() (*Config, error) {
 		if err := yaml.Unmarshal(data, cfg); err != nil {
 			return nil, err
 		}
+	}
+
+	if cfg.Fields == nil && len(cfg.DeprecatedFields) > 0 {
+		cfg.Fields = cfg.DeprecatedFields
+		cfg.DeprecatedFields = nil
 	}
 
 	// Environment variables always take precedence.

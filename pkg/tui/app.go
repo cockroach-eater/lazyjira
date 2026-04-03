@@ -144,8 +144,9 @@ type App struct {
 	isCloud     bool
 	demoMode    bool
 	currentUser *jira.User
-	usersCache  map[string][]jira.User
-	issueCache  map[string]*jira.Issue
+	usersCache      map[string][]jira.User
+	issueCache      map[string]*jira.Issue
+	createMetaCache map[string][]jira.CreateMetaField
 	createCtx   createCtx
 
 	gitRepoPath    string
@@ -225,14 +226,17 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		Project:    projectKey,
 	}
 
-	if len(cfg.CustomFields) > 0 {
-		ids := make([]string, len(cfg.CustomFields))
-		for i, cf := range cfg.CustomFields {
-			ids[i] = cf.ID
+	if len(cfg.Fields) > 0 {
+		var customIDs []string
+		for _, f := range cfg.Fields {
+			if isCustomField(f.ID) {
+				customIDs = append(customIDs, f.ID)
+			}
 		}
-		client.SetCustomFields(ids)
-		detailView.SetCustomFields(cfg.CustomFields)
-		infoPanel.SetCustomFields(cfg.CustomFields)
+		if len(customIDs) > 0 {
+			client.SetCustomFields(customIDs)
+		}
+		infoPanel.SetFields(cfg.Fields)
 	}
 
 	app := &App{
@@ -259,8 +263,9 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		isCloud:     cfg.Jira.IsCloud(),
 		demoMode:    authMethod == AuthDemo,
 		logFlag:     logFlag,
-		usersCache:  make(map[string][]jira.User),
-		issueCache:  make(map[string]*jira.Issue),
+		usersCache:      make(map[string][]jira.User),
+		issueCache:      make(map[string]*jira.Issue),
+		createMetaCache: make(map[string][]jira.CreateMetaField),
 	}
 	isCloud := cfg.Jira.IsCloud()
 	app.createForm.SetDescRenderer(func(text string, width int) []string {
@@ -308,7 +313,7 @@ func (a *App) Init() tea.Cmd {
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.searchBar.IsActive() {
-		if km, ok := msg.(tea.KeyMsg); ok && km.Type != tea.KeyUp && km.Type != tea.KeyDown {
+		if km, ok := msg.(tea.KeyMsg); ok && km.Type != tea.KeyUp && km.Type != tea.KeyDown && km.Type != tea.KeyCtrlJ && km.Type != tea.KeyCtrlK {
 			updated, cmd := a.searchBar.Update(msg)
 			a.searchBar = updated
 			return a, cmd
@@ -377,6 +382,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleComponentsLoaded(msg)
 	case issueTypesLoadedMsg:
 		return a.handleIssueTypesLoaded(msg)
+	case customFieldOptionsMsg:
+		return a.handleCustomFieldOptions(msg)
 	case createMetaLoadedMsg:
 		return a.handleCreateMetaLoaded(msg)
 	case issueCreatedMsg:
@@ -565,9 +572,13 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			}
 			a.statusPanel.SetError("no agile board found for this project")
 			return a, nil
+		default:
+			if isCustomField(field.FieldID) {
+				return a.fetchCustomFieldOptionsForEdit(sel, field)
+			}
 		}
 	case views.FieldPerson:
-		a.onSelect = a.makePersonSelectCallback(field.FieldID)
+		a.onSelect = a.makePersonSelectCallback(sel.Key, field.FieldID)
 		if cached, ok := a.usersCache[a.projectKey]; ok {
 			return a.handleUsersLoaded(usersLoadedMsg{users: cached, issueKey: sel.Key})
 		}
@@ -593,14 +604,21 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 				return updateIssueField(a.client, issueKey, fldComponents, comps)
 			}
 			return a, fetchComponents(a.client, a.projectKey)
+		default:
+			if isCustomField(field.FieldID) {
+				return a.fetchCustomFieldOptionsForEdit(sel, field)
+			}
 		}
 	case views.FieldSingleText:
-		a.inputModal.Show("Edit "+field.Name, field.Value)
+		if isCustomField(field.FieldID) {
+			return a.fetchCustomFieldOptionsForEdit(sel, field)
+		}
+		a.inputModal.Show("Edit "+field.Name, views.EditValueForInput(field.Value))
 		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, nil
 	case views.FieldMultiText:
 		a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
-		return a, launchEditor(field.Value, ".md")
+		return a, launchEditor(views.EditValueForInput(field.Value), ".md")
 	}
 	return a, nil
 }
@@ -628,20 +646,16 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 }
 
 
-func (a *App) makePersonSelectCallback(fieldID string) onSelectFunc {
+func (a *App) makePersonSelectCallback(issueKey, fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
-			return nil
-		}
 		if item.ID == "" {
-			return updateIssueField(a.client, sel.Key, fieldID, nil)
+			return updateIssueField(a.client, issueKey, fieldID, nil)
 		}
 		key := fldName
 		if a.isCloud {
 			key = fldAccountID
 		}
-		return updateIssueField(a.client, sel.Key, fieldID, map[string]string{key: item.ID})
+		return updateIssueField(a.client, issueKey, fieldID, map[string]string{key: item.ID})
 	}
 }
 
@@ -649,6 +663,134 @@ func (a *App) makeFieldSelectCallback(issueKey, fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
 		return updateIssueField(a.client, issueKey, fieldID, map[string]string{"id": item.ID})
 	}
+}
+
+func isCustomField(fieldID string) bool {
+	return strings.HasPrefix(fieldID, "customfield_")
+}
+
+func (a *App) fieldMultilineEnabled(fieldID string) bool {
+	for _, f := range a.cfg.Fields {
+		if f.ID == fieldID {
+			return f.Multiline
+		}
+	}
+	return false
+}
+
+func (a *App) configuredFieldType(fieldID string) string {
+	for _, f := range a.cfg.Fields {
+		if f.ID == fieldID {
+			return f.Type
+		}
+	}
+	return ""
+}
+
+func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoField) (tea.Model, tea.Cmd) {
+	if sel.IssueType == nil {
+		a.statusPanel.SetError("issue type unknown")
+		return a, nil
+	}
+	multiline := a.fieldMultilineEnabled(field.FieldID)
+	cfgType := a.configuredFieldType(field.FieldID)
+	if cfgType == "text" || cfgType == "textarea" {
+		if multiline || cfgType == "textarea" {
+			a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
+			return a, launchEditor(views.EditValueForInput(field.Value), ".md")
+		}
+		a.inputModal.Show("Edit "+field.Name, views.EditValueForInput(field.Value))
+		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
+		return a, nil
+	}
+	info := customFieldOptionsMsg{
+		issueKey:     sel.Key,
+		fieldID:      field.FieldID,
+		fieldName:    field.Name,
+		fieldType:    field.Type,
+		currentValue: field.Value,
+		useEditor:    multiline,
+	}
+	cacheKey := a.projectKey + ":" + sel.IssueType.ID
+	if cached, ok := a.createMetaCache[cacheKey]; ok {
+		found := false
+		for _, f := range cached {
+			if f.FieldID == field.FieldID {
+				info.options = f.AllowedValues
+				info.schemaType = f.Schema.Type
+				info.schemaItems = f.Schema.Items
+				found = true
+				break
+			}
+		}
+		info.fieldNotFound = !found
+		return a.handleCustomFieldOptions(info)
+	}
+	return a, fetchCustomFieldOptions(a.client, a.projectKey, sel.IssueType.ID, info)
+}
+
+func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, tea.Cmd) {
+	if len(msg.allFields) > 0 && msg.issueTypeID != "" && msg.projectKey != "" {
+		a.createMetaCache[msg.projectKey+":"+msg.issueTypeID] = msg.allFields
+	}
+	if msg.fieldNotFound {
+		a.statusPanel.SetError("field not available for editing")
+		return a, nil
+	}
+	if a.isPersonSchema(msg.schemaType, msg.schemaItems) {
+		a.onSelect = a.makePersonSelectCallback(msg.issueKey, msg.fieldID)
+		if cached, ok := a.usersCache[a.projectKey]; ok {
+			return a.handleUsersLoaded(usersLoadedMsg{users: cached, issueKey: msg.issueKey})
+		}
+		return a, fetchUsers(a.client, a.projectKey, msg.issueKey)
+	}
+
+	items := make([]components.ModalItem, 0, len(msg.options))
+	for _, v := range msg.options {
+		items = append(items, components.ModalItem{ID: v.ID, Label: v.Name})
+	}
+
+	if len(items) == 0 {
+		if msg.useEditor {
+			a.editContext = editCtx{kind: editFieldText, issueKey: msg.issueKey, fieldID: msg.fieldID}
+			return a, launchEditor(views.EditValueForInput(msg.currentValue), ".md")
+		}
+		a.inputModal.Show("Edit "+msg.fieldName, views.EditValueForInput(msg.currentValue))
+		a.editContext = editCtx{kind: editField, issueKey: msg.issueKey, fieldID: msg.fieldID}
+		return a, nil
+	}
+
+	switch msg.fieldType {
+	case views.FieldMultiSelect:
+		a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
+			vals := make([]map[string]string, 0, len(selected))
+			for _, item := range selected {
+				vals = append(vals, map[string]string{"id": item.ID})
+			}
+			return updateIssueField(a.client, msg.issueKey, msg.fieldID, vals)
+		}
+		preselected := make(map[string]bool)
+		if raw, ok := a.issueCache[msg.issueKey]; ok {
+			if arr, ok := raw.CustomFields[msg.fieldID].([]any); ok {
+				for _, item := range arr {
+					if m, ok := item.(map[string]any); ok {
+						if id, ok := m["id"].(string); ok {
+							preselected[id] = true
+						}
+					}
+				}
+			}
+		}
+		a.modal.ShowChecklist(msg.fieldName, items, preselected)
+	default:
+		a.onSelect = a.makeFieldSelectCallback(msg.issueKey, msg.fieldID)
+		a.modal.Show(msg.fieldName, items)
+	}
+	return a, nil
+}
+
+func (a *App) isPersonSchema(schemaType, schemaItems string) bool {
+	return schemaType == schemaUser || (schemaType == schemaArray && schemaItems == schemaUser)
 }
 
 func (a *App) renderHelpOverlay(base string) string {

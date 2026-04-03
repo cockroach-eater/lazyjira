@@ -25,7 +25,7 @@ const (
 type InfoPanel struct {
 	components.ListBase
 	issue           *jira.Issue
-	customFields    []config.CustomFieldConfig
+	fields          []config.FieldConfig
 	filter          string
 	activeTab       InfoPanelTab
 	theme           *theme.Theme
@@ -58,8 +58,8 @@ func (p *InfoPanel) IssueKey() string {
 	return ""
 }
 
-func (p *InfoPanel) SetCustomFields(fields []config.CustomFieldConfig) {
-	p.customFields = fields
+func (p *InfoPanel) SetFields(fields []config.FieldConfig) {
+	p.fields = fields
 }
 
 func (p *InfoPanel) SetFilter(query string) {
@@ -87,7 +87,7 @@ func (p *InfoPanel) ActiveTab() InfoPanelTab {
 }
 
 func (p *InfoPanel) Fields() []InfoField {
-	return buildInfoFields(p.issue, p.customFields)
+	return buildInfoFields(p.issue, p.fields)
 }
 
 func (p *InfoPanel) SelectedInfoField() *InfoField {
@@ -198,7 +198,7 @@ func (p *InfoPanel) tabItemCount() int {
 	}
 	switch p.activeTab {
 	case InfoTabFields:
-		return infoFieldCount(p.issue, p.customFields)
+		return infoFieldCount(p.issue, p.fields)
 	case InfoTabLinks:
 		count := 0
 		for _, link := range p.issue.IssueLinks {
@@ -371,10 +371,7 @@ func (p *InfoPanel) renderTabRows(width int) (styled, plain []string) {
 }
 
 func (p *InfoPanel) renderFieldRowPairs() (styled, plain []string) {
-	w := p.Width - 2
-	styled = renderInfoRows(p.issue, p.customFields, p.theme, w)
-	plain = renderInfoRowsPlain(p.issue, p.customFields, w)
-	return
+	return renderInfoRowPairs(p.issue, p.fields, p.theme, p.Width-2)
 }
 
 func (p *InfoPanel) renderLinkRowPairs(width int) (styled, plain []string) {

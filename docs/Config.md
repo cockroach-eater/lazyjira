@@ -94,7 +94,7 @@ cache:
 refresh:
     autoRefresh: true
     interval: 30s
-customFields: []
+fields: []
 git:
     closeOnCheckout: false
     asciiOnly: false
@@ -211,9 +211,23 @@ keybinding:
 
 Only include keys you want to change. Missing keys keep their defaults.
 
-## Custom fields
+## Info panel fields
 
-See [Custom Fields](Custom_Fields.md).
+See [Custom Fields](Custom_Fields.md) for details on configuring the info panel.
+
+Without any `fields:` config, the info panel shows default fields: status, priority, assignee, reporter, issuetype, sprint (plus labels and components when set on the issue).
+
+To customize which fields appear and in what order, add a `fields:` section. This replaces the defaults entirely.
+
+```yaml
+fields:
+  - id: status
+  - id: priority
+  - id: assignee
+  - id: "customfield_10015"
+    name: "Story Points"
+    type: "text"
+```
 
 ## Git integration
 

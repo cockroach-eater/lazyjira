@@ -84,11 +84,11 @@ func (m *InputModal) handleHintKeys(msg tea.KeyMsg) (InputModal, tea.Cmd) {
 	case tea.KeyEsc:
 		m.visible = false
 		return *m, func() tea.Msg { return InputCancelledMsg{} }
-	case tea.KeyDown:
+	case tea.KeyDown, tea.KeyCtrlJ:
 		if m.hintCursor < len(m.hints)-1 {
 			m.hintCursor++
 		}
-	case tea.KeyUp:
+	case tea.KeyUp, tea.KeyCtrlK:
 		if m.hintCursor > 0 {
 			m.hintCursor--
 		}

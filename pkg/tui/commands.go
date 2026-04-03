@@ -13,6 +13,7 @@ import (
 	"github.com/textfuel/lazyjira/pkg/config"
 	"github.com/textfuel/lazyjira/pkg/git"
 	"github.com/textfuel/lazyjira/pkg/jira"
+	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
 // Git message types
@@ -216,6 +217,22 @@ type createMetaLoadedMsg struct{ fields []jira.CreateMetaField }
 type issueCreatedMsg struct{ issue *jira.Issue }
 type createErrorMsg struct{ err error }
 
+type customFieldOptionsMsg struct {
+	issueKey      string
+	fieldID       string
+	fieldName     string
+	fieldType     views.InfoFieldType
+	currentValue  string
+	useEditor     bool
+	schemaType    string
+	schemaItems   string
+	options       []jira.CreateMetaValue
+	allFields     []jira.CreateMetaField
+	issueTypeID   string
+	projectKey    string
+	fieldNotFound bool
+}
+
 func updateIssueField(client jira.ClientInterface, issueKey, field string, value any) tea.Cmd {
 	return func() tea.Msg {
 		fields := map[string]any{field: value}
@@ -254,6 +271,28 @@ func fetchCreateMeta(client jira.ClientInterface, projectKey, issueTypeID string
 			return createErrorMsg{err: err}
 		}
 		return createMetaLoadedMsg{fields: fields}
+	}
+}
+
+func fetchCustomFieldOptions(client jira.ClientInterface, projectKey, issueTypeID string, info customFieldOptionsMsg) tea.Cmd {
+	return func() tea.Msg {
+		meta, err := client.GetCreateMeta(context.Background(), projectKey, issueTypeID)
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		info.allFields = meta
+		info.issueTypeID = issueTypeID
+		info.projectKey = projectKey
+		for _, f := range meta {
+			if f.FieldID == info.fieldID {
+				info.options = f.AllowedValues
+				info.schemaType = f.Schema.Type
+				info.schemaItems = f.Schema.Items
+				return info
+			}
+		}
+		info.fieldNotFound = true
+		return info
 	}
 }
 

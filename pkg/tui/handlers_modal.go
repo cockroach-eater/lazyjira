@@ -287,7 +287,7 @@ func (a *App) handleCreateFormChecklist(msg components.CreateFormChecklistMsg) (
 			return a, fetchComponents(a.client, a.projectKey)
 		default:
 			// multi-user custom field (Requestor, etc)
-			if field.SchemaItems == "user" {
+			if field.SchemaItems == schemaUser {
 				return a.handleCreateFormUserChecklist(field, idx)
 			}
 			// no items and no known fetch, resume form

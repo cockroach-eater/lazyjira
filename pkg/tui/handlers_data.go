@@ -28,7 +28,7 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, prefetchIssue(a.client, issue.Key))
 		}
 	}
-	if msg.tab == a.issuesList.GetTabIndex() {
+	if msg.tab == a.issuesList.GetTabIndex() && a.side == sideLeft && a.leftFocus == focusIssues {
 		a.previewSelectedIssue()
 	}
 	if a.gitDetectedKey != "" {
@@ -411,6 +411,10 @@ func (a *App) handleBatchPrefetched(msg batchPrefetchedMsg) (tea.Model, tea.Cmd)
 func (a *App) handleCreateFormTypeSelected(msg components.CreateFormTypeSelectedMsg) (tea.Model, tea.Cmd) {
 	a.createCtx.issueTypeID = msg.TypeID
 	a.createCtx.issueTypeName = msg.TypeName
+	cacheKey := a.createCtx.projectKey + ":" + msg.TypeID
+	if cached, ok := a.createMetaCache[cacheKey]; ok {
+		return a.handleCreateMetaLoaded(createMetaLoadedMsg{fields: cached})
+	}
 	a.createForm.SetLoading(true)
 	*a.logFlag = true
 	return a, fetchCreateMeta(a.client, a.createCtx.projectKey, msg.TypeID)
@@ -418,6 +422,10 @@ func (a *App) handleCreateFormTypeSelected(msg components.CreateFormTypeSelected
 
 // handleCreateMetaLoaded builds form fields from metadata
 func (a *App) handleCreateMetaLoaded(msg createMetaLoadedMsg) (tea.Model, tea.Cmd) {
+	cacheKey := a.createCtx.projectKey + ":" + a.createCtx.issueTypeID
+	if _, ok := a.createMetaCache[cacheKey]; !ok {
+		a.createMetaCache[cacheKey] = msg.fields
+	}
 	fields := a.buildCreateFields(msg.fields)
 
 	if a.cfg.GUI.ShouldPrefillFromTab() {
@@ -581,7 +589,7 @@ var supportedSchemaTypes = map[string]bool{
 	"string":       true,
 	"array":        true,
 	"priority":     true,
-	"user":         true,
+	schemaUser:     true,
 	"option":       true,
 	"number":       true,
 	"date":         true,
@@ -616,7 +624,7 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 	}
 
 	cfgNames := make(map[string]string)
-	for _, cf := range a.cfg.CustomFields {
+	for _, cf := range a.cfg.Fields {
 		cfgNames[cf.ID] = cf.Name
 	}
 
@@ -648,6 +656,7 @@ func (a *App) buildCreateFields(meta []jira.CreateMetaField) []components.Create
 }
 
 const schemaArray = "array"
+const schemaUser = "user"
 
 // metaToFormField converts one CreateMetaField to CreateFormField
 func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormField {
@@ -667,13 +676,13 @@ func (a *App) metaToFormField(mf jira.CreateMetaField) components.CreateFormFiel
 		ft = components.CFFieldSingleSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "option":
 		ft = components.CFFieldMultiSelect
-	case mf.Schema.Type == schemaArray && mf.Schema.Items == "user":
+	case mf.Schema.Type == schemaArray && mf.Schema.Items == schemaUser:
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray && mf.Schema.Items == "string":
 		ft = components.CFFieldMultiSelect
 	case mf.Schema.Type == schemaArray:
 		ft = components.CFFieldMultiSelect
-	case mf.Schema.Type == "user":
+	case mf.Schema.Type == schemaUser:
 		ft = components.CFFieldPerson
 	case len(mf.AllowedValues) > 0:
 		ft = components.CFFieldSingleSelect

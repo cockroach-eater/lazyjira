@@ -33,7 +33,6 @@ type IssuesList struct {
 	tab         int
 	tabCache    map[int][]jira.Issue
 	userEmail   string
-	activeKey   string
 	keyColWidth int
 	fields      []string
 	theme       *theme.Theme
@@ -54,11 +53,6 @@ func (m *IssuesList) ActiveTab() config.IssueTabConfig {
 	}
 	return config.IssueTabConfig{}
 }
-func (m *IssuesList) SetActiveKey(key string) {
-	m.activeKey = key
-	m.applyFilterKeepCursor()
-}
-func (m *IssuesList) ClearActiveKey() { m.activeKey = "" }
 
 // AddJQLTab creates or replaces the JQL tab with the given query
 func (m *IssuesList) AddJQLTab(jql string) {
@@ -314,17 +308,6 @@ func (m *IssuesList) applyFilter() {
 		}
 		m.issues = filtered
 	}
-	if m.activeKey != "" {
-		for i, issue := range m.issues {
-			if issue.Key == m.activeKey {
-				if i > 0 {
-					m.issues[0], m.issues[i] = m.issues[i], m.issues[0]
-				}
-				break
-			}
-		}
-	}
-
 	m.Cursor = 0
 	m.Offset = 0
 	m.SetItemCount(len(m.issues))
@@ -464,12 +447,6 @@ func (m *IssuesList) renderIssueRow(issue jira.Issue, width int, selected bool) 
 	}
 	summaryWidth := max(width-fixedWidth, 5)
 
-	active := issue.Key == m.activeKey
-	markerChar := " "
-	if active {
-		markerChar = "*"
-	}
-
 	var parts []string
 	for _, f := range fields {
 		switch f {
@@ -505,15 +482,10 @@ func (m *IssuesList) renderIssueRow(issue jira.Issue, width int, selected bool) 
 			parts = append(parts, padRight(issueTimeAgo(issue.Updated), 8))
 		}
 	}
-	line := markerChar + strings.Join(parts, " ")
+	line := " " + strings.Join(parts, " ")
 
 	if selected && m.Focused {
 		return m.theme.SelectedItem.Width(width).Render(line)
-	}
-	if active {
-		coloredMarker := lipgloss.NewStyle().Foreground(theme.ColorGreen).Render(markerChar)
-		rest := strings.Join(parts, " ")
-		return m.theme.NormalItem.Width(width).Render(coloredMarker + rest)
 	}
 	return m.theme.NormalItem.Width(width).Render(line)
 }

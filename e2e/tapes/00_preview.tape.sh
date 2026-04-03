@@ -17,8 +17,8 @@ Output e2e/golden/00_preview.gif
 # Detail tabs: Body→Cmt→Hist
 @tab_next 2
 
-# History — navigate to description diff (block 1)
-@down
+# History — navigate to description diff (block 3)
+@down 3
 
 # Expand the big diff, scroll, close
 @expand

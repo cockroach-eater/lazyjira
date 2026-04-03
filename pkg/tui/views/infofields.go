@@ -15,7 +15,78 @@ import (
 
 const fieldStatus = "status"
 
-// InfoFieldType determines which editor to use for a field
+type builtinFieldDef struct {
+	name     string
+	fieldID  string
+	typ      InfoFieldType
+	getValue func(issue *jira.Issue) (string, bool)
+}
+
+var builtinFieldRegistry = []builtinFieldDef{
+	{"Status", "status", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
+		if i.Status != nil {
+			return i.Status.Name, true
+		}
+		return unknownLabel, true
+	}},
+	{"Priority", "priority", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
+		if i.Priority != nil {
+			return i.Priority.Name, true
+		}
+		return noneLabelUpper, true
+	}},
+	{"Assignee", "assignee", FieldPerson, func(i *jira.Issue) (string, bool) {
+		if i.Assignee != nil {
+			return i.Assignee.DisplayName, true
+		}
+		return noneLabelUpper, true
+	}},
+	{"Reporter", "reporter", FieldPerson, func(i *jira.Issue) (string, bool) {
+		if i.Reporter != nil {
+			return i.Reporter.DisplayName, true
+		}
+		return unknownLabel, true
+	}},
+	{"Type", "issuetype", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
+		if i.IssueType != nil {
+			return i.IssueType.Name, true
+		}
+		return unknownLabel, true
+	}},
+	{"Sprint", "sprint", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
+		if i.Sprint != nil {
+			return i.Sprint.Name, true
+		}
+		return noneLabelUpper, true
+	}},
+	{"Labels", "labels", FieldMultiSelect, func(i *jira.Issue) (string, bool) {
+		if len(i.Labels) > 0 {
+			return strings.Join(i.Labels, ", "), true
+		}
+		return "", false
+	}},
+	{"Components", "components", FieldMultiSelect, func(i *jira.Issue) (string, bool) {
+		if len(i.Components) > 0 {
+			names := make([]string, 0, len(i.Components))
+			for _, c := range i.Components {
+				names = append(names, c.Name)
+			}
+			return strings.Join(names, ", "), true
+		}
+		return "", false
+	}},
+}
+
+var builtinFieldMap = func() map[string]builtinFieldDef {
+	m := make(map[string]builtinFieldDef, len(builtinFieldRegistry))
+	for _, def := range builtinFieldRegistry {
+		m[def.fieldID] = def
+	}
+	return m
+}()
+
+var defaultFieldIDs = []string{"status", "priority", "assignee", "reporter", "issuetype", "sprint"}
+
 type InfoFieldType int
 
 const (
@@ -26,7 +97,6 @@ const (
 	FieldMultiText
 )
 
-// InfoField represents an editable field in the Info panel
 type InfoField struct {
 	Name    string
 	FieldID string
@@ -34,134 +104,176 @@ type InfoField struct {
 	Value   string
 }
 
-func buildInfoFields(issue *jira.Issue, customFields []config.CustomFieldConfig) []InfoField {
+func buildInfoFields(issue *jira.Issue, cfgFields []config.FieldConfig) []InfoField {
 	if issue == nil {
 		return nil
 	}
+
+	if cfgFields == nil {
+		return buildDefaultInfoFields(issue)
+	}
+
 	var fields []InfoField
-
-	statusName := unknownLabel
-	if issue.Status != nil {
-		statusName = issue.Status.Name
-	}
-	fields = append(fields, InfoField{Name: "Status", FieldID: fieldStatus, Type: FieldSingleSelect, Value: statusName})
-
-	priorityName := noneLabelUpper
-	if issue.Priority != nil {
-		priorityName = issue.Priority.Name
-	}
-	fields = append(fields, InfoField{Name: "Priority", FieldID: "priority", Type: FieldSingleSelect, Value: priorityName})
-
-	assignee := "None"
-	if issue.Assignee != nil {
-		assignee = issue.Assignee.DisplayName
-	}
-	fields = append(fields, InfoField{Name: "Assignee", FieldID: "assignee", Type: FieldPerson, Value: assignee})
-
-	reporter := "Unknown"
-	if issue.Reporter != nil {
-		reporter = issue.Reporter.DisplayName
-	}
-	fields = append(fields, InfoField{Name: "Reporter", FieldID: "reporter", Type: FieldPerson, Value: reporter})
-
-	typeName := unknownLabel
-	if issue.IssueType != nil {
-		typeName = issue.IssueType.Name
-	}
-	fields = append(fields, InfoField{Name: "Type", FieldID: "issuetype", Type: FieldSingleSelect, Value: typeName})
-
-	sprintName := noneLabelUpper
-	if issue.Sprint != nil {
-		sprintName = issue.Sprint.Name
-	}
-	fields = append(fields, InfoField{Name: "Sprint", FieldID: "sprint", Type: FieldSingleSelect, Value: sprintName})
-
-	if len(issue.Labels) > 0 {
-		fields = append(fields, InfoField{Name: "Labels", FieldID: "labels", Type: FieldMultiSelect, Value: strings.Join(issue.Labels, ", ")})
-	}
-
-	if len(issue.Components) > 0 {
-		names := make([]string, 0, len(issue.Components))
-		for _, c := range issue.Components {
-			names = append(names, c.Name)
+	for _, cf := range cfgFields {
+		if def, ok := builtinFieldMap[cf.ID]; ok {
+			name := def.name
+			if cf.Name != "" {
+				name = cf.Name
+			}
+			val, show := def.getValue(issue)
+			if !show {
+				continue
+			}
+			fields = append(fields, InfoField{Name: name, FieldID: def.fieldID, Type: def.typ, Value: val})
+		} else {
+			raw := issue.CustomFields[cf.ID]
+			val := formatCustomFieldValue(raw)
+			ft := resolveCustomFieldType(cf.Type, raw)
+			name := cf.Name
+			if name == "" {
+				name = cf.ID
+			}
+			fields = append(fields, InfoField{Name: name, FieldID: cf.ID, Type: ft, Value: val})
 		}
-		fields = append(fields, InfoField{Name: "Components", FieldID: "components", Type: FieldMultiSelect, Value: strings.Join(names, ", ")})
 	}
-
-	for _, cf := range customFields {
-		val := formatCustomFieldValue(issue.CustomFields[cf.ID])
-		fields = append(fields, InfoField{Name: cf.Name, FieldID: cf.ID, Type: FieldSingleText, Value: val})
-	}
-
 	return fields
 }
 
-func infoFieldCount(issue *jira.Issue, customFields []config.CustomFieldConfig) int {
-	if issue == nil {
-		return 0
+func buildDefaultInfoFields(issue *jira.Issue) []InfoField {
+	var fields []InfoField
+	for _, id := range defaultFieldIDs {
+		def := builtinFieldMap[id]
+		val, _ := def.getValue(issue)
+		fields = append(fields, InfoField{Name: def.name, FieldID: def.fieldID, Type: def.typ, Value: val})
 	}
-	count := 6
-	if len(issue.Labels) > 0 {
-		count++
+	for _, def := range builtinFieldRegistry {
+		if def.fieldID != "labels" && def.fieldID != "components" {
+			continue
+		}
+		if val, show := def.getValue(issue); show {
+			fields = append(fields, InfoField{Name: def.name, FieldID: def.fieldID, Type: def.typ, Value: val})
+		}
 	}
-	if len(issue.Components) > 0 {
-		count++
-	}
-	count += len(customFields)
-	return count
+	return fields
 }
 
-func renderInfoRows(issue *jira.Issue, customFields []config.CustomFieldConfig, th *theme.Theme, maxWidth int) []string {
-	return renderInfoRowsImpl(issue, customFields, th, maxWidth)
+func infoFieldCount(issue *jira.Issue, cfgFields []config.FieldConfig) int {
+	return len(buildInfoFields(issue, cfgFields))
 }
 
-func renderInfoRowsPlain(issue *jira.Issue, customFields []config.CustomFieldConfig, maxWidth int) []string {
-	return renderInfoRowsImpl(issue, customFields, nil, maxWidth)
+func renderInfoRowPairs(issue *jira.Issue, cfgFields []config.FieldConfig, th *theme.Theme, maxWidth int) (styled, plain []string) {
+	fields := buildInfoFields(issue, cfgFields)
+	styled = renderFieldRows(fields, issue, th, maxWidth)
+	plain = renderFieldRows(fields, issue, nil, maxWidth)
+	return
 }
 
-func renderInfoRowsImpl(issue *jira.Issue, customFields []config.CustomFieldConfig, th *theme.Theme, maxWidth int) []string {
-	if issue == nil {
+var noneStyle = lipgloss.NewStyle().Foreground(theme.ColorGray)
+
+func renderFieldRows(fields []InfoField, issue *jira.Issue, th *theme.Theme, maxWidth int) []string {
+	if len(fields) == 0 {
 		return nil
 	}
 	styled := th != nil
-	style := func(s string) string {
-		if styled {
-			return th.ValueStyle.Render(s)
+
+	labelW := 0
+	for _, f := range fields {
+		if w := lipgloss.Width(f.Name) + 1; w > labelW {
+			labelW = w
 		}
-		return s
+	}
+	labelW += 2
+
+	if maxLabelW := maxWidth / 2; labelW > maxLabelW && maxLabelW > 0 {
+		labelW = maxLabelW
 	}
 
-	const labelWidth = 13
-	fields := buildInfoFields(issue, customFields)
 	rows := make([]string, 0, len(fields))
 	for _, f := range fields {
 		val := f.Value
-		if maxVal := maxWidth - labelWidth; maxWidth > 0 && lipgloss.Width(val) > maxVal && maxVal > 1 {
+		maxVal := maxWidth - labelW - 1
+		if maxVal > 0 && lipgloss.Width(val) > maxVal {
 			val = components.TruncateEnd(val, maxVal)
 		}
-		switch f.FieldID {
-		case fieldStatus:
-			if styled && issue.Status != nil {
-				val = theme.StatusColor(issue.Status.CategoryKey).Render(val)
+
+		isNone := val == noneLabelUpper || val == unknownLabel
+
+		if styled && isNone {
+			val = noneStyle.Render(val)
+		} else if styled {
+			switch f.FieldID {
+			case fieldStatus:
+				if issue.Status != nil {
+					val = theme.StatusColor(issue.Status.CategoryKey).Render(val)
+				}
+			case "priority":
+				if issue.Priority != nil {
+					val = theme.PriorityStyled(val)
+				}
+			case "assignee":
+				if issue.Assignee != nil {
+					val = theme.AuthorRender(val)
+				}
+			case "reporter":
+				if issue.Reporter != nil {
+					val = theme.AuthorRender(val)
+				}
+			default:
+				val = th.ValueStyle.Render(val)
 			}
-		case "priority":
-			if styled && issue.Priority != nil {
-				val = theme.PriorityStyled(val)
-			}
-		case "assignee":
-			if styled && issue.Assignee != nil {
-				val = theme.AuthorRender(val)
-			}
-		case "reporter":
-			if styled && issue.Reporter != nil {
-				val = theme.AuthorRender(val)
-			}
-		default:
-			val = style(val)
 		}
-		rows = append(rows, fmt.Sprintf(" %-11s %s", f.Name+":", val))
+
+		label := " " + f.Name + ":"
+		if pad := labelW - lipgloss.Width(label); pad > 0 {
+			label += strings.Repeat(" ", pad)
+		}
+		rows = append(rows, label+val)
 	}
 	return rows
+}
+
+func resolveCustomFieldType(configType string, raw any) InfoFieldType {
+	switch configType {
+	case "select":
+		return FieldSingleSelect
+	case "multiselect":
+		return FieldMultiSelect
+	case "user":
+		return FieldPerson
+	case "textarea":
+		return FieldMultiText
+	case "text":
+		return FieldSingleText
+	}
+	return detectFieldTypeFromValue(raw)
+}
+
+func detectFieldTypeFromValue(v any) InfoFieldType {
+	if v == nil {
+		return FieldSingleText
+	}
+	switch val := v.(type) {
+	case map[string]any:
+		if _, ok := val["displayName"]; ok {
+			return FieldPerson
+		}
+		if _, ok := val["value"]; ok {
+			return FieldSingleSelect
+		}
+		if _, ok := val["name"]; ok {
+			return FieldSingleSelect
+		}
+	case []any:
+		return FieldMultiSelect
+	}
+	return FieldSingleText
+}
+
+func EditValueForInput(val string) string {
+	if val == noneLabelUpper || val == unknownLabel {
+		return ""
+	}
+	return val
 }
 
 func formatCustomFieldValue(v any) string {
