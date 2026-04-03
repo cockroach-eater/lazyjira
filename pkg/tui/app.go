@@ -666,6 +666,15 @@ func isCustomField(fieldID string) bool {
 	return strings.HasPrefix(fieldID, "customfield_")
 }
 
+func (a *App) customFieldEditorEnabled(fieldID string) bool {
+	for _, cf := range a.cfg.CustomFields {
+		if cf.ID == fieldID {
+			return cf.Editor
+		}
+	}
+	return false
+}
+
 func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoField) (tea.Model, tea.Cmd) {
 	if sel.IssueType == nil {
 		a.statusPanel.SetError("issue type unknown")
@@ -677,6 +686,7 @@ func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoF
 		fieldName:    field.Name,
 		fieldType:    field.Type,
 		currentValue: field.Value,
+		useEditor:    a.customFieldEditorEnabled(field.FieldID),
 	}
 	cacheKey := a.projectKey + ":" + sel.IssueType.ID
 	if cached, ok := a.createMetaCache[cacheKey]; ok {
@@ -711,6 +721,10 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 	}
 
 	if len(items) == 0 {
+		if msg.useEditor {
+			a.editContext = editCtx{kind: editFieldText, issueKey: msg.issueKey, fieldID: msg.fieldID}
+			return a, launchEditor(views.EditValueForInput(msg.currentValue), ".md")
+		}
 		a.inputModal.Show("Edit "+msg.fieldName, views.EditValueForInput(msg.currentValue))
 		a.editContext = editCtx{kind: editField, issueKey: msg.issueKey, fieldID: msg.fieldID}
 		return a, nil

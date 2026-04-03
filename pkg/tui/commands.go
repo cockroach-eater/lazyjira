@@ -223,6 +223,7 @@ type customFieldOptionsMsg struct {
 	fieldName    string
 	fieldType    views.InfoFieldType
 	currentValue string
+	useEditor    bool
 	schemaType   string
 	schemaItems  string
 	options      []jira.CreateMetaValue

@@ -40,9 +40,10 @@ type IssueTabConfig struct {
 }
 
 type CustomFieldConfig struct {
-	ID   string `yaml:"id"`
-	Name string `yaml:"name"`
-	Type string `yaml:"type"`
+	ID     string `yaml:"id"`
+	Name   string `yaml:"name"`
+	Type   string `yaml:"type"`
+	Editor bool   `yaml:"editor"`
 }
 
 type KeybindingConfig struct {
