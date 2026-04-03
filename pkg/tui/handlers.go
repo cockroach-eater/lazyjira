@@ -78,8 +78,6 @@ func (a *App) handleAutoFetch() (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// selectProject sets the active project, clearing issue state.
-// Returns a command to prefetch assignable users in background
 func (a *App) selectProject(p *jira.Project) tea.Cmd {
 	a.projectKey = p.Key
 	a.projectID = p.ID

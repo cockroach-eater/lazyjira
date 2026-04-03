@@ -670,18 +670,38 @@ func isCustomField(fieldID string) bool {
 	return strings.HasPrefix(fieldID, "customfield_")
 }
 
-func (a *App) fieldEditorEnabled(fieldID string) bool {
+func (a *App) fieldMultilineEnabled(fieldID string) bool {
 	for _, f := range a.cfg.Fields {
 		if f.ID == fieldID {
-			return f.Editor
+			return f.Multiline
 		}
 	}
 	return false
 }
 
+func (a *App) configuredFieldType(fieldID string) string {
+	for _, f := range a.cfg.Fields {
+		if f.ID == fieldID {
+			return f.Type
+		}
+	}
+	return ""
+}
+
 func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoField) (tea.Model, tea.Cmd) {
 	if sel.IssueType == nil {
 		a.statusPanel.SetError("issue type unknown")
+		return a, nil
+	}
+	multiline := a.fieldMultilineEnabled(field.FieldID)
+	cfgType := a.configuredFieldType(field.FieldID)
+	if cfgType == "text" || cfgType == "textarea" {
+		if multiline || cfgType == "textarea" {
+			a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
+			return a, launchEditor(views.EditValueForInput(field.Value), ".md")
+		}
+		a.inputModal.Show("Edit "+field.Name, views.EditValueForInput(field.Value))
+		a.editContext = editCtx{kind: editField, issueKey: sel.Key, fieldID: field.FieldID}
 		return a, nil
 	}
 	info := customFieldOptionsMsg{
@@ -690,18 +710,21 @@ func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoF
 		fieldName:    field.Name,
 		fieldType:    field.Type,
 		currentValue: field.Value,
-		useEditor:    a.fieldEditorEnabled(field.FieldID),
+		useEditor:    multiline,
 	}
 	cacheKey := a.projectKey + ":" + sel.IssueType.ID
 	if cached, ok := a.createMetaCache[cacheKey]; ok {
+		found := false
 		for _, f := range cached {
 			if f.FieldID == field.FieldID {
 				info.options = f.AllowedValues
 				info.schemaType = f.Schema.Type
 				info.schemaItems = f.Schema.Items
+				found = true
 				break
 			}
 		}
+		info.fieldNotFound = !found
 		return a.handleCustomFieldOptions(info)
 	}
 	return a, fetchCustomFieldOptions(a.client, a.projectKey, sel.IssueType.ID, info)
@@ -710,6 +733,10 @@ func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoF
 func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, tea.Cmd) {
 	if len(msg.allFields) > 0 && msg.issueTypeID != "" {
 		a.createMetaCache[a.projectKey+":"+msg.issueTypeID] = msg.allFields
+	}
+	if msg.fieldNotFound {
+		a.statusPanel.SetError("field not available for editing")
+		return a, nil
 	}
 	if a.isPersonSchema(msg.schemaType, msg.schemaItems) {
 		a.onSelect = a.makePersonSelectCallback(msg.issueKey, msg.fieldID)

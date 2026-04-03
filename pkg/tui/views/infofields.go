@@ -39,7 +39,7 @@ var builtinFieldRegistry = []builtinFieldDef{
 		if i.Assignee != nil {
 			return i.Assignee.DisplayName, true
 		}
-		return "None", true
+		return noneLabelUpper, true
 	}},
 	{"Reporter", "reporter", FieldPerson, func(i *jira.Issue) (string, bool) {
 		if i.Reporter != nil {

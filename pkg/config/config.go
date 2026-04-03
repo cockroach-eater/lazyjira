@@ -44,7 +44,7 @@ type FieldConfig struct {
 	ID     string `yaml:"id"`
 	Name   string `yaml:"name"`
 	Type   string `yaml:"type"`
-	Editor bool   `yaml:"editor"`
+	Multiline bool `yaml:"multiline"`
 }
 
 type CustomFieldConfig = FieldConfig
