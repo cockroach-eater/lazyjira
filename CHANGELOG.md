@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Edit custom fields in info panel. Supports select, multiselect, person, text and textarea
+- Field type auto-detected from Jira value. Can also set `type` in `customFields` config
+- CreateMeta cached per project and issue type so repeated edits skip the API call
+- Enter on linked issue opens it in detail view without leaving the info panel
+- Space on linked issue navigates to it in the issues list
+- Space on issues panel opens issue detail
+- Info panel label width adjusts to fit custom field names
+- None and Unknown values shown in gray
+
+### Fixed
+
+- Person field edit could update the wrong issue if you changed selection before picking a name
+- Auto-refresh no longer jumps detail and info panels when you are focused elsewhere
+
+### Removed
+
+- Issue select feature with star marker and pin-to-top
+
 ## [2.7.1] - 2026-04-02
 
 ### Changed
