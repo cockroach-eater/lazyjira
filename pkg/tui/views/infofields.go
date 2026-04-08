@@ -146,6 +146,21 @@ func SetBuiltinFieldValue(issue *jira.Issue, fieldID string, value any) bool {
 	return false
 }
 
+func PatchIssueFields(target, source *jira.Issue) {
+	target.Summary = source.Summary
+	target.Description = source.Description
+	target.Status = source.Status
+	target.Priority = source.Priority
+	target.Assignee = source.Assignee
+	target.Reporter = source.Reporter
+	target.IssueType = source.IssueType
+	target.Sprint = source.Sprint
+	target.Labels = source.Labels
+	target.Components = source.Components
+	target.Updated = source.Updated
+	target.CustomFields = source.CustomFields
+}
+
 var builtinFieldMap = func() map[string]builtinFieldDef {
 	m := make(map[string]builtinFieldDef, len(builtinFieldRegistry))
 	for _, def := range builtinFieldRegistry {
