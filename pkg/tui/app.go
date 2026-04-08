@@ -734,7 +734,7 @@ func (a *App) fetchCustomFieldOptionsForEdit(sel *jira.Issue, field *views.InfoF
 	}
 	multiline := a.fieldMultilineEnabled(field.FieldID)
 	cfgType := a.configuredFieldType(field.FieldID)
-	if cfgType == "text" || cfgType == "textarea" || (cfgType == "" && field.Type == views.FieldSingleText) {
+	if cfgType == "text" || cfgType == "textarea" {
 		if multiline || cfgType == "textarea" {
 			a.editContext = editCtx{kind: editFieldText, issueKey: sel.Key, fieldID: field.FieldID}
 			return a, launchEditor(views.EditValueForInput(field.Value), ".md")
@@ -774,7 +774,12 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 		a.createMetaCache[msg.projectKey+":"+msg.issueTypeID] = msg.allFields
 	}
 	if msg.fieldNotFound {
-		a.statusPanel.SetError("field not available for editing")
+		if msg.useEditor {
+			a.editContext = editCtx{kind: editFieldText, issueKey: msg.issueKey, fieldID: msg.fieldID}
+			return a, launchEditor(views.EditValueForInput(msg.currentValue), ".md")
+		}
+		a.inputModal.Show("Edit "+msg.fieldName, views.EditValueForInput(msg.currentValue))
+		a.editContext = editCtx{kind: editField, issueKey: msg.issueKey, fieldID: msg.fieldID}
 		return a, nil
 	}
 	if a.isPersonSchema(msg.schemaType, msg.schemaItems) {
