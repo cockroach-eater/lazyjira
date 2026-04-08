@@ -15,6 +15,7 @@ type BranchTemplateData struct {
 	Number     string
 	Summary    string
 	Type       string
+	ParentKey  string
 }
 
 const defaultTemplate = "{{.Key}}-{{.Summary}}"
@@ -53,6 +54,7 @@ func GenerateBranchName(data BranchTemplateData, tmplStr string, asciiOnly bool)
 
 // Sanitize cleans a branch name to be a valid git ref
 func Sanitize(name string, asciiOnly bool) string {
+	name = strings.TrimLeft(name, "/")
 	name = strings.ReplaceAll(name, " ", "-")
 	name = invalidChars.ReplaceAllString(name, "")
 	name = strings.ReplaceAll(name, "..", ".")
