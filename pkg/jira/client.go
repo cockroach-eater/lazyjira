@@ -248,7 +248,7 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (*Issue, error) 
 }
 
 func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResults int) (*SearchResult, error) {
-	fields := "summary,description,status,priority,assignee,reporter,labels,components,sprint,issuetype,created,updated,subtasks,issuelinks"
+	fields := "summary,description,status,priority,assignee,reporter,labels,components,sprint,issuetype,created,updated,subtasks,issuelinks,parent"
 	if len(c.customFieldIDs) > 0 {
 		fields += "," + strings.Join(c.customFieldIDs, ",")
 	}
@@ -725,6 +725,7 @@ type issueFieldsResponse struct {
 	Components  []Component         `json:"components"`
 	Sprint      *Sprint             `json:"sprint"`
 	IssueType   *IssueType          `json:"issuetype"`
+	Parent      *issueResponse      `json:"parent"`
 	Created     JiraTime            `json:"created"`
 	Updated     JiraTime            `json:"updated"`
 	Subtasks    []issueResponse     `json:"subtasks"`
@@ -801,6 +802,11 @@ func (r *issueResponse) toIssue() Issue {
 	if r.Fields.Reporter != nil {
 		u := r.Fields.Reporter.toUser()
 		issue.Reporter = &u
+	}
+
+	if r.Fields.Parent != nil {
+		p := r.Fields.Parent.toIssue()
+		issue.Parent = &p
 	}
 
 	issue.Subtasks = make([]Issue, len(r.Fields.Subtasks))

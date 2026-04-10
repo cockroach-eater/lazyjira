@@ -537,12 +537,17 @@ func (a *App) handleActionCreateBranch() (tea.Model, tea.Cmd) {
 	if sel.IssueType != nil {
 		typeName = sel.IssueType.Name
 	}
+	parentKey := ""
+	if sel.Parent != nil {
+		parentKey = sel.Parent.Key
+	}
 	data := git.BranchTemplateData{
 		Key:        sel.Key,
 		ProjectKey: projKey,
 		Number:     number,
 		Summary:    git.SanitizeSummary(sel.Summary, a.cfg.Git.AsciiOnly),
 		Type:       typeName,
+		ParentKey:  parentKey,
 	}
 	tmplStr := ""
 	for _, r := range a.cfg.Git.BranchFormat {

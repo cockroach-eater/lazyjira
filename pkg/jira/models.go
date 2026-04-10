@@ -55,6 +55,7 @@ type Issue struct {
 	Components  []Component `json:"-"`
 	Sprint      *Sprint     `json:"-"`
 	IssueType   *IssueType  `json:"-"`
+	Parent      *Issue      `json:"-"`
 	Created     time.Time   `json:"-"`
 	Updated     time.Time   `json:"-"`
 	Subtasks    []Issue     `json:"-"`

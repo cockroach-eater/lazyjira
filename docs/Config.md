@@ -242,6 +242,9 @@ git:
         type: "Bug"
       template: "bugfix/{{.Key}}-{{.Summary | slugify}}"
     - when:
+        type: "Sub-task"
+      template: "{{.ParentKey}}/{{.Key}}_{{.Summary | slugify}}"
+    - when:
         type: "*"
       template: "{{.Key}}-{{.Summary | slugify}}"
 ```
@@ -255,8 +258,12 @@ Template variables.
 | Variable | Description |
 |----------|-------------|
 | `{{.Key}}` | Issue key like PROJ-123 |
+| `{{.ProjectKey}}` | Project prefix extracted from key (e.g. PROJ) |
+| `{{.Number}}` | Issue number extracted from key (e.g. 123) |
 | `{{.Summary}}` | Issue summary |
 | `{{.Summary \| slugify}}` | Summary as a slug, lowercase with dashes |
+| `{{.Type}}` | Issue type name (e.g. Bug, Story, Task) |
+| `{{.ParentKey}}` | Parent issue key (empty if no parent) |
 
 ## Files
 
