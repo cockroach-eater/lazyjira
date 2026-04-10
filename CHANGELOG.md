@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Optimistic UI updates. Fields update on screen instantly without waiting for the API
+- All paginated API methods fetch every page. Boards, sprints, changelog and labels were capped at one page
+- Custom fields without predefined options fall back to inline input or external editor instead of showing an error
+- `SetBuiltinFieldValue` and `PatchIssueFields` helpers for consistent field patching across issue list and info panel
+
+### Fixed
+
+- Overlay stack now renders all visible layers so stacked modals display correctly
+- `PatchIssue` syncs all fields including sprint, labels, components and custom fields
+
 ## [2.7.3] - 2026-04-10
 
 ### Added

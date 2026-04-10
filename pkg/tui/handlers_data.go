@@ -144,6 +144,7 @@ func (a *App) handlePrioritiesLoaded(msg prioritiesLoadedMsg) (tea.Model, tea.Cm
 	if a.onSelect == nil {
 		a.onSelect = func(item components.ModalItem) tea.Cmd {
 			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				a.optimisticFieldUpdate(sel.Key, fldPriority, &jira.Priority{ID: item.ID, Name: item.Label})
 				return updateIssueField(a.client, sel.Key, fldPriority, map[string]string{"id": item.ID})
 			}
 			return nil
@@ -260,8 +261,10 @@ func (a *App) handleSprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 		a.onSelect = func(item components.ModalItem) tea.Cmd {
 			sprintID, _ := strconv.Atoi(item.ID)
 			if sprintID == 0 {
+				a.optimisticFieldUpdate(issueKey, fldSprint, nil)
 				return updateIssueField(a.client, issueKey, "sprint", nil)
 			}
+			a.optimisticFieldUpdate(issueKey, fldSprint, &jira.Sprint{ID: sprintID, Name: item.Label})
 			return moveToSprint(a.client, sprintID, issueKey)
 		}
 	}

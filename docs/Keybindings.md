@@ -25,14 +25,13 @@ All keybindings can be remapped in `config.yml` under the `keybinding` section.
 | `e` | Edit (summary, description, or focused field) |
 | `p` | Change priority |
 | `a` | Change assignee |
+| `n` | Create new issue (issues list) or new comment (comments tab) |
+| `ctrl+n` | Duplicate issue |
 | `c` | View comments |
-| `n` | New comment |
 | `o` | Open in browser |
 | `u` | Pick URL from description |
 | `y` | Copy issue URL |
 | `b` | Create branch from issue |
-| `n` | Create new issue |
-| `ctrl+n` | Duplicate issue |
 | `s` | JQL search |
 | `x` | Close JQL tab |
 

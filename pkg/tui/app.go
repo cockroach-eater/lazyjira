@@ -35,13 +35,14 @@ const (
 )
 
 const (
-	fldPriority   = "priority"
-	fldSprint     = "sprint"
-	fldLabels     = "labels"
-	fldComponents = "components"
-	fldAssignee   = "assignee"
-	fldAccountID  = "accountId"
-	fldName       = "name"
+	fldPriority    = "priority"
+	fldSprint      = "sprint"
+	fldLabels      = "labels"
+	fldComponents  = "components"
+	fldAssignee    = "assignee"
+	fldAccountID   = "accountId"
+	fldName        = "name"
+	fldDescription = "description"
 )
 
 type editKind int
@@ -592,6 +593,7 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 				for _, item := range selected {
 					labels = append(labels, item.ID)
 				}
+				a.optimisticFieldUpdate(issueKey, fldLabels, labels)
 				return updateIssueField(a.client, issueKey, fldLabels, labels)
 			}
 			return a, fetchLabels(a.client)
@@ -601,6 +603,7 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 				for _, item := range selected {
 					comps = append(comps, map[string]string{"id": item.ID})
 				}
+				a.optimisticFieldUpdate(issueKey, fldComponents, comps)
 				return updateIssueField(a.client, issueKey, fldComponents, comps)
 			}
 			return a, fetchComponents(a.client, a.projectKey)
@@ -623,6 +626,38 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+func (a *App) optimisticFieldUpdate(issueKey, fieldID string, value any) {
+	cached, ok := a.issueCache[issueKey]
+	if !ok {
+		return
+	}
+	switch fieldID {
+	case "summary":
+		if s, ok := value.(string); ok {
+			cached.Summary = s
+		}
+	case fldDescription:
+		if s, ok := value.(string); ok {
+			cached.Description = s
+		}
+	default:
+		if views.SetBuiltinFieldValue(cached, fieldID, value) {
+			break
+		}
+		if strings.HasPrefix(fieldID, "customfield_") {
+			if cached.CustomFields == nil {
+				cached.CustomFields = make(map[string]any)
+			}
+			cached.CustomFields[fieldID] = value
+		}
+	}
+	a.issueCache[issueKey] = cached
+	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == issueKey {
+		a.infoPanel.SetIssue(cached)
+	}
+	a.issuesList.PatchIssue(cached)
+}
+
 func (a *App) applyEdit(mdContent string) tea.Cmd {
 	ctx := a.editContext
 	a.editContext = editCtx{}
@@ -634,12 +669,14 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 
 	switch ctx.kind { //nolint:exhaustive
 	case editDesc:
-		return updateIssueField(a.client, ctx.issueKey, "description", body)
+		a.optimisticFieldUpdate(ctx.issueKey, fldDescription, mdContent)
+		return updateIssueField(a.client, ctx.issueKey, fldDescription, body)
 	case editCommentNew:
 		return addComment(a.client, ctx.issueKey, body)
 	case editCommentMod:
 		return updateComment(a.client, ctx.issueKey, ctx.commentID, body)
 	case editFieldText:
+		a.optimisticFieldUpdate(ctx.issueKey, ctx.fieldID, mdContent)
 		return updateIssueField(a.client, ctx.issueKey, ctx.fieldID, mdContent)
 	}
 	return nil
@@ -649,18 +686,21 @@ func (a *App) applyEdit(mdContent string) tea.Cmd {
 func (a *App) makePersonSelectCallback(issueKey, fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
 		if item.ID == "" {
+			a.optimisticFieldUpdate(issueKey, fieldID, nil)
 			return updateIssueField(a.client, issueKey, fieldID, nil)
 		}
 		key := fldName
 		if a.isCloud {
 			key = fldAccountID
 		}
+		a.optimisticFieldUpdate(issueKey, fieldID, &jira.User{DisplayName: item.Label})
 		return updateIssueField(a.client, issueKey, fieldID, map[string]string{key: item.ID})
 	}
 }
 
 func (a *App) makeFieldSelectCallback(issueKey, fieldID string) onSelectFunc {
 	return func(item components.ModalItem) tea.Cmd {
+		a.optimisticFieldUpdate(issueKey, fieldID, map[string]any{"id": item.ID, "value": item.Label, "name": item.Label})
 		return updateIssueField(a.client, issueKey, fieldID, map[string]string{"id": item.ID})
 	}
 }
@@ -734,7 +774,12 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 		a.createMetaCache[msg.projectKey+":"+msg.issueTypeID] = msg.allFields
 	}
 	if msg.fieldNotFound {
-		a.statusPanel.SetError("field not available for editing")
+		if msg.useEditor {
+			a.editContext = editCtx{kind: editFieldText, issueKey: msg.issueKey, fieldID: msg.fieldID}
+			return a, launchEditor(views.EditValueForInput(msg.currentValue), ".md")
+		}
+		a.inputModal.Show("Edit "+msg.fieldName, views.EditValueForInput(msg.currentValue))
+		a.editContext = editCtx{kind: editField, issueKey: msg.issueKey, fieldID: msg.fieldID}
 		return a, nil
 	}
 	if a.isPersonSchema(msg.schemaType, msg.schemaItems) {
@@ -767,6 +812,7 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 			for _, item := range selected {
 				vals = append(vals, map[string]string{"id": item.ID})
 			}
+			a.optimisticFieldUpdate(msg.issueKey, msg.fieldID, vals)
 			return updateIssueField(a.client, msg.issueKey, msg.fieldID, vals)
 		}
 		preselected := make(map[string]bool)

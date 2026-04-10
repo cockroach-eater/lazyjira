@@ -20,61 +20,145 @@ type builtinFieldDef struct {
 	fieldID  string
 	typ      InfoFieldType
 	getValue func(issue *jira.Issue) (string, bool)
+	setValue func(issue *jira.Issue, value any)
 }
 
 var builtinFieldRegistry = []builtinFieldDef{
-	{"Status", "status", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
-		if i.Status != nil {
-			return i.Status.Name, true
-		}
-		return unknownLabel, true
-	}},
-	{"Priority", "priority", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
-		if i.Priority != nil {
-			return i.Priority.Name, true
-		}
-		return noneLabelUpper, true
-	}},
-	{"Assignee", "assignee", FieldPerson, func(i *jira.Issue) (string, bool) {
-		if i.Assignee != nil {
-			return i.Assignee.DisplayName, true
-		}
-		return noneLabelUpper, true
-	}},
-	{"Reporter", "reporter", FieldPerson, func(i *jira.Issue) (string, bool) {
-		if i.Reporter != nil {
-			return i.Reporter.DisplayName, true
-		}
-		return unknownLabel, true
-	}},
-	{"Type", "issuetype", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
-		if i.IssueType != nil {
-			return i.IssueType.Name, true
-		}
-		return unknownLabel, true
-	}},
-	{"Sprint", "sprint", FieldSingleSelect, func(i *jira.Issue) (string, bool) {
-		if i.Sprint != nil {
-			return i.Sprint.Name, true
-		}
-		return noneLabelUpper, true
-	}},
-	{"Labels", "labels", FieldMultiSelect, func(i *jira.Issue) (string, bool) {
-		if len(i.Labels) > 0 {
-			return strings.Join(i.Labels, ", "), true
-		}
-		return "", false
-	}},
-	{"Components", "components", FieldMultiSelect, func(i *jira.Issue) (string, bool) {
-		if len(i.Components) > 0 {
-			names := make([]string, 0, len(i.Components))
-			for _, c := range i.Components {
-				names = append(names, c.Name)
+	{"Status", "status", FieldSingleSelect,
+		func(i *jira.Issue) (string, bool) {
+			if i.Status != nil {
+				return i.Status.Name, true
 			}
-			return strings.Join(names, ", "), true
-		}
-		return "", false
-	}},
+			return unknownLabel, true
+		},
+		nil,
+	},
+	{"Priority", "priority", FieldSingleSelect,
+		func(i *jira.Issue) (string, bool) {
+			if i.Priority != nil {
+				return i.Priority.Name, true
+			}
+			return noneLabelUpper, true
+		},
+		func(i *jira.Issue, v any) {
+			if v == nil {
+				i.Priority = nil
+			} else if p, ok := v.(*jira.Priority); ok {
+				i.Priority = p
+			}
+		},
+	},
+	{"Assignee", "assignee", FieldPerson,
+		func(i *jira.Issue) (string, bool) {
+			if i.Assignee != nil {
+				return i.Assignee.DisplayName, true
+			}
+			return noneLabelUpper, true
+		},
+		func(i *jira.Issue, v any) {
+			if v == nil {
+				i.Assignee = nil
+			} else if u, ok := v.(*jira.User); ok {
+				i.Assignee = u
+			}
+		},
+	},
+	{"Reporter", "reporter", FieldPerson,
+		func(i *jira.Issue) (string, bool) {
+			if i.Reporter != nil {
+				return i.Reporter.DisplayName, true
+			}
+			return unknownLabel, true
+		},
+		func(i *jira.Issue, v any) {
+			if v == nil {
+				i.Reporter = nil
+			} else if u, ok := v.(*jira.User); ok {
+				i.Reporter = u
+			}
+		},
+	},
+	{"Type", "issuetype", FieldSingleSelect,
+		func(i *jira.Issue) (string, bool) {
+			if i.IssueType != nil {
+				return i.IssueType.Name, true
+			}
+			return unknownLabel, true
+		},
+		nil,
+	},
+	{"Sprint", "sprint", FieldSingleSelect,
+		func(i *jira.Issue) (string, bool) {
+			if i.Sprint != nil {
+				return i.Sprint.Name, true
+			}
+			return noneLabelUpper, true
+		},
+		func(i *jira.Issue, v any) {
+			if v == nil {
+				i.Sprint = nil
+			} else if s, ok := v.(*jira.Sprint); ok {
+				i.Sprint = s
+			}
+		},
+	},
+	{"Labels", "labels", FieldMultiSelect,
+		func(i *jira.Issue) (string, bool) {
+			if len(i.Labels) > 0 {
+				return strings.Join(i.Labels, ", "), true
+			}
+			return "", false
+		},
+		func(i *jira.Issue, v any) {
+			if labels, ok := v.([]string); ok {
+				i.Labels = labels
+			}
+		},
+	},
+	{"Components", "components", FieldMultiSelect,
+		func(i *jira.Issue) (string, bool) {
+			if len(i.Components) > 0 {
+				names := make([]string, 0, len(i.Components))
+				for _, c := range i.Components {
+					names = append(names, c.Name)
+				}
+				return strings.Join(names, ", "), true
+			}
+			return "", false
+		},
+		func(i *jira.Issue, v any) {
+			if comps, ok := v.([]map[string]string); ok {
+				result := make([]jira.Component, 0, len(comps))
+				for _, c := range comps {
+					result = append(result, jira.Component{ID: c["id"]})
+				}
+				i.Components = result
+			}
+		},
+	},
+}
+
+func SetBuiltinFieldValue(issue *jira.Issue, fieldID string, value any) bool {
+	if def, ok := builtinFieldMap[fieldID]; ok && def.setValue != nil {
+		def.setValue(issue, value)
+		return true
+	}
+	return false
+}
+
+func PatchIssueFields(target, source *jira.Issue) {
+	target.Summary = source.Summary
+	target.Description = source.Description
+	target.Status = source.Status
+	target.Priority = source.Priority
+	target.Assignee = source.Assignee
+	target.Reporter = source.Reporter
+	target.IssueType = source.IssueType
+	target.Sprint = source.Sprint
+	target.Labels = source.Labels
+	target.Components = source.Components
+	target.Updated = source.Updated
+	target.CustomFields = source.CustomFields
 }
 
 var builtinFieldMap = func() map[string]builtinFieldDef {

@@ -60,7 +60,7 @@ Press `e` on any field in the info panel to edit it.
 
 Fields with explicit `type: text` or `type: textarea` skip the CreateMeta API call and go straight to the input.
 
-If a field is not available for editing on the issue type, an error message is shown.
+If a field has no predefined options in Jira, it falls back to text input. Fields with `multiline: true` open your `$EDITOR` instead.
 
 ## Type auto-detection
 

@@ -113,10 +113,12 @@ func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model,
 		return a, nil
 	case editSummary:
 		if msg.Text != "" {
+			a.optimisticFieldUpdate(ctx.issueKey, "summary", msg.Text)
 			return a, updateIssueField(a.client, ctx.issueKey, "summary", msg.Text)
 		}
 	case editField:
 		if msg.Text != "" {
+			a.optimisticFieldUpdate(ctx.issueKey, ctx.fieldID, msg.Text)
 			return a, updateIssueField(a.client, ctx.issueKey, ctx.fieldID, msg.Text)
 		}
 	case editBranch:

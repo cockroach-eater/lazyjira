@@ -64,7 +64,7 @@ func TestOverlayStack_InterceptPassesThroughWhenNoneVisible(t *testing.T) {
 	}
 }
 
-func TestOverlayStack_RenderFirstVisible(t *testing.T) {
+func TestOverlayStack_RenderAllVisible(t *testing.T) {
 	a := &fakeOverlay{visible: false}
 	b := &fakeOverlay{visible: true}
 	c := &fakeOverlay{visible: true}
@@ -81,8 +81,8 @@ func TestOverlayStack_RenderFirstVisible(t *testing.T) {
 	if !b.rendered {
 		t.Error("first visible overlay should render")
 	}
-	if c.rendered {
-		t.Error("second visible overlay should not render")
+	if !c.rendered {
+		t.Error("second visible overlay should also render")
 	}
 }
 
