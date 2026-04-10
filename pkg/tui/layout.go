@@ -14,7 +14,6 @@ func (a *App) sideWidth() int {
 	if sideW <= 0 {
 		sideW = 40
 	}
-	// Shrink side panel for medium terminals to fit [0] tabs.
 	if a.width < 120 && sideW > a.width*35/100 {
 		sideW = a.width * 35 / 100
 	}
