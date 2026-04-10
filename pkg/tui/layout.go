@@ -124,7 +124,7 @@ func (a *App) layoutPanels() {
 
 	var issuesH, infoH, projectsH int
 	minH := 3
-	collapsedH := 5 // compact: 3 items visible
+	collapsedH := max(a.cfg.GUI.CollapsedPanelHeight, minH)
 
 	switch a.leftFocus {
 	case focusProjects:
