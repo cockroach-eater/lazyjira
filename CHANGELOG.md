@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Search and filter in keybindings help popup. Press `/` in the `?` menu to filter by key or description (#15)
+- Scroll detail panel without switching focus. `J`/`K` scrolls one line, `ctrl+f`/`ctrl+b` scrolls half page from any left panel (#20)
+- Navigation keys (`j`/`k`/`g`/`G`/`ctrl+d`/`ctrl+u`) are now configurable via `keybinding.navigation` in config.yml
+
 ## [2.7.4] - 2026-04-10
 
 ### Added

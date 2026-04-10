@@ -31,7 +31,7 @@ make build-demo
 - **JQL search** with autocomplete, syntax highlighting, and persistent history
 - **4-panel layout** - issues, projects, detail, status - with vim-style navigation
 - **Inline editing** - transitions, priority, assignee, labels, comments, description (`$EDITOR`)
-- **Configurable** - custom keybindings, JQL tabs, issue columns, custom fields
+- **Configurable** - custom keybindings (including navigation keys), JQL tabs, issue columns, custom fields
 - **Adaptive** - side-by-side or stacked layout, mouse support, ANSI 16 colors
 
 ## Installation
@@ -167,6 +167,9 @@ Press `?` inside the app for all keybindings.
 - [x] Jira Server and Data Center support
 - [x] Client certificate authentication (mTLS)
 - [x] Create issues
+- [x] Configurable navigation keys
+- [x] Searchable keybindings help popup
+- [x] Scroll detail panel without switching focus
 - [ ] Create subtasks from TUI
 - [ ] Link issues (add/remove issue links)
 - [ ] CLI mode (non-interactive commands for scripting and automation)

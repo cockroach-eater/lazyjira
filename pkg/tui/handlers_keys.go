@@ -27,6 +27,8 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ActHelp:
 		a.showHelp = true
 		a.helpCursor = 0
+		a.helpFilter = ""
+		a.helpSearching = false
 		return a, nil
 	case ActSearch:
 		a.searchBar.Activate()
@@ -53,24 +55,150 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	if a.side == sideLeft && (a.leftFocus == focusIssues || a.leftFocus == focusInfo) {
+		if m, cmd, ok := a.handleDetailScroll(msg); ok {
+			return m, cmd
+		}
+	}
+
 	return nil, nil
 }
 
+func (a *App) handleDetailScroll(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch a.keymap.Match(msg.String()) { //nolint:exhaustive
+	case ActDetailScrollDown:
+		a.detailView.ScrollBy(1)
+		return a, nil, true
+	case ActDetailScrollUp:
+		a.detailView.ScrollBy(-1)
+		return a, nil, true
+	case ActDetailHalfDown:
+		a.detailView.ScrollBy(a.detailView.VisibleRows() / 2)
+		return a, nil, true
+	case ActDetailHalfUp:
+		a.detailView.ScrollBy(-a.detailView.VisibleRows() / 2)
+		return a, nil, true
+	}
+	return nil, nil, false
+}
+
 func (a *App) handleHelpKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	bindings := a.ContextBindings()
-	switch msg.String() {
-	case "j", "down":
+	if a.helpSearching {
+		return a.handleHelpSearchKey(msg)
+	}
+
+	bindings := a.filteredHelpBindings()
+	key := msg.String()
+
+	if key == "/" {
+		a.helpSearching = true
+		a.helpSearch.SetValue("")
+		a.helpSearch.SetWidth(a.width - 5)
+		return a, nil
+	}
+	if key == "esc" || key == "q" || key == "?" {
+		a.showHelp = false
+		a.helpFilter = ""
+		a.helpSearching = false
+		return a, nil
+	}
+
+	switch a.keymap.MatchNav(key) {
+	case components.NavNone:
+	case components.NavDown:
 		if a.helpCursor < len(bindings)-1 {
 			a.helpCursor++
 		}
-	case "k", "up":
+	case components.NavUp:
 		if a.helpCursor > 0 {
 			a.helpCursor--
 		}
-	case "esc", "q", "?":
-		a.showHelp = false
+	case components.NavTop:
+		a.helpCursor = 0
+	case components.NavBottom:
+		if len(bindings) > 0 {
+			a.helpCursor = len(bindings) - 1
+		}
+	case components.NavHalfDown:
+		halfPage := max(1, min(len(bindings), a.height-8)/2)
+		a.helpCursor += halfPage
+		if a.helpCursor >= len(bindings) {
+			a.helpCursor = len(bindings) - 1
+		}
+	case components.NavHalfUp:
+		halfPage := max(1, min(len(bindings), a.height-8)/2)
+		a.helpCursor -= halfPage
+		if a.helpCursor < 0 {
+			a.helpCursor = 0
+		}
 	}
 	return a, nil
+}
+
+func (a *App) handleHelpSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	filtered := a.filteredHelpBindings()
+	switch msg.String() {
+	case "enter":
+		a.helpConfirmSearch()
+	case "esc":
+		a.helpSearching = false
+		a.helpFilter = ""
+		a.helpCursor = 0
+	case "down", components.KeyCtrlJ:
+		if a.helpCursor < len(filtered)-1 {
+			a.helpCursor++
+		}
+	case "up", components.KeyCtrlK:
+		if a.helpCursor > 0 {
+			a.helpCursor--
+		}
+	default:
+		updated, changed := a.helpSearch.Update(msg)
+		a.helpSearch = updated
+		if changed {
+			a.helpFilter = a.helpSearch.Value()
+			a.helpCursor = 0
+		}
+	}
+	return a, nil
+}
+
+func (a *App) helpConfirmSearch() {
+	var matchedBinding *Binding
+	filtered := a.filteredHelpBindings()
+	if a.helpCursor >= 0 && a.helpCursor < len(filtered) {
+		b := filtered[a.helpCursor]
+		matchedBinding = &b
+	}
+	a.helpSearching = false
+	a.helpFilter = ""
+	a.helpSearch.SetValue("")
+	all := a.ContextBindings()
+	a.helpCursor = 0
+	if matchedBinding != nil {
+		for i, b := range all {
+			if b.Key == matchedBinding.Key && b.Description == matchedBinding.Description {
+				a.helpCursor = i
+				break
+			}
+		}
+	}
+}
+
+func (a *App) filteredHelpBindings() []Binding {
+	bindings := a.ContextBindings()
+	if a.helpFilter == "" {
+		return bindings
+	}
+	query := strings.ToLower(a.helpFilter)
+	var result []Binding
+	for _, b := range bindings {
+		if strings.Contains(strings.ToLower(b.Key), query) ||
+			strings.Contains(strings.ToLower(b.Description), query) {
+			result = append(result, b)
+		}
+	}
+	return result
 }
 
 func (a *App) handleFocusAction(action Action) (tea.Model, tea.Cmd, bool) {

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"slices"
+
 	"github.com/textfuel/lazyjira/pkg/tui/components"
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
@@ -13,6 +15,26 @@ type Binding struct {
 
 func (a *App) bind(action Action, desc string) Binding {
 	return Binding{a.keymap.Keys(action), desc}
+}
+
+func (a *App) navBindings() []Binding {
+	return []Binding{
+		a.bind(ActNavDown, "navigate down"),
+		a.bind(ActNavUp, "navigate up"),
+		a.bind(ActNavTop, "go to top"),
+		a.bind(ActNavBottom, "go to bottom"),
+		a.bind(ActNavHalfDown, "half-page down"),
+		a.bind(ActNavHalfUp, "half-page up"),
+	}
+}
+
+func (a *App) detailScrollBindings() []Binding {
+	return []Binding{
+		a.bind(ActDetailScrollDown, "scroll detail down"),
+		a.bind(ActDetailScrollUp, "scroll detail up"),
+		a.bind(ActDetailHalfDown, "half-page detail down"),
+		a.bind(ActDetailHalfUp, "half-page detail up"),
+	}
 }
 
 // ContextBindings returns keybindings for the current focus context
@@ -33,10 +55,8 @@ func (a *App) ContextBindings() []Binding {
 
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
-		return append(global,
-			Binding{"j/k", "navigate up/down"},
-			Binding{"g/G", "go to top/bottom"},
-			Binding{"ctrl+d/u", "half-page down/up"},
+		bindings := slices.Concat(global, a.navBindings(), a.detailScrollBindings())
+		return append(bindings,
 			a.bind(ActOpen, "open issue detail"),
 			a.bind(ActFocusRight, "open issue detail"),
 			a.bind(ActTransition, "transition issue status"),
@@ -54,10 +74,8 @@ func (a *App) ContextBindings() []Binding {
 		)
 
 	case a.side == sideLeft && a.leftFocus == focusInfo:
-		return append(global,
-			Binding{"j/k", "navigate up/down"},
-			Binding{"g/G", "go to top/bottom"},
-			Binding{"ctrl+d/u", "half-page down/up"},
+		bindings := slices.Concat(global, a.navBindings(), a.detailScrollBindings())
+		return append(bindings,
 			Binding{"[]", "switch tab (Info/Lnk/Sub)"},
 			a.bind(ActEdit, "edit field"),
 			a.bind(ActTransition, "transition issue status"),
@@ -70,10 +88,8 @@ func (a *App) ContextBindings() []Binding {
 		)
 
 	case a.side == sideLeft && a.leftFocus == focusProjects:
-		return append(global,
-			Binding{"j/k", "navigate up/down"},
-			Binding{"g/G", "go to top/bottom"},
-			Binding{"ctrl+d/u", "half-page down/up"},
+		bindings := slices.Concat(global, a.navBindings())
+		return append(bindings,
 			a.bind(ActSelect, "select project and load issues"),
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
@@ -85,11 +101,8 @@ func (a *App) ContextBindings() []Binding {
 		)
 
 	case a.side == sideRight:
-		bindings := make([]Binding, len(global))
-		copy(bindings, global)
+		bindings := slices.Concat(global, a.navBindings())
 		bindings = append(bindings,
-			Binding{"j/k", "scroll up/down"},
-			Binding{"ctrl+d/u", "half-page down/up"},
 			Binding{"[]", "previous/next tab"},
 			a.bind(ActFocusLeft, "back to left panel"),
 			a.bind(ActInfoTab, "focus info panel"),
@@ -141,6 +154,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 		}
 	case a.showHelp:
 		return []components.HelpItem{
+			{Key: "/", Description: "filter"},
 			{Key: "esc", Description: "close"},
 		}
 	case a.diffView.IsVisible():

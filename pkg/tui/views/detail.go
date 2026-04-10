@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -67,12 +68,13 @@ type DetailView struct {
 	scrollY      int
 	listCursor   int
 	blocks       [][]string
-	blockKeys    []string // issue key per block (empty if not navigable)
+	blockKeys    []string
 	dblClick     components.DblClickDetector
 	width        int
 	height       int
 	focused      bool
 	theme        *theme.Theme
+	ResolveNav   components.NavResolver
 }
 
 func NewDetailView() *DetailView {
@@ -338,22 +340,44 @@ func (d *DetailView) Update(msg tea.Msg) (*DetailView, tea.Cmd) {
 	if !d.focused {
 		return d, nil
 	}
-	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "j", "down":
-			d.handleCursorDown()
-		case "k", "up":
-			d.handleCursorUp()
-		case "tab":
-			d.NextTab()
-			d.scrollY = 0
-			d.listCursor = 0
-		case "ctrl+d":
-			d.handleHalfPageDown()
-		case "ctrl+u":
-			d.handleHalfPageUp()
-		case "enter", " ":
-			return d.handleActivation()
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return d, nil
+	}
+	key := km.String()
+
+	if key == "tab" {
+		d.NextTab()
+		d.scrollY = 0
+		d.listCursor = 0
+		return d, nil
+	}
+	if key == "enter" || key == " " {
+		return d.handleActivation()
+	}
+
+	nav := components.NavNone
+	if d.ResolveNav != nil {
+		nav = d.ResolveNav(key)
+	}
+	switch nav {
+	case components.NavNone:
+	case components.NavDown:
+		d.handleCursorDown()
+	case components.NavUp:
+		d.handleCursorUp()
+	case components.NavHalfDown:
+		d.handleHalfPageDown()
+	case components.NavHalfUp:
+		d.handleHalfPageUp()
+	case components.NavTop:
+		d.scrollY = 0
+		d.listCursor = 0
+	case components.NavBottom:
+		if count := d.listTabItemCount(); count > 0 {
+			d.listCursor = count - 1
+		} else {
+			d.scrollY = math.MaxInt32
 		}
 	}
 	return d, nil
@@ -385,23 +409,23 @@ func (d *DetailView) handleCursorUp() {
 
 func (d *DetailView) handleHalfPageDown() {
 	if count := d.listTabItemCount(); count > 0 {
-		d.listCursor += d.visibleRows() / 2
+		d.listCursor += d.VisibleRows() / 2
 		if d.listCursor >= count {
 			d.listCursor = count - 1
 		}
 	} else {
-		d.scrollY += d.visibleRows() / 2
+		d.scrollY += d.VisibleRows() / 2
 	}
 }
 
 func (d *DetailView) handleHalfPageUp() {
 	if d.listTabItemCount() > 0 {
-		d.listCursor -= d.visibleRows() / 2
+		d.listCursor -= d.VisibleRows() / 2
 		if d.listCursor < 0 {
 			d.listCursor = 0
 		}
 	} else {
-		d.scrollY -= d.visibleRows() / 2
+		d.scrollY -= d.VisibleRows() / 2
 		if d.scrollY < 0 {
 			d.scrollY = 0
 		}
@@ -426,8 +450,7 @@ func (d *DetailView) handleActivation() (*DetailView, tea.Cmd) {
 	return d, nil
 }
 
-func (d *DetailView) visibleRows() int {
-	// Total height = innerHeight + 2 (borders). Tabs are in the title now.
+func (d *DetailView) VisibleRows() int {
 	return max(d.height-2, 1)
 }
 
@@ -441,7 +464,7 @@ func (d *DetailView) View() string {
 		return d.renderProjectView(contentWidth, innerH)
 	}
 
-	visible := d.visibleRows()
+	visible := d.VisibleRows()
 
 	if d.issue == nil {
 		title := "[0] Detail"

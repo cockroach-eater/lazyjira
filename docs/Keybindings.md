@@ -1,6 +1,6 @@
 # Keybindings
 
-Press `?` inside lazyjira to see all available keys.
+Press `?` inside lazyjira to see all available keys. Use `/` inside the help popup to filter keybindings.
 
 All keybindings can be remapped in `config.yml` under the `keybinding` section.
 
@@ -11,10 +11,16 @@ All keybindings can be remapped in `config.yml` under the `keybinding` section.
 | `j` / `k` | Move down / up |
 | `g` / `G` | Jump to top / bottom |
 | `ctrl+d` / `ctrl+u` | Half page down / up |
+| `J` / `K` | Scroll detail panel (from issues or info panel) |
+| `ctrl+f` / `ctrl+b` | Half page detail panel (from issues or info panel) |
 | `tab` | Switch panel |
 | `h` / `left` | Focus left panel |
 | `l` / `right` | Focus right panel |
 | `0` `1` `2` `3` `4` | Focus Detail, Status, Issues, Info, Projects panel |
+
+Navigation keys (`j`/`k`/`g`/`G`/`ctrl+d`/`ctrl+u`) can be remapped via `keybinding.navigation` in config.yml.
+
+Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.detail` in config.yml.
 
 ## Issues
 
@@ -34,6 +40,16 @@ All keybindings can be remapped in `config.yml` under the `keybinding` section.
 | `b` | Create branch from issue |
 | `s` | JQL search |
 | `x` | Close JQL tab |
+
+## Help popup
+
+| Key | Action |
+|-----|--------|
+| `/` | Filter keybindings |
+| `j` / `k` | Navigate up / down |
+| `g` / `G` | Jump to top / bottom |
+| `esc` | Clear filter or close |
+| `q` / `?` | Close |
 
 ## General
 

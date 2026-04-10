@@ -48,10 +48,20 @@ type FieldConfig struct {
 }
 
 type KeybindingConfig struct {
-	Universal UniversalKeys `yaml:"universal"`
-	Issues    IssueKeys     `yaml:"issues"`
-	Projects  ProjectKeys   `yaml:"projects"`
-	Detail    DetailKeys    `yaml:"detail"`
+	Universal  UniversalKeys  `yaml:"universal"`
+	Navigation NavigationKeys `yaml:"navigation"`
+	Issues     IssueKeys      `yaml:"issues"`
+	Projects   ProjectKeys    `yaml:"projects"`
+	Detail     DetailKeys     `yaml:"detail"`
+}
+
+type NavigationKeys struct {
+	Down     string `yaml:"down"`
+	Up       string `yaml:"up"`
+	Top      string `yaml:"top"`
+	Bottom   string `yaml:"bottom"`
+	HalfDown string `yaml:"halfPageDown"`
+	HalfUp   string `yaml:"halfPageUp"`
 }
 
 type UniversalKeys struct {
@@ -91,8 +101,12 @@ type ProjectKeys struct {
 }
 
 type DetailKeys struct {
-	FocusLeft string `yaml:"focusLeft"`
-	InfoTab   string `yaml:"infoTab"`
+	FocusLeft    string `yaml:"focusLeft"`
+	InfoTab      string `yaml:"infoTab"`
+	ScrollDown   string `yaml:"scrollDown"`
+	ScrollUp     string `yaml:"scrollUp"`
+	HalfPageDown string `yaml:"halfPageDown"`
+	HalfPageUp   string `yaml:"halfPageUp"`
 }
 
 type JiraConfig struct {

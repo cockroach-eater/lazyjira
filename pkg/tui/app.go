@@ -139,8 +139,11 @@ type App struct {
 	projectID   string
 	boardID     int
 	boards      []jira.Board
-	showHelp    bool
-	helpCursor  int
+	showHelp      bool
+	helpCursor    int
+	helpSearching bool
+	helpSearch    components.TextInput
+	helpFilter    string
 	logFlag     *bool
 	isCloud     bool
 	demoMode    bool
@@ -268,6 +271,12 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		issueCache:      make(map[string]*jira.Issue),
 		createMetaCache: make(map[string][]jira.CreateMetaField),
 	}
+	navResolver := app.keymap.MatchNav
+	app.issuesList.ResolveNav = navResolver
+	app.infoPanel.ResolveNav = navResolver
+	app.projectList.ResolveNav = navResolver
+	app.detailView.ResolveNav = navResolver
+
 	isCloud := cfg.Jira.IsCloud()
 	app.createForm.SetDescRenderer(func(text string, width int) []string {
 		return views.RenderDescriptionPreview(text, width, isCloud)
@@ -536,6 +545,8 @@ func (a *App) View() string {
 		bottomBar = a.helpBar.View()
 	case a.modal.IsVisible() && a.modal.IsSearching():
 		bottomBar = a.modal.SearchView(a.width)
+	case a.showHelp && a.helpSearching:
+		bottomBar = components.RenderFilterBarInput(&a.helpSearch)
 	default:
 		bottomBar = a.helpBar.View()
 	}
@@ -840,9 +851,8 @@ func (a *App) isPersonSchema(schemaType, schemaItems string) bool {
 }
 
 func (a *App) renderHelpOverlay(base string) string {
-	bindings := a.ContextBindings()
+	bindings := a.filteredHelpBindings()
 
-	// Clamp cursor.
 	if a.helpCursor >= len(bindings) {
 		a.helpCursor = len(bindings) - 1
 	}
@@ -865,14 +875,13 @@ func (a *App) renderHelpOverlay(base string) string {
 
 	lines := make([]string, 0, len(bindings)+2)
 	lines = append(lines, "")
-	descMaxW := popupW - maxKey - 6 // 2 left pad + 2 gap + 2 border
+	descMaxW := popupW - maxKey - 6
 	for i, b := range bindings {
 		padded := b.Key
 		for len(padded) < maxKey {
 			padded += " "
 		}
 		desc := components.TruncateEnd(b.Description, descMaxW)
-		// Pad desc to fill remaining width.
 		for len(desc) < descMaxW {
 			desc += " "
 		}
@@ -892,11 +901,9 @@ func (a *App) renderHelpOverlay(base string) string {
 	popupContent := strings.Join(lines, "\n")
 	content := components.RenderPanelFull("Keybindings", footer, popupContent, popupW, popupH, true, nil)
 
-	// Center the popup over background.
 	return components.Overlay(base, content, a.width, a.height)
 }
 
-// fetchActiveTab returns a command to fetch issues for the current active tab's JQL.
 func (a *App) handleGitBranchSwitch(name string) (tea.Model, tea.Cmd) {
 	a.gitBranch = name
 	a.helpBar.SetStatusMsg(name)
@@ -907,7 +914,6 @@ func (a *App) handleGitBranchSwitch(name string) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) fetchActiveTab() tea.Cmd {
-	// JQL tab: use stored raw JQL directly.
 	if a.issuesList.IsJQLTab() {
 		jql := a.issuesList.JQLQuery()
 		if jql == "" {

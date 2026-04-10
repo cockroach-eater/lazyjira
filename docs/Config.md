@@ -66,6 +66,13 @@ keybinding:
         focusInfo: "3"
         focusProjects: "4"
         jqlSearch: s
+    navigation:
+        down: j
+        up: k
+        top: g
+        bottom: G
+        halfPageDown: ctrl+d
+        halfPageUp: ctrl+u
     issues:
         select: ' '
         open: enter
@@ -83,6 +90,10 @@ keybinding:
     detail:
         focusLeft: h
         infoTab: i
+        scrollDown: J
+        scrollUp: K
+        halfPageDown: ctrl+f
+        halfPageUp: ctrl+b
 issueTabs:
     - name: All
       jql: project = {{.ProjectKey}} AND statusCategory != Done ORDER BY updated DESC
@@ -203,6 +214,13 @@ keybinding:
     quit: "q"
     help: "?"
     search: "/"
+  navigation:
+    down: "j"
+    up: "k"
+    top: "g"
+    bottom: "G"
+    halfPageDown: "ctrl+d"
+    halfPageUp: "ctrl+u"
   issues:
     transition: "t"
     browser: "o"
@@ -210,6 +228,12 @@ keybinding:
 ```
 
 Only include keys you want to change. Missing keys keep their defaults.
+
+The `navigation` section controls list navigation keys used across all panels. These default to vim-style keys (`j`/`k`/`g`/`G`/`ctrl+d`/`ctrl+u`).
+
+The `detail` section includes keys for scrolling the detail panel from any left panel without switching focus. Defaults: `J`/`K` for line scroll, `ctrl+f`/`ctrl+b` for half-page.
+
+Setting a navigation key replaces all defaults for that action. For example, `down: "n"` means only `n` navigates down, `j`, arrow down and `ctrl+j` will no longer work.
 
 ## Info panel fields
 

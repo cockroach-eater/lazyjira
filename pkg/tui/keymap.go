@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/textfuel/lazyjira/pkg/config"
+	"github.com/textfuel/lazyjira/pkg/tui/components"
 )
 
 // Action represents a user-triggerable action
@@ -43,6 +44,18 @@ const (
 	ActCreateBranch Action = "createBranch"
 	ActCreateIssue    Action = "createIssue"
 	ActDuplicateIssue Action = "duplicateIssue"
+
+	ActNavDown     Action = "navDown"
+	ActNavUp       Action = "navUp"
+	ActNavTop      Action = "navTop"
+	ActNavBottom   Action = "navBottom"
+	ActNavHalfDown Action = "navHalfPageDown"
+	ActNavHalfUp   Action = "navHalfPageUp"
+
+	ActDetailScrollDown Action = "detailScrollDown"
+	ActDetailScrollUp   Action = "detailScrollUp"
+	ActDetailHalfDown   Action = "detailHalfPageDown"
+	ActDetailHalfUp     Action = "detailHalfPageUp"
 )
 
 // Keymap maps actions to key strings. Multiple keys can trigger the same action
@@ -82,6 +95,18 @@ func DefaultKeymap() Keymap {
 		ActCloseJQLTab:  {"x"},
 		ActCreateBranch:    {"b"},
 		ActDuplicateIssue: {"ctrl+n"},
+
+		ActNavDown:     {"j", "down", "ctrl+j"},
+		ActNavUp:       {"k", "up", "ctrl+k"},
+		ActNavTop:      {"g", "home"},
+		ActNavBottom:   {"G", "end"},
+		ActNavHalfDown: {"ctrl+d"},
+		ActNavHalfUp:   {"ctrl+u"},
+
+		ActDetailScrollDown: {"J"},
+		ActDetailScrollUp:   {"K"},
+		ActDetailHalfDown:   {"ctrl+f"},
+		ActDetailHalfUp:     {"ctrl+b"},
 	}
 }
 
@@ -123,6 +148,17 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)
+	set(ActDetailScrollDown, kcfg.Detail.ScrollDown)
+	set(ActDetailScrollUp, kcfg.Detail.ScrollUp)
+	set(ActDetailHalfDown, kcfg.Detail.HalfPageDown)
+	set(ActDetailHalfUp, kcfg.Detail.HalfPageUp)
+	// Navigation
+	set(ActNavDown, kcfg.Navigation.Down)
+	set(ActNavUp, kcfg.Navigation.Up)
+	set(ActNavTop, kcfg.Navigation.Top)
+	set(ActNavBottom, kcfg.Navigation.Bottom)
+	set(ActNavHalfDown, kcfg.Navigation.HalfDown)
+	set(ActNavHalfUp, kcfg.Navigation.HalfUp)
 	return km
 }
 
@@ -134,6 +170,24 @@ func (km Keymap) Match(key string) Action {
 		}
 	}
 	return ""
+}
+
+var navActionMap = map[Action]components.NavAction{
+	ActNavDown:     components.NavDown,
+	ActNavUp:       components.NavUp,
+	ActNavTop:      components.NavTop,
+	ActNavBottom:   components.NavBottom,
+	ActNavHalfDown: components.NavHalfDown,
+	ActNavHalfUp:   components.NavHalfUp,
+}
+
+func (km Keymap) MatchNav(key string) components.NavAction {
+	for action, nav := range navActionMap {
+		if slices.Contains(km[action], key) {
+			return nav
+		}
+	}
+	return components.NavNone
 }
 
 // Keys returns the first key bound to the action (for display in help)
