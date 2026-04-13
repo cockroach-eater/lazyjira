@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-04-13
+
+### Fixed
+
+- Issue rows no longer wrap to two lines when the panel is narrow. Extra content is cut off instead
+- Updated column now lines up vertically. Summary column was not padded so dates floated left on short summaries
+
 ## [2.8.1] - 2026-04-10
 
 ## [2.8.0] - 2026-04-10
@@ -319,7 +326,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Cross-platform: macOS, Linux, Windows
 - Homebrew install via tap
 
-[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.8.1...HEAD
+[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.8.2...HEAD
+[2.8.2]: https://github.com/textfuel/lazyjira/compare/v2.8.1...v2.8.2
 [2.8.1]: https://github.com/textfuel/lazyjira/compare/v2.8.0...v2.8.1
 [2.8.0]: https://github.com/textfuel/lazyjira/compare/v2.7.4...v2.8.0
 [2.7.4]: https://github.com/textfuel/lazyjira/compare/v2.7.3...v2.7.4
