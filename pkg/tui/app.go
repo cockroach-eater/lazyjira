@@ -311,16 +311,15 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 }
 
 func (a *App) Init() tea.Cmd {
-	var cmds []tea.Cmd
-	cmds = append(cmds, fetchMyself(a.client))
-	cmds = append(cmds, fetchProjects(a.client))
-	cmds = append(cmds, fetchBoards(a.client))
-	if cmd := a.fetchActiveTab(); cmd != nil {
-		cmds = append(cmds, cmd)
+	cmds := []tea.Cmd{
+		fetchMyself(a.client),
+		fetchFieldDiscovery(a.client),
+		fetchProjects(a.client),
+		fetchBoards(a.client),
+		tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
+			return autoFetchTickMsg{}
+		}),
 	}
-	cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
-		return autoFetchTickMsg{}
-	}))
 	return tea.Batch(cmds...)
 }
 
@@ -376,6 +375,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case myselfLoadedMsg:
 		a.currentUser = msg.user
 		return a, nil
+	case fieldsDiscoveredMsg:
+		if msg.err != nil {
+			a.statusPanel.SetError(msg.err.Error())
+		}
+		return a, a.fetchActiveTab()
 	case boardsLoadedMsg:
 		return a.handleBoardsLoaded(msg)
 	case sprintsLoadedMsg:

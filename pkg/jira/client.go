@@ -42,6 +42,8 @@ type ClientInterface interface {
 	GetJQLAutocompleteSuggestions(ctx context.Context, fieldName, fieldValue string) ([]AutocompleteSuggestion, error)
 	SetOnRequest(fn func(RequestLog))
 	SetCustomFields(ids []string)
+	DiscoverFields(ctx context.Context) error
+	SprintFieldID() string
 }
 
 // RequestLog contains info about a completed API request
@@ -62,6 +64,7 @@ type Client struct {
 	logger         io.Writer
 	onRequest      func(RequestLog)
 	customFieldIDs []string
+	sprintFieldID  string
 }
 
 // IsCloud returns true when the client targets Jira Cloud
@@ -86,6 +89,33 @@ type ClientOpts struct {
 
 // SetCustomFields sets the list of custom field IDs to fetch from the API
 func (c *Client) SetCustomFields(ids []string) { c.customFieldIDs = ids }
+
+func (c *Client) SprintFieldID() string {
+	if c.sprintFieldID == "" {
+		return "sprint"
+	}
+	return c.sprintFieldID
+}
+
+func (c *Client) DiscoverFields(ctx context.Context) error {
+	var raw []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Schema struct {
+			Custom string `json:"custom"`
+		} `json:"schema"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/field", nil, &raw); err != nil {
+		return fmt.Errorf("discover fields: %w", err)
+	}
+	for _, field := range raw {
+		if field.Schema.Custom == "com.pyxis.greenhopper.jira:gh-sprint" {
+			c.sprintFieldID = field.ID
+			return nil
+		}
+	}
+	return nil
+}
 
 var _ ClientInterface = (*Client)(nil)
 
@@ -244,11 +274,23 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (*Issue, error) 
 		return nil, fmt.Errorf("get issue %s: %w", issueKey, err)
 	}
 	issue := raw.toIssue()
+	c.fillSprintFromCustomField(&issue, raw.Fields.RawExtra)
 	return &issue, nil
 }
 
+func (c *Client) fillSprintFromCustomField(issue *Issue, raw map[string]json.RawMessage) {
+	if issue.Sprint != nil || c.sprintFieldID == "" {
+		return
+	}
+	data, ok := raw[c.sprintFieldID]
+	if !ok {
+		return
+	}
+	issue.Sprint = pickSprint(parseSprintRaw(data))
+}
+
 func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResults int) (*SearchResult, error) {
-	fields := "summary,description,status,priority,assignee,reporter,labels,components,sprint,issuetype,created,updated,subtasks,issuelinks,parent"
+	fields := "summary,description,status,priority,assignee,reporter,labels,components," + c.SprintFieldID() + ",issuetype,created,updated,subtasks,issuelinks,parent"
 	if len(c.customFieldIDs) > 0 {
 		fields += "," + strings.Join(c.customFieldIDs, ",")
 	}
@@ -276,6 +318,7 @@ func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResul
 	}
 	for i, ri := range raw.Issues {
 		result.Issues[i] = ri.toIssue()
+		c.fillSprintFromCustomField(&result.Issues[i], ri.Fields.RawExtra)
 	}
 	return result, nil
 }
@@ -438,7 +481,21 @@ func (c *Client) GetBoardIssues(ctx context.Context, boardID int, jql string) ([
 }
 
 func (c *Client) UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error {
-	body := map[string]any{"fields": fields}
+	payload := fields
+	if value, ok := fields["sprint"]; ok {
+		resolved := c.SprintFieldID()
+		if resolved != "sprint" {
+			payload = make(map[string]any, len(fields))
+			for key, current := range fields {
+				if key == "sprint" {
+					continue
+				}
+				payload[key] = current
+			}
+			payload[resolved] = value
+		}
+	}
+	body := map[string]any{"fields": payload}
 	err := c.do(ctx, http.MethodPut, "/issue/"+issueKey, body, nil)
 	if err != nil {
 		return fmt.Errorf("update issue %s: %w", issueKey, err)
