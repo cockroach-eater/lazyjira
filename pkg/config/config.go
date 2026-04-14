@@ -8,16 +8,16 @@ import (
 )
 
 type Config struct {
-	Jira         JiraConfig          `yaml:"jira"`
-	Projects     []ProjectConfig     `yaml:"projects"`
-	GUI          GUIConfig           `yaml:"gui"`
-	Keybinding   KeybindingConfig    `yaml:"keybinding"`
-	IssueTabs    []IssueTabConfig    `yaml:"issueTabs"`
-	Cache        CacheConfig         `yaml:"cache"`
-	Refresh      RefreshConfig       `yaml:"refresh"`
-	Fields           []FieldConfig      `yaml:"fields"`
-	DeprecatedFields []FieldConfig      `yaml:"customFields,omitempty"`
-	Git              GitConfig          `yaml:"git"`
+	Jira             JiraConfig       `yaml:"jira"`
+	Projects         []ProjectConfig  `yaml:"projects"`
+	GUI              GUIConfig        `yaml:"gui"`
+	Keybinding       KeybindingConfig `yaml:"keybinding"`
+	IssueTabs        []IssueTabConfig `yaml:"issueTabs"`
+	Cache            CacheConfig      `yaml:"cache"`
+	Refresh          RefreshConfig    `yaml:"refresh"`
+	Fields           []FieldConfig    `yaml:"fields"`
+	DeprecatedFields []FieldConfig    `yaml:"customFields,omitempty"`
+	Git              GitConfig        `yaml:"git"`
 }
 
 type GitConfig struct {
@@ -41,9 +41,9 @@ type IssueTabConfig struct {
 }
 
 type FieldConfig struct {
-	ID     string `yaml:"id"`
-	Name   string `yaml:"name"`
-	Type   string `yaml:"type"`
+	ID        string `yaml:"id"`
+	Name      string `yaml:"name"`
+	Type      string `yaml:"type"`
 	Multiline bool   `yaml:"multiline"`
 }
 
@@ -135,17 +135,18 @@ type ProjectConfig struct {
 }
 
 type GUIConfig struct {
-	Theme           string   `yaml:"theme"`    // TODO not yet wired up
-	Language        string   `yaml:"language"` // TODO not yet wired up
-	SidePanelWidth  int      `yaml:"sidePanelWidth"`
-	ShowIcons       bool     `yaml:"showIcons"`  // TODO not yet wired up
-	DateFormat      string   `yaml:"dateFormat"` // TODO not yet wired up
-	Mouse           bool     `yaml:"mouse"`      // TODO not yet wired up
-	Borders         string   `yaml:"borders"`    // TODO not yet wired up
-	IssueListFields    []string `yaml:"issueListFields"`
-	PrefillFromTab     *bool             `yaml:"prefillFromTab"`
-	SelectCreatedIssue *bool             `yaml:"selectCreatedIssue"`
-	TypeIcons          map[string]string `yaml:"typeIcons"`
+	Theme                string            `yaml:"theme"`    // TODO not yet wired up
+	Language             string            `yaml:"language"` // TODO not yet wired up
+	SidePanelWidth       int               `yaml:"sidePanelWidth"`
+	CollapsedPanelHeight int               `yaml:"collapsedPanelHeight"`
+	ShowIcons            bool              `yaml:"showIcons"`  // TODO not yet wired up
+	DateFormat           string            `yaml:"dateFormat"` // TODO not yet wired up
+	Mouse                bool              `yaml:"mouse"`      // TODO not yet wired up
+	Borders              string            `yaml:"borders"`    // TODO not yet wired up
+	IssueListFields      []string          `yaml:"issueListFields"`
+	PrefillFromTab       *bool             `yaml:"prefillFromTab"`
+	SelectCreatedIssue   *bool             `yaml:"selectCreatedIssue"`
+	TypeIcons            map[string]string `yaml:"typeIcons"`
 }
 
 // ShouldPrefillFromTab returns true when the creation form should prefill from tab JQL
@@ -174,13 +175,14 @@ type RefreshConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		GUI: GUIConfig{
-			Theme:          "default",
-			Language:       "en",
-			SidePanelWidth: 40,
-			ShowIcons:      true,
-			DateFormat:     "2006-01-02",
-			Mouse:          true,
-			Borders:        "rounded",
+			Theme:                "default",
+			Language:             "en",
+			SidePanelWidth:       40,
+			CollapsedPanelHeight: 5,
+			ShowIcons:            true,
+			DateFormat:           "2006-01-02",
+			Mouse:                true,
+			Borders:              "rounded",
 			IssueListFields: []string{
 				"key", "status", "summary",
 			},

@@ -41,6 +41,7 @@ gui:
     theme: default
     language: en
     sidePanelWidth: 40
+    collapsedPanelHeight: 5
     showIcons: true
     dateFormat: "2006-01-02"
     mouse: true
@@ -166,6 +167,8 @@ gui:
 ```
 
 `sidePanelWidth` controls the left panel width in columns. It automatically shrinks on narrow terminals.
+
+`collapsedPanelHeight` sets the height of non-focused left panels in lines (default 5, minimum 3).
 
 `selectCreatedIssue` controls whether the app auto-selects a newly created issue in the list. If the issue does not match the current tab, the app switches to the All tab. Enabled by default.
 
