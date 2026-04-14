@@ -46,7 +46,8 @@ type ClientInterface interface {
 	SprintFieldID() string
 }
 
-// RequestLog contains info about a completed API request
+const sprintFieldAlias = "sprint"
+
 type RequestLog struct {
 	Method  string
 	Path    string
@@ -92,7 +93,7 @@ func (c *Client) SetCustomFields(ids []string) { c.customFieldIDs = ids }
 
 func (c *Client) SprintFieldID() string {
 	if c.sprintFieldID == "" {
-		return "sprint"
+		return sprintFieldAlias
 	}
 	return c.sprintFieldID
 }
@@ -482,12 +483,12 @@ func (c *Client) GetBoardIssues(ctx context.Context, boardID int, jql string) ([
 
 func (c *Client) UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error {
 	payload := fields
-	if value, ok := fields["sprint"]; ok {
+	if value, ok := fields[sprintFieldAlias]; ok {
 		resolved := c.SprintFieldID()
-		if resolved != "sprint" {
+		if resolved != sprintFieldAlias {
 			payload = make(map[string]any, len(fields))
 			for key, current := range fields {
-				if key == "sprint" {
+				if key == sprintFieldAlias {
 					continue
 				}
 				payload[key] = current
