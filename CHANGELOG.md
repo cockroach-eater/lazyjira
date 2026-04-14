@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-04-14
+
+### Added
+
+- Custom icons for issue types in the list view. Configure via `gui.typeIcons` map in config.yml (#38)
+- `gui.collapsedPanelHeight` option to set the height of non-focused side panels. Default is 5 lines which was often too small to read the info panel without switching focus (#46)
+
 ## [2.8.2] - 2026-04-13
 
 ### Fixed
@@ -326,7 +333,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Cross-platform: macOS, Linux, Windows
 - Homebrew install via tap
 
-[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.8.2...HEAD
+[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/textfuel/lazyjira/compare/v2.8.2...v2.9.0
 [2.8.2]: https://github.com/textfuel/lazyjira/compare/v2.8.1...v2.8.2
 [2.8.1]: https://github.com/textfuel/lazyjira/compare/v2.8.0...v2.8.1
 [2.8.0]: https://github.com/textfuel/lazyjira/compare/v2.7.4...v2.8.0
