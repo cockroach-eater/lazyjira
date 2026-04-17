@@ -9,8 +9,28 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/textfuel/lazyjira/pkg/jira"
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
+
+// currentIssue returns the issue the user is currently looking at: the
+// previewed issue if cached, otherwise a stub carrying just the preview key.
+// Falls back to the list selection only when no preview is active. User-
+// initiated actions (edit, copy URL, transition, custom commands, ...)
+// operate on the result so they target what is on screen even when a sub or
+// link is being previewed. The stub covers the brief window between a
+// preview request firing and the fetch response populating the cache; actions
+// that need more than the key (edit summary/description) must accept a key-
+// only stub gracefully.
+func (a *App) currentIssue() *jira.Issue {
+	if a.previewKey != "" {
+		if cached, ok := a.issueCache[a.previewKey]; ok && cached != nil {
+			return cached
+		}
+		return &jira.Issue{Key: a.previewKey}
+	}
+	return a.issuesList.SelectedIssue()
+}
 
 // showCachedIssue updates the detail view with the cached version of the
 // given issue key. The InfoPanel is only updated when the key matches the

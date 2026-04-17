@@ -151,7 +151,7 @@ func scopeNoun(s config.ScopeMask) string {
 func (a *App) buildCommandData(rc config.ResolvedCustomCommand) (any, bool) {
 	switch rc.Scopes {
 	case config.ScopeIssue:
-		if a.issuesList.SelectedIssue() == nil {
+		if a.currentIssue() == nil {
 			return nil, false
 		}
 		return a.buildIssueScopeData(), true
@@ -168,7 +168,7 @@ func (a *App) buildCommandData(rc config.ResolvedCustomCommand) (any, bool) {
 		}
 		return a.buildCommentScopeData(cmt), true
 	case config.ScopeIssue | config.ScopeComment:
-		if a.issuesList.SelectedIssue() == nil {
+		if a.currentIssue() == nil {
 			return nil, false
 		}
 		cmt := a.detailView.SelectedComment()
@@ -184,7 +184,7 @@ func (a *App) buildCommandData(rc config.ResolvedCustomCommand) (any, bool) {
 }
 
 func (a *App) buildIssueScopeData() issueScopeData {
-	sel := a.issuesList.SelectedIssue()
+	sel := a.currentIssue()
 	data := issueScopeData{
 		GitBranch:   a.gitBranch,
 		GitRepoPath: a.gitRepoPath,
@@ -300,10 +300,11 @@ func (a *App) handleCustomCommandFinished(msg customCommandFinishedMsg) (tea.Mod
 	if tail := lastNonEmptyLine(msg.output); tail != "" {
 		a.helpBar.SetStatusMsg(tail)
 	}
-	// Refresh the selected issue only when the command declares refresh: true.
+	// Refresh the previewed issue only when the command declares refresh: true.
 	if msg.refresh {
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			cmds = append(cmds, fetchIssueDetail(a.client, sel.Key))
+		if cur := a.currentIssue(); cur != nil {
+			delete(a.issueCache, cur.Key)
+			cmds = append(cmds, fetchIssueDetail(a.client, cur.Key))
 		}
 	}
 	return a, tea.Batch(cmds...)
