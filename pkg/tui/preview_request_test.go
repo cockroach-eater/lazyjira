@@ -26,9 +26,10 @@ func TestPreviewRequestMsg_SetsPreviewKeyAndFetches(t *testing.T) {
 	}
 }
 
-// TestPreviewRequestMsg_CmdCallsGetIssue verifies the returned Cmd
-// triggers a GetIssue call with the correct key.
-func TestPreviewRequestMsg_CmdCallsGetIssue(t *testing.T) {
+// TestPreviewRequestMsg_CmdEventuallyCallsGetIssue verifies that after the
+// debounce tick fires (simulated via previewDebounceMsg), a GetIssue call is
+// made for the correct key.
+func TestPreviewRequestMsg_CmdEventuallyCallsGetIssue(t *testing.T) {
 	const subKey = "SUB-1"
 
 	fake := &jiratest.FakeClient{T: t}
@@ -36,12 +37,20 @@ func TestPreviewRequestMsg_CmdCallsGetIssue(t *testing.T) {
 
 	a := newAppWithFake(t, fake)
 
-	_, cmd := a.Update(views.PreviewRequestMsg{Key: subKey})
-	if cmd == nil {
+	_, tickCmd := a.Update(views.PreviewRequestMsg{Key: subKey})
+	if tickCmd == nil {
 		t.Fatal("expected non-nil tea.Cmd from PreviewRequestMsg handler, got nil")
 	}
 
-	cmd() // execute the command to trigger the fake calls
+	// The tick cmd returns a previewDebounceMsg when fired. We simulate it
+	// deterministically by dispatching the debounce message directly, which
+	// avoids waiting for the real 150 ms timer.
+	_, fetchCmd := a.Update(previewDebounceMsg{key: subKey, epoch: a.previewEpoch})
+	if fetchCmd == nil {
+		t.Fatal("expected fetch cmd from debounce tick, got nil")
+	}
+
+	fetchCmd() // triggers GetIssue on the fake
 
 	if len(fake.GetIssueCalls) != 1 {
 		t.Fatalf("expected 1 GetIssue call, got %d: %+v", len(fake.GetIssueCalls), fake.GetIssueCalls)

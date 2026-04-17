@@ -109,6 +109,18 @@ func fetchIssueDetail(client jira.ClientInterface, key string) tea.Cmd {
 	})
 }
 
+// fetchPreviewDetail is like fetchIssueDetail but returns a previewDetailLoadedMsg
+// carrying the caller's epoch, so that responses from a superseded preview
+// intent can be dropped. See App.previewEpoch.
+func fetchPreviewDetail(client jira.ClientInterface, key string, epoch int) tea.Cmd {
+	return fetchFullIssue(client, key, func(issue *jira.Issue) tea.Msg {
+		if issue == nil {
+			return errorMsg{err: fmt.Errorf("failed to fetch issue %s", key)}
+		}
+		return previewDetailLoadedMsg{issue: issue, epoch: epoch}
+	})
+}
+
 func fetchProjects(client jira.ClientInterface) tea.Cmd {
 	return func() tea.Msg {
 		projects, err := client.GetProjects(context.Background())

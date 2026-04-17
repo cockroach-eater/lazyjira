@@ -82,6 +82,28 @@ func TestShowCachedIssue_DoesNotMutateInfoPanelForForeignKey(t *testing.T) {
 	}
 }
 
+// TestPreviewRequestMsg_CacheHit_UpdatesDetailViewImmediately pins the
+// invariant that a preview request for an already-cached issue is served
+// synchronously from cache. No fetch, no debounce delay, matching the
+// feel of scrolling through the main issue list.
+func TestPreviewRequestMsg_CacheHit_UpdatesDetailViewImmediately(t *testing.T) {
+	fake := &jiratest.FakeClient{T: t}
+	// No *Func set: any HTTP path would t.Fatalf.
+	a := newAppWithFake(t, fake)
+
+	cached := &jira.Issue{Key: subKey1, Summary: "cached sub"}
+	a.issueCache[subKey1] = cached
+
+	_, _ = a.Update(views.PreviewRequestMsg{Key: subKey1})
+
+	if got := a.detailView.IssueKey(); got != subKey1 {
+		t.Errorf("detailView.IssueKey() = %q, want %q (cache hit should update synchronously)", got, subKey1)
+	}
+	if a.previewKey != subKey1 {
+		t.Errorf("previewKey = %q, want %q", a.previewKey, subKey1)
+	}
+}
+
 // TestTabSwitchToSubtasks_DispatchesPreviewRequest verifies that entering the
 // Subtasks tab immediately previews the first subtask without requiring an
 // extra cursor move.
