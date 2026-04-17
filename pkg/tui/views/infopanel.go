@@ -13,6 +13,10 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/theme"
 )
 
+// PreviewRequestMsg is dispatched by InfoPanel when the cursor moves to a
+// different issue in the Sub or Lnk tab, requesting a detail preview fetch.
+type PreviewRequestMsg struct{ Key string }
+
 // InfoPanelTab identifies a tab within the Info panel
 type InfoPanelTab int
 
@@ -226,7 +230,21 @@ func (p *InfoPanel) Update(msg tea.Msg) (*InfoPanel, tea.Cmd) {
 		return p, nil
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		p.KeyNav(msg.String())
+		moved := p.KeyNav(msg.String())
+		if moved {
+			switch p.activeTab {
+			case InfoTabSubtasks:
+				if key := p.SelectedSubtaskKey(); key != "" {
+					return p, func() tea.Msg { return PreviewRequestMsg{Key: key} }
+				}
+			case InfoTabLinks:
+				if key := p.SelectedLinkKey(); key != "" {
+					return p, func() tea.Msg { return PreviewRequestMsg{Key: key} }
+				}
+			case InfoTabFields:
+				// no preview dispatch on cursor move in fields tab
+			}
+		}
 	}
 	return p, nil
 }

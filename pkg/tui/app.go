@@ -534,6 +534,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return a, nil
+
+	case views.PreviewRequestMsg:
+		a.previewKey = msg.Key
+		return a, fetchIssueDetail(a.client, msg.Key)
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)

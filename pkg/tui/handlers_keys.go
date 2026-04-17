@@ -306,6 +306,7 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			a.previewSelectedIssue()
 		case a.side == sideLeft && a.leftFocus == focusInfo:
 			a.infoPanel.PrevTab()
+			return a, a.previewForInfoTab(), true
 		}
 		return a, nil, true
 
@@ -321,6 +322,7 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			a.previewSelectedIssue()
 		case a.side == sideLeft && a.leftFocus == focusInfo:
 			a.infoPanel.NextTab()
+			return a, a.previewForInfoTab(), true
 		}
 		return a, nil, true
 

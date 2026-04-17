@@ -6,6 +6,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
 // showCachedIssue updates the detail view with the cached version of the given issue key.
@@ -29,6 +33,26 @@ func (a *App) previewSelectedIssue() {
 		a.detailView.SetIssue(sel)
 		a.infoPanel.SetIssue(sel)
 	}
+}
+
+// previewForInfoTab refreshes the preview for the current InfoPanel tab, so
+// entering Sub or Lnk immediately previews its first entry. Fields reverts
+// to the main issue; empty lists dispatch nothing.
+func (a *App) previewForInfoTab() tea.Cmd {
+	switch a.infoPanel.ActiveTab() {
+	case views.InfoTabFields:
+		a.previewSelectedIssue()
+		return nil
+	case views.InfoTabSubtasks:
+		if key := a.infoPanel.SelectedSubtaskKey(); key != "" {
+			return func() tea.Msg { return views.PreviewRequestMsg{Key: key} }
+		}
+	case views.InfoTabLinks:
+		if key := a.infoPanel.SelectedLinkKey(); key != "" {
+			return func() tea.Msg { return views.PreviewRequestMsg{Key: key} }
+		}
+	}
+	return nil
 }
 
 // extractIssueKey checks if a URL points to our Jira and extracts the issue key.
