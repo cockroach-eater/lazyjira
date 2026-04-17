@@ -107,23 +107,26 @@ func TestPreviewSelectedIssue_UpdatesPreviewKey(t *testing.T) {
 }
 
 // TestHandleIssueDetailLoaded_RoutesByPreviewKey ensures a detail response for
-// the previewed issue updates detailView + infoPanel, even if the list cursor
-// has moved on (or never matched, e.g. when previewing a sub-issue).
+// the previewed sub-issue updates the DetailView (which follows previewKey)
+// but leaves the InfoPanel untouched (the InfoPanel belongs to the main list
+// issue and must keep its tab/cursor).
 func TestHandleIssueDetailLoaded_RoutesByPreviewKey(t *testing.T) {
 	fake := &jiratest.FakeClient{T: t}
 	a := newAppWithFake(t, fake)
-	a.issuesList.SetIssues([]jira.Issue{{Key: "MAIN-1"}})
+	main := &jira.Issue{Key: mainKey, Summary: "main"}
+	a.issuesList.SetIssues([]jira.Issue{*main})
+	a.infoPanel.SetIssue(main)
 	a.previewKey = subKey1
 
 	_, _ = a.handleIssueDetailLoaded(issueDetailLoadedMsg{
 		issue: &jira.Issue{Key: subKey1, Summary: "fresh"},
 	})
 
-	if got := a.infoPanel.IssueKey(); got != subKey1 {
-		t.Errorf("infoPanel.IssueKey() = %q, want %q", got, subKey1)
-	}
 	if got := a.detailView.IssueKey(); got != subKey1 {
-		t.Errorf("detailView.IssueKey() = %q, want %q", got, subKey1)
+		t.Errorf("detailView.IssueKey() = %q, want %q (DetailView follows previewKey)", got, subKey1)
+	}
+	if got := a.infoPanel.IssueKey(); got != mainKey {
+		t.Errorf("infoPanel.IssueKey() = %q, want %q (InfoPanel stays on main issue)", got, mainKey)
 	}
 }
 

@@ -165,12 +165,14 @@ func TestPreviewStaleResponse_DroppedWhenEpochAdvanced(t *testing.T) {
 
 	// Fresh response for epoch=2 arrives.
 	_, _ = a.Update(previewDetailLoadedMsg{
-		issue:     &jira.Issue{Key: key2, Summary: "current"},
+		issue: &jira.Issue{Key: key2, Summary: "current"},
 		epoch: 2,
 	})
 
-	if got := a.infoPanel.IssueKey(); got != key2 {
-		t.Errorf("infoPanel.IssueKey() = %q after fresh response, want %q", got, key2)
+	// A preview response only updates the DetailView + cache, not the
+	// InfoPanel (which belongs to the main list issue).
+	if got := a.detailView.IssueKey(); got != key2 {
+		t.Errorf("detailView.IssueKey() = %q after fresh response, want %q", got, key2)
 	}
 	if _, ok := a.issueCache[key2]; !ok {
 		t.Errorf("issueCache missing key %q after fresh response", key2)

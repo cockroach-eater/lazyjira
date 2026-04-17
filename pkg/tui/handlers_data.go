@@ -61,7 +61,9 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// handleIssueDetailLoaded updates the detail view with full issue data
+// handleIssueDetailLoaded applies a freshly fetched issue. DetailView follows
+// previewKey; InfoPanel follows the list selection so its tab and cursor are
+// preserved when a preview of another issue arrives.
 func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.Cmd) {
 	a.statusPanel.SetError("")
 	*a.logFlag = false
@@ -69,6 +71,8 @@ func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.
 	a.issueCache[msg.issue.Key] = msg.issue
 	if a.previewKey == "" || a.previewKey == msg.issue.Key {
 		a.detailView.UpdateIssueData(msg.issue)
+	}
+	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
 		a.infoPanel.SetIssue(msg.issue)
 	}
 	a.issuesList.PatchIssue(msg.issue)

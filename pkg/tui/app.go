@@ -586,10 +586,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		*a.logFlag = false
 		a.statusPanel.SetOnline(true)
 		a.issueCache[msg.issue.Key] = msg.issue
+		// DetailView only: InfoPanel belongs to the main list issue.
 		a.detailView.UpdateIssueData(msg.issue)
-		a.infoPanel.SetIssue(msg.issue)
 		a.issuesList.PatchIssue(msg.issue)
-		return a, a.prefetchRelated(msg.issue)
+		return a, nil
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)

@@ -12,10 +12,17 @@ import (
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// showCachedIssue updates the detail view with the cached version of the given issue key.
+// showCachedIssue updates the detail view with the cached version of the
+// given issue key. The InfoPanel is only updated when the key matches the
+// main list selection; otherwise the panel stays with the main issue so its
+// tab and cursor are preserved.
 func (a *App) showCachedIssue(key string) {
-	if cached, ok := a.issueCache[key]; ok {
-		a.detailView.SetIssue(cached)
+	cached, ok := a.issueCache[key]
+	if !ok {
+		return
+	}
+	a.detailView.SetIssue(cached)
+	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == key {
 		a.infoPanel.SetIssue(cached)
 	}
 }
