@@ -153,10 +153,8 @@ type App struct {
 	usersCache      map[string][]jira.User
 	issueCache      map[string]*jira.Issue
 	createMetaCache map[string][]jira.CreateMetaField
-	// previewKey is the Jira key of the issue currently shown as a preview
-	// (e.g. a sub-issue selected in the info panel). When set, it takes
-	// precedence over the main list selection for actions that operate on
-	// the visible issue, such as refresh. Empty means no preview active.
+	// previewKey identifies the issue displayed in the right-side views.
+	// Empty means nothing is displayed.
 	previewKey string
 	createCtx   createCtx
 
@@ -526,6 +524,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case views.IssueSelectedMsg:
 		if msg.Issue != nil {
+			a.previewKey = msg.Issue.Key
 			if cached, ok := a.issueCache[msg.Issue.Key]; ok {
 				a.detailView.SetIssue(cached)
 				a.infoPanel.SetIssue(cached)

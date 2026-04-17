@@ -6,16 +6,23 @@ import (
 
 	"github.com/textfuel/lazyjira/pkg/jira"
 	"github.com/textfuel/lazyjira/pkg/jira/jiratest"
+	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// newAppWithFake augments newTestApp() with a FakeClient and a non-nil logFlag,
-// the minimum needed for action handlers that fetch via the Jira client.
+const mainKey = "ABC-1"
+
+// newAppWithFake augments newTestApp() with a FakeClient, a non-nil logFlag,
+// an InfoPanel, a StatusPanel, and an empty issueCache — enough to flow a
+// message through App.Update without NPEs.
 func newAppWithFake(t *testing.T, fake *jiratest.FakeClient) *App {
 	t.Helper()
 	a := newTestApp()
 	a.client = fake
 	logFlag := false
 	a.logFlag = &logFlag
+	a.infoPanel = views.NewInfoPanel()
+	a.statusPanel = views.NewStatusPanel("", "", "")
+	a.issueCache = map[string]*jira.Issue{}
 	return a
 }
 
@@ -33,15 +40,16 @@ func stubFullIssueFetch(fake *jiratest.FakeClient, issue *jira.Issue) {
 	}
 }
 
-// TestActRefresh_FetchesSelectedIssueKey documents the current behavior:
-// pressing the refresh action re-fetches the currently selected issue via
-// GetIssue. This is a characterization test guarding the happy path.
-func TestActRefresh_FetchesSelectedIssueKey(t *testing.T) {
+// TestActRefresh_FetchesPreviewedIssue documents the happy path: after the
+// usual navigation sets previewKey to the displayed issue, pressing refresh
+// re-fetches that issue.
+func TestActRefresh_FetchesPreviewedIssue(t *testing.T) {
 	fake := &jiratest.FakeClient{T: t}
-	stubFullIssueFetch(fake, &jira.Issue{Key: "ABC-1", Summary: "updated"})
+	stubFullIssueFetch(fake, &jira.Issue{Key: mainKey, Summary: "updated"})
 
 	a := newAppWithFake(t, fake)
-	a.issuesList.SetIssues([]jira.Issue{{Key: "ABC-1"}})
+	a.issuesList.SetIssues([]jira.Issue{{Key: mainKey}})
+	a.previewKey = mainKey
 
 	_, cmd, handled := a.handleIssueAction(ActRefresh)
 	if !handled {
@@ -55,16 +63,88 @@ func TestActRefresh_FetchesSelectedIssueKey(t *testing.T) {
 	if len(fake.GetIssueCalls) != 1 {
 		t.Fatalf("expected 1 GetIssue call, got %d: %+v", len(fake.GetIssueCalls), fake.GetIssueCalls)
 	}
-	if got := fake.GetIssueCalls[0].Key; got != "ABC-1" {
-		t.Errorf("GetIssue called with key %q, want %q", got, "ABC-1")
+	if got := fake.GetIssueCalls[0].Key; got != mainKey {
+		t.Errorf("GetIssue called with key %q, want %q", got, mainKey)
 	}
 
 	loaded, ok := msg.(issueDetailLoadedMsg)
 	if !ok {
 		t.Fatalf("expected issueDetailLoadedMsg, got %T", msg)
 	}
-	if loaded.issue == nil || loaded.issue.Key != "ABC-1" {
+	if loaded.issue == nil || loaded.issue.Key != mainKey {
 		t.Errorf("loaded.issue = %+v, want Key=ABC-1", loaded.issue)
+	}
+}
+
+// TestIssueSelectedMsg_UpdatesPreviewKey pins down the invariant that the
+// previewKey follows whatever issue the user has selected in the list.
+func TestIssueSelectedMsg_UpdatesPreviewKey(t *testing.T) {
+	fake := &jiratest.FakeClient{T: t}
+	a := newAppWithFake(t, fake)
+
+	_, _ = a.Update(views.IssueSelectedMsg{Issue: &jira.Issue{Key: mainKey}})
+
+	if got := a.previewKey; got != mainKey {
+		t.Errorf("previewKey = %q, want %q", got, mainKey)
+	}
+}
+
+// TestPreviewSelectedIssue_UpdatesPreviewKey covers the helper that syncs the
+// preview to the current list selection (called on tab switches and after
+// issues load). It must keep previewKey aligned.
+func TestPreviewSelectedIssue_UpdatesPreviewKey(t *testing.T) {
+	fake := &jiratest.FakeClient{T: t}
+	a := newAppWithFake(t, fake)
+	a.issuesList.SetIssues([]jira.Issue{{Key: "XYZ-9"}})
+
+	a.previewSelectedIssue()
+
+	if got := a.previewKey; got != "XYZ-9" {
+		t.Errorf("previewKey = %q, want %q", got, "XYZ-9")
+	}
+}
+
+// TestHandleIssueDetailLoaded_RoutesByPreviewKey ensures a detail response for
+// the previewed issue updates detailView + infoPanel, even if the list cursor
+// has moved on (or never matched, e.g. when previewing a sub-issue).
+func TestHandleIssueDetailLoaded_RoutesByPreviewKey(t *testing.T) {
+	fake := &jiratest.FakeClient{T: t}
+	a := newAppWithFake(t, fake)
+	a.issuesList.SetIssues([]jira.Issue{{Key: "MAIN-1"}})
+	a.previewKey = "SUB-1"
+
+	_, _ = a.handleIssueDetailLoaded(issueDetailLoadedMsg{
+		issue: &jira.Issue{Key: "SUB-1", Summary: "fresh"},
+	})
+
+	if got := a.infoPanel.IssueKey(); got != "SUB-1" {
+		t.Errorf("infoPanel.IssueKey() = %q, want %q", got, "SUB-1")
+	}
+	if got := a.detailView.IssueKey(); got != "SUB-1" {
+		t.Errorf("detailView.IssueKey() = %q, want %q", got, "SUB-1")
+	}
+}
+
+// TestActRefresh_NoFetchWhenPreviewKeyEmpty pins the invariant that previewKey
+// is the single source of truth: with no preview active, refresh is a no-op
+// even if the list has a selection. This removes the implicit fallback to
+// the list cursor.
+func TestActRefresh_NoFetchWhenPreviewKeyEmpty(t *testing.T) {
+	fake := &jiratest.FakeClient{T: t}
+	// No *Func set — any call would t.Fatalf.
+	a := newAppWithFake(t, fake)
+	a.issuesList.SetIssues([]jira.Issue{{Key: mainKey}})
+	// previewKey intentionally left empty.
+
+	_, cmd, handled := a.handleIssueAction(ActRefresh)
+	if !handled {
+		t.Fatal("ActRefresh was not handled")
+	}
+	if cmd != nil {
+		t.Errorf("expected nil cmd (no fetch), got non-nil")
+	}
+	if len(fake.GetIssueCalls) != 0 {
+		t.Errorf("expected 0 GetIssue calls, got %d: %+v", len(fake.GetIssueCalls), fake.GetIssueCalls)
 	}
 }
 
@@ -77,7 +157,7 @@ func TestActRefresh_UsesPreviewKey_WhenSet(t *testing.T) {
 	stubFullIssueFetch(fake, &jira.Issue{Key: "ABC-2", Summary: "sub-item"})
 
 	a := newAppWithFake(t, fake)
-	a.issuesList.SetIssues([]jira.Issue{{Key: "ABC-1"}})
+	a.issuesList.SetIssues([]jira.Issue{{Key: mainKey}})
 	a.previewKey = "ABC-2"
 
 	_, cmd, handled := a.handleIssueAction(ActRefresh)

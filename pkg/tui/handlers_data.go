@@ -67,13 +67,9 @@ func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.
 	*a.logFlag = false
 	a.statusPanel.SetOnline(true)
 	a.issueCache[msg.issue.Key] = msg.issue
-	if a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key {
+	if a.previewKey == "" || a.previewKey == msg.issue.Key {
 		a.detailView.UpdateIssueData(msg.issue)
-	}
-	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
-		if a.infoPanel.IssueKey() == "" || a.infoPanel.IssueKey() == msg.issue.Key {
-			a.infoPanel.SetIssue(msg.issue)
-		}
+		a.infoPanel.SetIssue(msg.issue)
 	}
 	a.issuesList.PatchIssue(msg.issue)
 

@@ -428,15 +428,9 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 		return a, nil, true
 
 	case ActRefresh:
-		key := a.previewKey
-		if key == "" {
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
-				key = sel.Key
-			}
-		}
-		if key != "" {
+		if a.previewKey != "" {
 			*a.logFlag = true
-			return a, fetchIssueDetail(a.client, key), true
+			return a, fetchIssueDetail(a.client, a.previewKey), true
 		}
 		return a, nil, true
 

@@ -21,6 +21,7 @@ func (a *App) previewSelectedIssue() {
 	if sel == nil {
 		return
 	}
+	a.previewKey = sel.Key
 	if cached, ok := a.issueCache[sel.Key]; ok {
 		a.detailView.SetIssue(cached)
 		a.infoPanel.SetIssue(cached)
