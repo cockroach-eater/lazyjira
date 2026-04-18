@@ -88,6 +88,21 @@ type issuesLoadedMsg struct {
 	tab    int
 }
 type issueDetailLoadedMsg struct{ issue *jira.Issue }
+
+// previewDetailLoadedMsg carries the response of a preview-triggered fetch.
+// See App.previewEpoch.
+type previewDetailLoadedMsg struct {
+	issue *jira.Issue
+	epoch int
+}
+
+// previewDebounceMsg is delivered when a PreviewRequestMsg's debounce tick
+// expires. See App.previewEpoch.
+type previewDebounceMsg struct {
+	key   string
+	epoch int
+}
+
 type transitionDoneMsg struct{}
 type errorMsg struct{ err error }
 type projectsLoadedMsg struct{ projects []jira.Project }
@@ -153,7 +168,16 @@ type App struct {
 	usersCache      map[string][]jira.User
 	issueCache      map[string]*jira.Issue
 	createMetaCache map[string][]jira.CreateMetaField
-	createCtx   createCtx
+	// previewKey identifies the issue displayed in the right-side views.
+	// Empty means nothing is displayed.
+	previewKey string
+	// previewEpoch is bumped on every PreviewRequestMsg. Debounce ticks
+	// and fetch responses carry the epoch of the intent that spawned
+	// them; handlers drop anything whose epoch no longer matches. This
+	// is how we simulate "cancel the previous intent", which bubbletea
+	// does not provide natively for tea.Cmd.
+	previewEpoch int
+	createCtx        createCtx
 
 	gitRepoPath    string
 	gitBranch      string
@@ -520,15 +544,52 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case views.IssueSelectedMsg:
-		if msg.Issue != nil {
-			if cached, ok := a.issueCache[msg.Issue.Key]; ok {
-				a.detailView.SetIssue(cached)
-				a.infoPanel.SetIssue(cached)
-			} else {
-				a.detailView.SetIssue(msg.Issue)
-				a.infoPanel.SetIssue(msg.Issue)
-			}
+		if msg.Issue == nil {
+			return a, nil
 		}
+		a.previewKey = msg.Issue.Key
+		if cached, ok := a.issueCache[msg.Issue.Key]; ok {
+			a.detailView.SetIssue(cached)
+			a.infoPanel.SetIssue(cached)
+		} else {
+			a.detailView.SetIssue(msg.Issue)
+			a.infoPanel.SetIssue(msg.Issue)
+		}
+		return a, a.prefetchRelated(msg.Issue)
+
+	case views.PreviewRequestMsg:
+		a.previewKey = msg.Key
+		a.previewEpoch++
+		if cached, ok := a.issueCache[msg.Key]; ok && cached != nil {
+			a.detailView.UpdateIssueData(cached)
+			return a, nil
+		}
+		epoch := a.previewEpoch
+		key := msg.Key
+		return a, tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+			return previewDebounceMsg{key: key, epoch: epoch}
+		})
+
+	case previewDebounceMsg:
+		if msg.epoch != a.previewEpoch {
+			return a, nil
+		}
+		return a, fetchPreviewDetail(a.client, msg.key, a.previewEpoch)
+
+	case previewDetailLoadedMsg:
+		if msg.epoch != a.previewEpoch {
+			return a, nil
+		}
+		if msg.issue == nil {
+			return a, nil
+		}
+		a.statusPanel.SetError("")
+		*a.logFlag = false
+		a.statusPanel.SetOnline(true)
+		a.issueCache[msg.issue.Key] = msg.issue
+		// DetailView only: InfoPanel belongs to the main list issue.
+		a.detailView.UpdateIssueData(msg.issue)
+		a.issuesList.PatchIssue(msg.issue)
 		return a, nil
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {

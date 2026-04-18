@@ -242,7 +242,14 @@ func (a *App) handleFocusAction(action Action) (tea.Model, tea.Cmd, bool) {
 			case focusIssues:
 				a.leftFocus = focusStatus
 			case focusInfo:
+				tab := a.infoPanel.ActiveTab()
+				var cmd tea.Cmd
+				if tab == views.InfoTabSubtasks || tab == views.InfoTabLinks {
+					cmd = a.previewSelectedIssue()
+				}
 				a.leftFocus = focusIssues
+				a.updateFocusState()
+				return a, cmd, true
 			case focusProjects:
 				a.leftFocus = focusInfo
 			}
@@ -303,9 +310,10 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			if !a.issuesList.HasCachedTab() {
 				return a, a.fetchActiveTab(), true
 			}
-			a.previewSelectedIssue()
+			return a, a.previewSelectedIssue(), true
 		case a.side == sideLeft && a.leftFocus == focusInfo:
 			a.infoPanel.PrevTab()
+			return a, a.previewForInfoTab(), true
 		}
 		return a, nil, true
 
@@ -318,9 +326,10 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			if !a.issuesList.HasCachedTab() {
 				return a, a.fetchActiveTab(), true
 			}
-			a.previewSelectedIssue()
+			return a, a.previewSelectedIssue(), true
 		case a.side == sideLeft && a.leftFocus == focusInfo:
 			a.infoPanel.NextTab()
+			return a, a.previewForInfoTab(), true
 		}
 		return a, nil, true
 
@@ -352,36 +361,36 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 	switch action { //nolint:exhaustive
 	case ActCopyURL:
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
-			copyToClipboard(a.cfg.Jira.Host + "/browse/" + sel.Key)
+		if cur := a.currentIssue(); cur != nil {
+			copyToClipboard(a.cfg.Jira.Host + "/browse/" + cur.Key)
 		}
 		return a, nil, true
 
 	case ActBrowser:
-		if sel := a.issuesList.SelectedIssue(); sel != nil && (a.leftFocus == focusIssues || a.side == sideRight) {
-			openBrowser(a.cfg.Jira.Host + "/browse/" + sel.Key)
+		if cur := a.currentIssue(); cur != nil {
+			openBrowser(a.cfg.Jira.Host + "/browse/" + cur.Key)
 		}
 		return a, nil, true
 
 	case ActTransition:
 		if a.side == sideLeft && (a.leftFocus == focusIssues || a.leftFocus == focusInfo) {
-			if sel := a.issuesList.SelectedIssue(); sel != nil {
+			if cur := a.currentIssue(); cur != nil {
 				*a.logFlag = true
-				return a, fetchTransitions(a.client, sel.Key), true
+				return a, fetchTransitions(a.client, cur.Key), true
 			}
 		}
 		return a, nil, true
 
 	case ActComments:
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil {
+		cur := a.currentIssue()
+		if cur == nil {
 			return a, nil, true
 		}
 		a.side = sideRight
 		a.detailView.SetActiveTab(views.TabComments)
 		a.updateFocusState()
-		if _, ok := a.issueCache[sel.Key]; !ok {
-			return a, fetchIssueDetail(a.client, sel.Key), true
+		if _, ok := a.issueCache[cur.Key]; !ok {
+			return a, fetchIssueDetail(a.client, cur.Key), true
 		}
 		return a, nil, true
 
@@ -401,36 +410,37 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 			m, cmd := a.startCreateIssue()
 			return m, cmd, true
 		}
-		sel := a.issuesList.SelectedIssue()
-		if sel == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
+		cur := a.currentIssue()
+		if cur == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
 			return a, nil, true
 		}
-		a.editContext = editCtx{kind: editCommentNew, issueKey: sel.Key}
+		a.editContext = editCtx{kind: editCommentNew, issueKey: cur.Key}
 		return a, launchEditor("", ".md"), true
 
 	case ActPriority:
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
+		if cur := a.currentIssue(); cur != nil {
 			*a.logFlag = true
 			return a, fetchPriorities(a.client), true
 		}
 		return a, nil, true
 
 	case ActAssignee:
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
+		if cur := a.currentIssue(); cur != nil {
 			*a.logFlag = true
-			a.onSelect = a.makePersonSelectCallback(sel.Key, "assignee")
+			a.onSelect = a.makePersonSelectCallback(cur.Key, "assignee")
 			if cached, ok := a.usersCache[a.projectKey]; ok {
-				m, cmd := a.handleUsersLoaded(usersLoadedMsg{users: cached, issueKey: sel.Key})
+				m, cmd := a.handleUsersLoaded(usersLoadedMsg{users: cached, issueKey: cur.Key})
 				return m, cmd, true
 			}
-			return a, fetchUsers(a.client, a.projectKey, sel.Key), true
+			return a, fetchUsers(a.client, a.projectKey, cur.Key), true
 		}
 		return a, nil, true
 
 	case ActRefresh:
-		if sel := a.issuesList.SelectedIssue(); sel != nil {
+		if a.previewKey != "" {
+			delete(a.issueCache, a.previewKey)
 			*a.logFlag = true
-			return a, fetchIssueDetail(a.client, sel.Key), true
+			return a, fetchIssueDetail(a.client, a.previewKey), true
 		}
 		return a, nil, true
 
@@ -441,13 +451,9 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 }
 
 func (a *App) startDuplicateIssue() (tea.Model, tea.Cmd) {
-	sel := a.issuesList.SelectedIssue()
-	if sel == nil || a.projectKey == "" {
+	source := a.currentIssue()
+	if source == nil || a.projectKey == "" {
 		return a, nil
-	}
-	source := sel
-	if cached, ok := a.issueCache[sel.Key]; ok {
-		source = cached
 	}
 	a.createCtx = createCtx{
 		intent:        true,
@@ -568,12 +574,8 @@ func (a *App) infoPanelSelectedKey() string {
 
 // handleActionURLPicker shows the URL picker modal
 func (a *App) handleActionURLPicker() (tea.Model, tea.Cmd) {
-	if sel := a.issuesList.SelectedIssue(); sel != nil {
-		cached := sel
-		if c, ok := a.issueCache[sel.Key]; ok {
-			cached = c
-		}
-		groups := views.ExtractURLs(cached, a.cfg.Jira.Host)
+	if cur := a.currentIssue(); cur != nil {
+		groups := views.ExtractURLs(cur, a.cfg.Jira.Host)
 		if len(groups) > 0 {
 			var items []components.ModalItem
 			for i, g := range groups {
@@ -608,17 +610,27 @@ func (a *App) handleActionURLPicker() (tea.Model, tea.Cmd) {
 
 // handleActionEdit dispatches context-aware editing
 func (a *App) handleActionEdit() (tea.Model, tea.Cmd) {
-	sel := a.issuesList.SelectedIssue()
-	if sel == nil {
+	cur := a.currentIssue()
+	if cur == nil {
 		return a, nil
 	}
 	if a.side == sideLeft && a.leftFocus == focusIssues {
-		a.inputModal.Show("Edit Summary", sel.Summary)
-		a.editContext = editCtx{kind: editSummary, issueKey: sel.Key}
+		a.inputModal.Show("Edit Summary", cur.Summary)
+		a.editContext = editCtx{kind: editSummary, issueKey: cur.Key}
 		return a, nil
 	}
 	if a.side == sideLeft && a.leftFocus == focusInfo {
-		return a.editInfoField(sel)
+		if a.infoPanel.ActiveTab() == views.InfoTabFields {
+			// Fields tab shows the main list issue's fields; edit those.
+			if sel := a.issuesList.SelectedIssue(); sel != nil {
+				return a.editInfoField(sel)
+			}
+			return a, nil
+		}
+		// Sub or Lnk tab: edit the previewed issue's summary.
+		a.inputModal.Show("Edit Summary", cur.Summary)
+		a.editContext = editCtx{kind: editSummary, issueKey: cur.Key}
+		return a, nil
 	}
 	if a.side == sideRight && a.detailView.ActiveTab() == views.TabComments {
 		cmt := a.detailView.SelectedComment()
@@ -631,20 +643,16 @@ func (a *App) handleActionEdit() (tea.Model, tea.Cmd) {
 		} else if cmt.Body != "" {
 			md = cmt.Body
 		}
-		a.editContext = editCtx{kind: editCommentMod, issueKey: sel.Key, commentID: cmt.ID}
+		a.editContext = editCtx{kind: editCommentMod, issueKey: cur.Key, commentID: cmt.ID}
 		return a, launchEditor(md, ".md")
 	}
-	cached := sel
-	if c, ok := a.issueCache[sel.Key]; ok {
-		cached = c
-	}
 	md := ""
-	if cached.DescriptionADF != nil {
-		md = views.ADFToMarkdown(cached.DescriptionADF)
-	} else if cached.Description != "" {
-		md = cached.Description
+	if cur.DescriptionADF != nil {
+		md = views.ADFToMarkdown(cur.DescriptionADF)
+	} else if cur.Description != "" {
+		md = cur.Description
 	}
-	a.editContext = editCtx{kind: editDesc, issueKey: sel.Key}
+	a.editContext = editCtx{kind: editDesc, issueKey: cur.Key}
 	return a, launchEditor(md, ".md")
 }
 
@@ -657,7 +665,7 @@ func (a *App) handleActionCreateBranch() (tea.Model, tea.Cmd) {
 		a.statusPanel.SetError("not a git repository")
 		return a, nil
 	}
-	sel := a.issuesList.SelectedIssue()
+	sel := a.currentIssue()
 	if sel == nil {
 		return a, nil
 	}
