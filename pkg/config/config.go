@@ -13,6 +13,7 @@ type Config struct {
 	GUI              GUIConfig             `yaml:"gui"`
 	Keybinding       KeybindingConfig      `yaml:"keybinding"`
 	IssueTabs        []IssueTabConfig      `yaml:"issueTabs"`
+	MaxResults       *int                  `yaml:"maxResults"`
 	Cache            CacheConfig           `yaml:"cache"`
 	Refresh          RefreshConfig         `yaml:"refresh"`
 	Fields           []FieldConfig         `yaml:"fields"`
@@ -51,8 +52,9 @@ type BranchFormatCondition struct {
 }
 
 type IssueTabConfig struct {
-	Name string `yaml:"name"`
-	JQL  string `yaml:"jql"`
+	Name       string `yaml:"name"`
+	JQL        string `yaml:"jql"`
+	MaxResults *int   `yaml:"maxResults"`
 }
 
 type FieldConfig struct {
@@ -212,6 +214,33 @@ func DefaultConfig() *Config {
 			Interval:    "30s",
 		},
 	}
+}
+
+// DefaultMaxResults is the fallback page size used when neither the global
+// `maxResults` nor a tab-specific override is set. Note that the Jira server
+// may enforce its own upper bound and silently return fewer issues than
+// requested.
+const DefaultMaxResults = 50
+
+// ResolveGlobalMaxResults returns the effective page size for queries that
+// are not tied to a configured tab (ad-hoc JQL searches, JQL tabs): global
+// config value if set and positive, otherwise the compile-time default.
+// A nil or non-positive pointer is treated as "unset".
+func (c *Config) ResolveGlobalMaxResults() int {
+	if c.MaxResults != nil && *c.MaxResults > 0 {
+		return *c.MaxResults
+	}
+	return DefaultMaxResults
+}
+
+// ResolveMaxResults returns the effective page size for a given tab:
+// per-tab override first, then the global/default chain. A nil or
+// non-positive pointer is treated as "unset".
+func (c *Config) ResolveMaxResults(tab IssueTabConfig) int {
+	if tab.MaxResults != nil && *tab.MaxResults > 0 {
+		return *tab.MaxResults
+	}
+	return c.ResolveGlobalMaxResults()
 }
 
 // DefaultIssueTabs returns the default issue tab configuration

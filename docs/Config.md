@@ -203,9 +203,29 @@ issueTabs:
     jql: "project = {{.ProjectKey}} AND assignee=currentUser() ORDER BY priority DESC"
   - name: "Recent"
     jql: "project = {{.ProjectKey}} AND updated >= -7d ORDER BY updated DESC"
+    maxResults: 100
 ```
 
 You can also create temporary JQL tabs at runtime with the `s` key.
+
+Per-tab page size can be set via `maxResults` on the tab entry — see [Page size](#page-size-maxresults) below.
+
+## Page size (`maxResults`)
+
+The number of issues fetched per query. Can be set globally and overridden per tab:
+
+```yaml
+maxResults: 75          # global default for all tabs and ad-hoc JQL searches
+issueTabs:
+  - name: "All"
+    jql: "project = {{.ProjectKey}} ORDER BY updated DESC"
+    maxResults: 200     # per-tab override
+  - name: "Assigned"
+    jql: "project = {{.ProjectKey}} AND assignee=currentUser()"
+                        # inherits global 75
+```
+
+Resolution order: per-tab `maxResults` → global `maxResults` → built-in default (50). Values `<= 0` are treated as unset. Note that the Jira server may enforce its own upper bound and silently return fewer issues than requested.
 
 ## Keybindings
 

@@ -87,3 +87,61 @@ func TestLoad_InvalidCustomCommandTemplate(t *testing.T) {
 		t.Errorf("error = %q, want it to mention template parse error", err)
 	}
 }
+
+func ptr[T any](v T) *T { return &v }
+
+func TestResolveMaxResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		global *int
+		tab    IssueTabConfig
+		want   int
+	}{
+		{"all unset → default", nil, IssueTabConfig{}, DefaultMaxResults},
+		{"global only", ptr(25), IssueTabConfig{}, 25},
+		{"tab overrides global", ptr(25), IssueTabConfig{MaxResults: ptr(75)}, 75},
+		{"negative global ignored", ptr(-5), IssueTabConfig{}, DefaultMaxResults},
+		{"zero tab falls back to global", ptr(40), IssueTabConfig{MaxResults: ptr(0)}, 40},
+		{"large global not clamped", ptr(500), IssueTabConfig{}, 500},
+		{"large tab override not clamped", ptr(50), IssueTabConfig{MaxResults: ptr(1000)}, 1000},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{MaxResults: tc.global}
+			if got := c.ResolveMaxResults(tc.tab); got != tc.want {
+				t.Errorf("ResolveMaxResults = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveGlobalMaxResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		global *int
+		want   int
+	}{
+		{"nil → default", nil, DefaultMaxResults},
+		{"zero → default", ptr(0), DefaultMaxResults},
+		{"negative → default", ptr(-1), DefaultMaxResults},
+		{"set", ptr(125), 125},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{MaxResults: tc.global}
+			if got := c.ResolveGlobalMaxResults(); got != tc.want {
+				t.Errorf("ResolveGlobalMaxResults = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDefaultConfig_MaxResults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.MaxResults != nil {
+		t.Errorf("default MaxResults should be nil (unset), got %d", *cfg.MaxResults)
+	}
+	if got := cfg.ResolveGlobalMaxResults(); got != DefaultMaxResults {
+		t.Errorf("ResolveGlobalMaxResults on defaults = %d, want %d", got, DefaultMaxResults)
+	}
+}

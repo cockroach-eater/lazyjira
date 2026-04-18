@@ -54,9 +54,9 @@ func gitCheckoutTracking(repoPath, remoteBranch string) tea.Cmd {
 }
 
 
-func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab int) tea.Cmd {
+func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab, maxResults int) tea.Cmd {
 	return func() tea.Msg {
-		result, err := client.SearchIssues(context.Background(), jql, 0, 50)
+		result, err := client.SearchIssues(context.Background(), jql, 0, maxResults)
 		if err != nil {
 			return errorMsg{err: err}
 		}
@@ -170,9 +170,9 @@ type jqlSearchErrorMsg struct{ err string }
 type jqlFieldsLoadedMsg struct{ fields []jira.AutocompleteField }
 type jqlSuggestionsMsg struct{ suggestions []jira.AutocompleteSuggestion }
 
-func fetchJQLSearch(client jira.ClientInterface, jql string) tea.Cmd {
+func fetchJQLSearch(client jira.ClientInterface, jql string, maxResults int) tea.Cmd {
 	return func() tea.Msg {
-		result, err := client.SearchIssues(context.Background(), jql, 0, 50)
+		result, err := client.SearchIssues(context.Background(), jql, 0, maxResults)
 		if err != nil {
 			return jqlSearchErrorMsg{err: err.Error()}
 		}

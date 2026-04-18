@@ -960,7 +960,7 @@ func (a *App) fetchActiveTab() tea.Cmd {
 		}
 		tabIdx := a.issuesList.GetTabIndex()
 		*a.logFlag = true
-		return fetchIssuesByJQL(a.client, jql, tabIdx)
+		return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveGlobalMaxResults())
 	}
 	if a.projectKey == "" {
 		return nil
@@ -972,7 +972,7 @@ func (a *App) fetchActiveTab() tea.Cmd {
 	tabIdx := a.issuesList.GetTabIndex()
 	jql := resolveTabJQL(tab, a.projectKey, a.cfg.Jira.Email)
 	*a.logFlag = true
-	return fetchIssuesByJQL(a.client, jql, tabIdx)
+	return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveMaxResults(tab))
 }
 
 func (a *App) updateFocusState() {
