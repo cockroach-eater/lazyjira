@@ -10,7 +10,7 @@ import (
 func (a *App) handleJQLSubmit(msg components.JQLSubmitMsg) (tea.Model, tea.Cmd) {
 	*a.logFlag = true
 	a.jqlModal.SetLoading(true)
-	return a, fetchJQLSearch(a.client, msg.Query)
+	return a, fetchJQLSearch(a.client, msg.Query, a.cfg.ResolveGlobalMaxResults())
 }
 
 // handleJQLSearchResult processes JQL search results.

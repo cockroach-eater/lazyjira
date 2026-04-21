@@ -55,7 +55,11 @@ func run() error {
 	if *demo {
 		cfg = config.DefaultConfig()
 	} else {
-		cfg, _ = config.Load()
+		var err error
+		cfg, err = config.Load()
+		if err != nil {
+			return fmt.Errorf("loading config: %w", err)
+		}
 	}
 
 	var client jira.ClientInterface
@@ -100,6 +104,7 @@ func run() error {
 
 	tui.Version = version
 	app := tui.NewAppWithAuth(cfg, client, authMethod)
+	defer app.Shutdown()
 
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
@@ -321,8 +326,12 @@ func runAuth(args []string) {
 	authFlags := flag.NewFlagSet("auth", flag.ExitOnError)
 	_ = authFlags.Parse(args)
 
-	cfg, _ := config.Load()
-	_, err := runSetupWizard(cfg)
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	_, err = runSetupWizard(cfg)
 	if err != nil {
 		os.Exit(1)
 	}

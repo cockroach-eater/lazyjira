@@ -203,9 +203,29 @@ issueTabs:
     jql: "project = {{.ProjectKey}} AND assignee=currentUser() ORDER BY priority DESC"
   - name: "Recent"
     jql: "project = {{.ProjectKey}} AND updated >= -7d ORDER BY updated DESC"
+    maxResults: 100
 ```
 
 You can also create temporary JQL tabs at runtime with the `s` key.
+
+Per-tab page size can be set via `maxResults` on the tab entry — see [Page size](#page-size-maxresults) below.
+
+## Page size (`maxResults`)
+
+The number of issues fetched per query. Can be set globally and overridden per tab:
+
+```yaml
+maxResults: 75          # global default for all tabs and ad-hoc JQL searches
+issueTabs:
+  - name: "All"
+    jql: "project = {{.ProjectKey}} ORDER BY updated DESC"
+    maxResults: 200     # per-tab override
+  - name: "Assigned"
+    jql: "project = {{.ProjectKey}} AND assignee=currentUser()"
+                        # inherits global 75
+```
+
+Resolution order: per-tab `maxResults` → global `maxResults` → built-in default (50). Values `<= 0` are treated as unset. Note that the Jira server may enforce its own upper bound and silently return fewer issues than requested.
 
 ## Keybindings
 
@@ -291,6 +311,101 @@ Template variables.
 | `{{.Summary \| slugify}}` | Summary as a slug, lowercase with dashes |
 | `{{.Type}}` | Issue type name (e.g. Bug, Story, Task) |
 | `{{.ParentKey}}` | Parent issue key (empty if no parent) |
+
+## Custom commands
+
+Bind shell commands to keys, with Go template access to the focused issue, project, or comment. Custom bindings take precedence over built-in keys, so they can be used to override any action.
+
+```yaml
+customCommands:
+  - key: "ctrl+y"
+    name: "Copy issue key"
+    command: "printf %s {{.Key}} | wl-copy"
+    suspend: false
+  - key: "ctrl+l"
+    name: "Copy comment link"
+    command: "printf '%s?focusedCommentId=%s' {{.URL}} {{.CommentID}} | wl-copy"
+    contexts: [detail.comments]
+    suspend: false
+  - key: "ctrl+w"
+    name: "Log work"
+    command: "jira issue worklog add {{.Key}}"
+```
+
+Each command has:
+
+| Field | Description |
+|-------|-------------|
+| `key` | Key binding. Supports single letters, modifiers (`ctrl+x`, `alt+x`), and special keys (`tab`, `enter`). |
+| `name` | Label shown in the help overlay and help bar. |
+| `command` | Shell command string. Rendered as a Go template before execution. |
+| `contexts` | Optional list of UI contexts the command fires in. Defaults to `[issues, info, detail]`. |
+| `suspend` | Optional. `true` (default) hands the terminal to the child process; set `false` for background commands like clipboard copies or notifications. |
+
+### Contexts
+
+A command fires when one of its declared contexts matches the current UI state.
+
+| Context | Active when |
+|---------|-------------|
+| `issues` | Issues list panel is focused. |
+| `info` | Info panel is focused (any sub-tab). |
+| `projects` | Projects list panel is focused. |
+| `detail` | Right detail panel is showing an issue, on any tab. |
+| `detail.comments` | Right detail panel is on the Comments tab with a comment selected. |
+
+When more than one context matches at the same time (`detail` and `detail.comments` in the Comments tab), the more specific context wins.
+
+### Template variables
+
+The fields available to the template depend on the command's contexts.
+
+**Issue scope** (`issues`, `info`, `detail`):
+
+| Variable | Description |
+|----------|-------------|
+| `{{.Key}}` | Issue key like `PROJ-123`. |
+| `{{.ProjectKey}}` | Project prefix extracted from the key. |
+| `{{.ParentKey}}` | Parent issue key (empty if no parent). |
+| `{{.Summary}}` | Issue summary. |
+| `{{.Type}}` | Issue type name. |
+| `{{.Status}}` | Status name. |
+| `{{.Assignee}}` | Assignee display name. |
+| `{{.Priority}}` | Priority name. |
+| `{{.URL}}` | Fully qualified issue URL. |
+
+**Project scope** (`projects`):
+
+| Variable | Description |
+|----------|-------------|
+| `{{.ProjectKey}}` | Project key. |
+| `{{.ProjectName}}` | Project name. |
+
+**Comment scope** (`detail.comments`):
+
+Exposes the Issue scope fields above plus the focused comment:
+
+| Variable | Description |
+|----------|-------------|
+| `{{.CommentID}}` | Comment ID. |
+| `{{.CommentAuthor}}` | Comment author display name. |
+| `{{.CommentBody}}` | Comment body. |
+
+### Shared fields
+
+Available in every scope:
+
+| Variable | Description |
+|----------|-------------|
+| `{{.JiraHost}}` | Jira host from the Jira config. |
+| `{{.GitBranch}}` | Current git branch, if lazyjira was started in a git repo. |
+| `{{.GitRepoPath}}` | Git repository path. |
+
+### Template helpers
+
+| Helper | Description |
+|--------|-------------|
+| `{{.X \| shellescape}}` | Wraps the value in single quotes with inner quotes escaped. Use for any template value that could contain shell metacharacters. |
 
 ## Files
 

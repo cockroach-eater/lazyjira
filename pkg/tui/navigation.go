@@ -6,21 +6,53 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/textfuel/lazyjira/pkg/jira"
+	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
 
-// showCachedIssue updates the detail view with the cached version of the given issue key.
+// currentIssue returns the issue the user is currently looking at: the
+// previewed issue if cached, otherwise a stub carrying just the preview key.
+// Falls back to the list selection only when no preview is active. User-
+// initiated actions (edit, copy URL, transition, custom commands, ...)
+// operate on the result so they target what is on screen even when a sub or
+// link is being previewed. The stub covers the brief window between a
+// preview request firing and the fetch response populating the cache; actions
+// that need more than the key (edit summary/description) must accept a key-
+// only stub gracefully.
+func (a *App) currentIssue() *jira.Issue {
+	if a.previewKey != "" {
+		if cached, ok := a.issueCache[a.previewKey]; ok && cached != nil {
+			return cached
+		}
+		return &jira.Issue{Key: a.previewKey}
+	}
+	return a.issuesList.SelectedIssue()
+}
+
+// showCachedIssue updates the detail view with the cached version of the
+// given issue key. The InfoPanel is only updated when the key matches the
+// main list selection; otherwise the panel stays with the main issue so its
+// tab and cursor are preserved.
 func (a *App) showCachedIssue(key string) {
-	if cached, ok := a.issueCache[key]; ok {
-		a.detailView.SetIssue(cached)
+	cached, ok := a.issueCache[key]
+	if !ok {
+		return
+	}
+	a.detailView.SetIssue(cached)
+	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == key {
 		a.infoPanel.SetIssue(cached)
 	}
 }
 
-func (a *App) previewSelectedIssue() {
+func (a *App) previewSelectedIssue() tea.Cmd {
 	sel := a.issuesList.SelectedIssue()
 	if sel == nil {
-		return
+		return nil
 	}
+	a.previewKey = sel.Key
 	if cached, ok := a.issueCache[sel.Key]; ok {
 		a.detailView.SetIssue(cached)
 		a.infoPanel.SetIssue(cached)
@@ -28,6 +60,26 @@ func (a *App) previewSelectedIssue() {
 		a.detailView.SetIssue(sel)
 		a.infoPanel.SetIssue(sel)
 	}
+	return a.prefetchRelated(sel)
+}
+
+// previewForInfoTab refreshes the preview for the current InfoPanel tab, so
+// entering Sub or Lnk immediately previews its first entry. Fields reverts
+// to the main issue; empty lists dispatch nothing.
+func (a *App) previewForInfoTab() tea.Cmd {
+	switch a.infoPanel.ActiveTab() {
+	case views.InfoTabFields:
+		return a.previewSelectedIssue()
+	case views.InfoTabSubtasks:
+		if key := a.infoPanel.SelectedSubtaskKey(); key != "" {
+			return func() tea.Msg { return views.PreviewRequestMsg{Key: key} }
+		}
+	case views.InfoTabLinks:
+		if key := a.infoPanel.SelectedLinkKey(); key != "" {
+			return func() tea.Msg { return views.PreviewRequestMsg{Key: key} }
+		}
+	}
+	return nil
 }
 
 // extractIssueKey checks if a URL points to our Jira and extracts the issue key.

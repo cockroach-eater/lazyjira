@@ -3,6 +3,7 @@ package tui
 import (
 	"slices"
 
+	"github.com/textfuel/lazyjira/pkg/config"
 	"github.com/textfuel/lazyjira/pkg/tui/components"
 	"github.com/textfuel/lazyjira/pkg/tui/views"
 )
@@ -56,7 +57,7 @@ func (a *App) ContextBindings() []Binding {
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
 		bindings := slices.Concat(global, a.navBindings(), a.detailScrollBindings())
-		return append(bindings,
+		bindings = append(bindings,
 			a.bind(ActOpen, "open issue detail"),
 			a.bind(ActFocusRight, "open issue detail"),
 			a.bind(ActTransition, "transition issue status"),
@@ -72,10 +73,12 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActCloseJQLTab, "close JQL tab"),
 			Binding{"[]", "switch tab"},
 		)
+		bindings = append(bindings, a.customCommandBindings(config.CtxIssues)...)
+		return bindings
 
 	case a.side == sideLeft && a.leftFocus == focusInfo:
 		bindings := slices.Concat(global, a.navBindings(), a.detailScrollBindings())
-		return append(bindings,
+		bindings = append(bindings,
 			Binding{"[]", "switch tab (Info/Lnk/Sub)"},
 			a.bind(ActEdit, "edit field"),
 			a.bind(ActTransition, "transition issue status"),
@@ -86,14 +89,18 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
 		)
+		bindings = append(bindings, a.customCommandBindings(config.CtxInfo)...)
+		return bindings
 
 	case a.side == sideLeft && a.leftFocus == focusProjects:
 		bindings := slices.Concat(global, a.navBindings())
-		return append(bindings,
+		bindings = append(bindings,
 			a.bind(ActSelect, "select project and load issues"),
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
 		)
+		bindings = append(bindings, a.customCommandBindings(config.CtxProjects)...)
+		return bindings
 
 	case a.side == sideLeft && a.leftFocus == focusStatus:
 		return append(global,
@@ -120,6 +127,10 @@ func (a *App) ContextBindings() []Binding {
 			bindings = append(bindings,
 				a.bind(ActEdit, "edit description"),
 			)
+		}
+		bindings = append(bindings, a.customCommandBindings(config.CtxDetail)...)
+		if a.detailView.ActiveTab() == views.TabComments {
+			bindings = append(bindings, a.customCommandBindings(config.CtxDetailComments)...)
 		}
 		return bindings
 	}
@@ -200,23 +211,30 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActCreateBranch), Description: "branch"},
 			components.HelpItem{Key: km.Keys(ActNew), Description: "create"},
 			components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"},
-			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
 		)
+		items = append(items, a.customCommandHelpItems(config.CtxIssues)...)
+		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
 		return items
 	case a.side == sideLeft && a.leftFocus == focusInfo:
-		return []components.HelpItem{
-			{Key: km.Keys(ActEdit), Description: "edit"},
-			{Key: km.Keys(ActTransition), Description: "transition"},
-			{Key: km.Keys(ActPriority), Description: "priority"},
-			{Key: km.Keys(ActAssignee), Description: "assignee"},
-			{Key: km.Keys(ActHelp), Description: "help"},
-		}
+		items := make([]components.HelpItem, 0, 6)
+		items = append(items,
+			components.HelpItem{Key: km.Keys(ActEdit), Description: "edit"},
+			components.HelpItem{Key: km.Keys(ActTransition), Description: "transition"},
+			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
+			components.HelpItem{Key: km.Keys(ActAssignee), Description: "assignee"},
+		)
+		items = append(items, a.customCommandHelpItems(config.CtxInfo)...)
+		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
+		return items
 	case a.side == sideLeft && a.leftFocus == focusProjects:
-		return []components.HelpItem{
-			{Key: km.Keys(ActSelect), Description: "select"},
-			{Key: km.Keys(ActOpen), Description: "preview"},
-			{Key: km.Keys(ActHelp), Description: "help"},
-		}
+		items := make([]components.HelpItem, 0, 4)
+		items = append(items,
+			components.HelpItem{Key: km.Keys(ActSelect), Description: "select"},
+			components.HelpItem{Key: km.Keys(ActOpen), Description: "preview"},
+		)
+		items = append(items, a.customCommandHelpItems(config.CtxProjects)...)
+		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
+		return items
 	case a.side == sideLeft && a.leftFocus == focusStatus:
 		return []components.HelpItem{
 			{Key: km.Keys(ActSwitchPanel) + "/" + km.Keys(ActFocusRight), Description: "detail"},
@@ -241,8 +259,12 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
 			components.HelpItem{Key: km.Keys(ActAssignee), Description: "assignee"},
 			components.HelpItem{Key: km.Keys(ActFocusLeft), Description: "back"},
-			components.HelpItem{Key: km.Keys(ActHelp), Description: "help"},
 		)
+		items = append(items, a.customCommandHelpItems(config.CtxDetail)...)
+		if a.detailView.ActiveTab() == views.TabComments {
+			items = append(items, a.customCommandHelpItems(config.CtxDetailComments)...)
+		}
+		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
 		return items
 	}
 	return nil

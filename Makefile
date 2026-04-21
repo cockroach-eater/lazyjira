@@ -29,7 +29,7 @@ check: lint vet build
 release:
 	@test -n "$(VERSION)" || (echo "Usage: make release VERSION=2.7.0" && exit 1)
 	keepachangelog release $(VERSION)
-	sed -i '' 's/^pkgver=.*/pkgver=$(VERSION)/' aur/lazyjira-git/PKGBUILD
+	perl -pi -e 's/^pkgver=.*/pkgver=$(VERSION)/' aur/lazyjira-git/PKGBUILD
 	git add CHANGELOG.md aur/lazyjira-git/PKGBUILD
 	git commit -m "release v$(VERSION)"
 	git tag v$(VERSION)

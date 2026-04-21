@@ -54,9 +54,9 @@ func gitCheckoutTracking(repoPath, remoteBranch string) tea.Cmd {
 }
 
 
-func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab int) tea.Cmd {
+func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab, maxResults int) tea.Cmd {
 	return func() tea.Msg {
-		result, err := client.SearchIssues(context.Background(), jql, 0, 50)
+		result, err := client.SearchIssues(context.Background(), jql, 0, maxResults)
 		if err != nil {
 			return errorMsg{err: err}
 		}
@@ -106,6 +106,18 @@ func fetchIssueDetail(client jira.ClientInterface, key string) tea.Cmd {
 			return errorMsg{err: fmt.Errorf("failed to fetch issue %s", key)}
 		}
 		return issueDetailLoadedMsg{issue: issue}
+	})
+}
+
+// fetchPreviewDetail is like fetchIssueDetail but returns a previewDetailLoadedMsg
+// carrying the caller's epoch, so that responses from a superseded preview
+// intent can be dropped. See App.previewEpoch.
+func fetchPreviewDetail(client jira.ClientInterface, key string, epoch int) tea.Cmd {
+	return fetchFullIssue(client, key, func(issue *jira.Issue) tea.Msg {
+		if issue == nil {
+			return errorMsg{err: fmt.Errorf("failed to fetch issue %s", key)}
+		}
+		return previewDetailLoadedMsg{issue: issue, epoch: epoch}
 	})
 }
 
@@ -170,9 +182,9 @@ type jqlSearchErrorMsg struct{ err string }
 type jqlFieldsLoadedMsg struct{ fields []jira.AutocompleteField }
 type jqlSuggestionsMsg struct{ suggestions []jira.AutocompleteSuggestion }
 
-func fetchJQLSearch(client jira.ClientInterface, jql string) tea.Cmd {
+func fetchJQLSearch(client jira.ClientInterface, jql string, maxResults int) tea.Cmd {
 	return func() tea.Msg {
-		result, err := client.SearchIssues(context.Background(), jql, 0, 50)
+		result, err := client.SearchIssues(context.Background(), jql, 0, maxResults)
 		if err != nil {
 			return jqlSearchErrorMsg{err: err.Error()}
 		}

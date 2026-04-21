@@ -29,7 +29,9 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if msg.tab == a.issuesList.GetTabIndex() && a.side == sideLeft && a.leftFocus == focusIssues {
-		a.previewSelectedIssue()
+		if cmd := a.previewSelectedIssue(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 	if a.gitDetectedKey != "" {
 		detectedKey := a.gitDetectedKey
@@ -61,19 +63,19 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// handleIssueDetailLoaded updates the detail view with full issue data
+// handleIssueDetailLoaded applies a freshly fetched issue. DetailView follows
+// previewKey; InfoPanel follows the list selection so its tab and cursor are
+// preserved when a preview of another issue arrives.
 func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.Cmd) {
 	a.statusPanel.SetError("")
 	*a.logFlag = false
 	a.statusPanel.SetOnline(true)
 	a.issueCache[msg.issue.Key] = msg.issue
-	if a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key {
+	if a.previewKey == "" || a.previewKey == msg.issue.Key {
 		a.detailView.UpdateIssueData(msg.issue)
 	}
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
-		if a.infoPanel.IssueKey() == "" || a.infoPanel.IssueKey() == msg.issue.Key {
-			a.infoPanel.SetIssue(msg.issue)
-		}
+		a.infoPanel.SetIssue(msg.issue)
 	}
 	a.issuesList.PatchIssue(msg.issue)
 
@@ -395,6 +397,9 @@ func (a *App) prefetchRelated(issue *jira.Issue) tea.Cmd {
 		if link.InwardIssue != nil {
 			collect(link.InwardIssue.Key)
 		}
+	}
+	if issue.Parent != nil {
+		collect(issue.Parent.Key)
 	}
 	if len(keys) == 0 {
 		return nil

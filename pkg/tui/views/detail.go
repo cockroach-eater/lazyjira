@@ -81,6 +81,8 @@ func NewDetailView() *DetailView {
 	return &DetailView{theme: theme.Default, mode: ModeIssue}
 }
 
+func (d *DetailView) Mode() MainMode { return d.mode }
+
 // IssueKey returns the key of the currently displayed issue, or ""
 func (d *DetailView) IssueKey() string {
 	if d.issue != nil && d.mode == ModeIssue {

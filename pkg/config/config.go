@@ -8,16 +8,32 @@ import (
 )
 
 type Config struct {
-	Jira             JiraConfig       `yaml:"jira"`
-	Projects         []ProjectConfig  `yaml:"projects"`
-	GUI              GUIConfig        `yaml:"gui"`
-	Keybinding       KeybindingConfig `yaml:"keybinding"`
-	IssueTabs        []IssueTabConfig `yaml:"issueTabs"`
-	Cache            CacheConfig      `yaml:"cache"`
-	Refresh          RefreshConfig    `yaml:"refresh"`
-	Fields           []FieldConfig    `yaml:"fields"`
-	DeprecatedFields []FieldConfig    `yaml:"customFields,omitempty"`
-	Git              GitConfig        `yaml:"git"`
+	Jira             JiraConfig            `yaml:"jira"`
+	Projects         []ProjectConfig       `yaml:"projects"`
+	GUI              GUIConfig             `yaml:"gui"`
+	Keybinding       KeybindingConfig      `yaml:"keybinding"`
+	IssueTabs        []IssueTabConfig      `yaml:"issueTabs"`
+	MaxResults       *int                  `yaml:"maxResults"`
+	Cache            CacheConfig           `yaml:"cache"`
+	Refresh          RefreshConfig         `yaml:"refresh"`
+	Fields           []FieldConfig         `yaml:"fields"`
+	DeprecatedFields []FieldConfig         `yaml:"customFields,omitempty"`
+	Git              GitConfig             `yaml:"git"`
+	CustomCommands   []CustomCommandConfig `yaml:"customCommands"`
+}
+
+type CustomCommandConfig struct {
+	Key      string   `yaml:"key"`
+	Name     string   `yaml:"name"`
+	Command  string   `yaml:"command"`
+	Suspend  *bool    `yaml:"suspend,omitempty"` // default: true
+	Refresh  bool     `yaml:"refresh,omitempty"` // default: false
+	Contexts []string `yaml:"contexts,omitempty"`
+}
+
+// ShouldSuspend returns true when the TUI should be suspended for this command (default: true)
+func (c CustomCommandConfig) ShouldSuspend() bool {
+	return c.Suspend == nil || *c.Suspend
 }
 
 type GitConfig struct {
@@ -36,8 +52,9 @@ type BranchFormatCondition struct {
 }
 
 type IssueTabConfig struct {
-	Name string `yaml:"name"`
-	JQL  string `yaml:"jql"`
+	Name       string `yaml:"name"`
+	JQL        string `yaml:"jql"`
+	MaxResults *int   `yaml:"maxResults"`
 }
 
 type FieldConfig struct {
@@ -134,6 +151,31 @@ type ProjectConfig struct {
 	BoardID int    `yaml:"boardId"` // TODO not yet wired up
 }
 
+// UnmarshalYAML lets `projects:` accept either the full mapping form
+//
+//	projects:
+//	  - key: ORCH
+//	    boardId: 42
+//
+// or the shorthand string form used in most personal configs:
+//
+//	projects:
+//	  - ORCH
+//
+// The bare-string form maps straight to Key with BoardID left at its zero
+// value. Without this, a list of bare strings unmarshals into a struct and
+// yaml.v3 returns "cannot unmarshal !!str into config.ProjectConfig", which
+// previously propagated as a nil *Config and a SIGSEGV (#41).
+func (p *ProjectConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		return node.Decode(&p.Key)
+	}
+	// Full form: decode into a type alias so we don't recurse into this
+	// UnmarshalYAML method.
+	type rawProjectConfig ProjectConfig
+	return node.Decode((*rawProjectConfig)(p))
+}
+
 type GUIConfig struct {
 	Theme                string            `yaml:"theme"`    // TODO not yet wired up
 	Language             string            `yaml:"language"` // TODO not yet wired up
@@ -197,6 +239,33 @@ func DefaultConfig() *Config {
 			Interval:    "30s",
 		},
 	}
+}
+
+// DefaultMaxResults is the fallback page size used when neither the global
+// `maxResults` nor a tab-specific override is set. Note that the Jira server
+// may enforce its own upper bound and silently return fewer issues than
+// requested.
+const DefaultMaxResults = 50
+
+// ResolveGlobalMaxResults returns the effective page size for queries that
+// are not tied to a configured tab (ad-hoc JQL searches, JQL tabs): global
+// config value if set and positive, otherwise the compile-time default.
+// A nil or non-positive pointer is treated as "unset".
+func (c *Config) ResolveGlobalMaxResults() int {
+	if c.MaxResults != nil && *c.MaxResults > 0 {
+		return *c.MaxResults
+	}
+	return DefaultMaxResults
+}
+
+// ResolveMaxResults returns the effective page size for a given tab:
+// per-tab override first, then the global/default chain. A nil or
+// non-positive pointer is treated as "unset".
+func (c *Config) ResolveMaxResults(tab IssueTabConfig) int {
+	if tab.MaxResults != nil && *tab.MaxResults > 0 {
+		return *tab.MaxResults
+	}
+	return c.ResolveGlobalMaxResults()
 }
 
 // DefaultIssueTabs returns the default issue tab configuration
@@ -276,6 +345,10 @@ func Load() (*Config, error) {
 	}
 	if v := os.Getenv("JIRA_TLS_INSECURE"); v == "1" || v == "true" {
 		cfg.Jira.TLS.Insecure = true
+	}
+
+	if _, err := cfg.ResolveCustomCommands(); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
