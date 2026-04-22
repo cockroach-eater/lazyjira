@@ -7,13 +7,7 @@ import (
 	"strings"
 )
 
-// legacySprintPattern matches the bracketed attribute list tail of a legacy
-// sprint string returned by older Jira Server and Data Center. Example input:
-//
-//	com.atlassian.greenhopper.service.sprint.Sprint@1a2b3c[id=42,rapidViewId=5,state=ACTIVE,name=Sprint 1,startDate=...,endDate=...,goal=]
-//
-// The capture group collects the comma-separated key=value attributes inside
-// the trailing brackets.
+// Example: com.atlassian.greenhopper.service.sprint.Sprint@1a2b3c[id=42,state=ACTIVE,name=Sprint 1,...]
 var legacySprintPattern = regexp.MustCompile(`\[([^\[\]]*)\]$`)
 
 func parseSprintRaw(data json.RawMessage) []Sprint {
