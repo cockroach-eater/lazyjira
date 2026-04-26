@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Go module path updated to `github.com/textfuel/lazyjira/v2` to follow Go modules v2+ convention
+
 ## [2.10.1] - 2026-04-18
 
 ### Fixed
