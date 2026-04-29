@@ -1095,11 +1095,13 @@ func (f *CreateForm) renderFields(formW, panelH int) string {
 	return RenderPanelFull(title, footer, content, formW, innerH, focused, scroll)
 }
 
-var noneStyle = lipgloss.NewStyle().Foreground(theme.ColorGray)
+func noneStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorGray)
+}
 
 func styleFieldValue(fld CreateFormField, val string) string {
 	if val == "None" {
-		return noneStyle.Render(val)
+		return noneStyle().Render(val)
 	}
 	switch fld.FieldID {
 	case "priority":

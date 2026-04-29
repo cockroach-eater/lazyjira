@@ -225,7 +225,7 @@ func (r *adfRenderer) renderInline(node any) string {
 	case adfInlineCard:
 		if attrs, ok := inline["attrs"].(map[string]any); ok {
 			if url, ok := attrs["url"].(string); ok {
-				return urlStyle.Render(url)
+				return urlStyle().Render(url)
 			}
 		}
 	}
@@ -286,7 +286,7 @@ func applyMarks(text string, marks []any) string {
 		case "strike":
 			text = lipgloss.NewStyle().Strikethrough(true).Render(text)
 		case "link":
-			text = urlStyle.Render(text)
+			text = urlStyle().Render(text)
 		case "textColor":
 			if attrs, ok := mark["attrs"].(map[string]any); ok {
 				if color, ok := attrs["color"].(string); ok {

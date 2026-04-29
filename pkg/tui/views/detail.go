@@ -660,7 +660,9 @@ func (d *DetailView) renderDescription(width int) []string {
 	return lines
 }
 
-var urlStyle = lipgloss.NewStyle().Foreground(theme.ColorCyan).Underline(true)
+func urlStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(theme.ColorCyan).Underline(true)
+}
 
 // colorURLs highlights http/https URLs in a single line with underlined cyan.
 func colorURLs(s string) string {
@@ -677,7 +679,7 @@ func colorURLs(s string) string {
 				end = len(rest)
 			}
 			rawURL := rest[:end]
-			colored := urlStyle.Render(rawURL)
+			colored := urlStyle().Render(rawURL)
 			result = result[:start] + colored + rest[end:]
 		}
 	}
@@ -694,11 +696,11 @@ func colorURLsWrapped(lines []string) []string {
 			// Previous line ended mid-URL — highlight continuation.
 			end := strings.IndexAny(line, " \t")
 			if end == -1 {
-				result[i] = urlStyle.Render(line)
+				result[i] = urlStyle().Render(line)
 				urlCont = true
 				continue
 			}
-			result[i] = urlStyle.Render(line[:end]) + colorURLs(line[end:])
+			result[i] = urlStyle().Render(line[:end]) + colorURLs(line[end:])
 		} else {
 			result[i] = colorURLs(line)
 		}

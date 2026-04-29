@@ -89,6 +89,24 @@ func TestSetThemeSyncsColors(t *testing.T) {
 	if ColorOrange != Default.Colors.Orange {
 		t.Errorf("ColorOrange not synced: %q != %q", ColorOrange, Default.Colors.Orange)
 	}
+	if ColorMagenta != Default.Colors.Magenta {
+		t.Errorf("ColorMagenta not synced: %q != %q", ColorMagenta, Default.Colors.Magenta)
+	}
+	_ = SetTheme("default")
+}
+
+func TestSetThemeSyncsAuthorPalette(t *testing.T) {
+	_ = SetTheme("default")
+	defaultFirst := authorPalette[0]
+
+	_ = SetTheme("catppuccin-mocha")
+	if authorPalette[0] == defaultFirst {
+		t.Error("authorPalette did not switch when theme changed")
+	}
+	if len(authorPalette) != len(Default.AuthorPalette) {
+		t.Errorf("authorPalette length %d != Default.AuthorPalette length %d",
+			len(authorPalette), len(Default.AuthorPalette))
+	}
 	_ = SetTheme("default")
 }
 

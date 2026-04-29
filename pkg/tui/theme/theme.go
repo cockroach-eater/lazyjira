@@ -15,6 +15,7 @@ type ColorPalette struct {
 	Red       lipgloss.Color
 	Yellow    lipgloss.Color
 	Cyan      lipgloss.Color
+	Magenta   lipgloss.Color
 	White     lipgloss.Color
 	Gray      lipgloss.Color
 	Orange    lipgloss.Color
@@ -31,6 +32,7 @@ var (
 	ColorRed       = lipgloss.Color("1")   // ANSI red — errors, unstaged
 	ColorYellow    = lipgloss.Color("3")   // ANSI yellow — warnings, in-progress
 	ColorCyan      = lipgloss.Color("6")   // ANSI cyan — search mode
+	ColorMagenta   = lipgloss.Color("5")   // ANSI magenta — JQL keywords
 	ColorWhite     = lipgloss.Color("7")   // ANSI white (light gray)
 	ColorGray      = lipgloss.Color("8")   // ANSI bright black (dark gray)
 	ColorOrange    = lipgloss.Color("208") // ANSI 256 orange — secondary accent (names, metadata)
@@ -73,6 +75,7 @@ func defaultPalette() ColorPalette {
 		Red:       lipgloss.Color("1"),
 		Yellow:    lipgloss.Color("3"),
 		Cyan:      lipgloss.Color("6"),
+		Magenta:   lipgloss.Color("5"),
 		White:     lipgloss.Color("7"),
 		Gray:      lipgloss.Color("8"),
 		Orange:    lipgloss.Color("208"),
@@ -167,6 +170,7 @@ func syncColors() {
 	ColorRed = Default.Colors.Red
 	ColorYellow = Default.Colors.Yellow
 	ColorCyan = Default.Colors.Cyan
+	ColorMagenta = Default.Colors.Magenta
 	ColorWhite = Default.Colors.White
 	ColorGray = Default.Colors.Gray
 	ColorOrange = Default.Colors.Orange

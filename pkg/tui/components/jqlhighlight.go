@@ -12,7 +12,7 @@ import (
 // JQL syntax highlighting colors (matching Jira Cloud JQL editor).
 // These are functions so they pick up the active theme's colors.
 func jqlFieldStyle() lipgloss.Style    { return lipgloss.NewStyle().Foreground(theme.ColorBlue) }
-func jqlKeywordStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(lipgloss.Color("5")) }
+func jqlKeywordStyle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(theme.ColorMagenta) }
 func jqlOperatorStyle() lipgloss.Style { return lipgloss.NewStyle().Foreground(theme.ColorGreen) }
 func jqlStringStyle() lipgloss.Style   { return lipgloss.NewStyle().Foreground(theme.ColorYellow) }
 func jqlDefaultStyle() lipgloss.Style  { return lipgloss.NewStyle() }

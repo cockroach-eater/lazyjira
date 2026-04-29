@@ -7,21 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Distinct colors from ANSI 256 palette readable on dark backgrounds
-var authorPalette = []lipgloss.Color{
-	lipgloss.Color("208"), // orange
-	lipgloss.Color("176"), // pink/magenta
-	lipgloss.Color("114"), // light green
-	lipgloss.Color("216"), // salmon
-	lipgloss.Color("81"),  // sky blue
-	lipgloss.Color("222"), // gold
-	lipgloss.Color("183"), // lavender
-	lipgloss.Color("150"), // sage
-	lipgloss.Color("209"), // coral
-	lipgloss.Color("117"), // light cyan
-	lipgloss.Color("180"), // tan
-	lipgloss.Color("147"), // periwinkle
-}
+// authorPalette is sourced from the active theme's AuthorPalette.
+// SetTheme refreshes it on theme change.
+var authorPalette = Default.AuthorPalette
 
 var authorCache = make(map[string]lipgloss.Style)
 
