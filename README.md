@@ -197,7 +197,8 @@ Press `?` inside the app for all keybindings.
 - [ ] CLI mode (non-interactive commands for scripting and automation)
 - [ ] Robust issue type changer (handle subtask/parent unlinking, field validation)
 - [ ] Clickable hyperlinks in terminal (OSC 8) for URLs in descriptions and comments
-- [x] Theming (Catppuccin), borders, date format, language and other GUI options
+- [x] Catppuccin Theming
+- [ ] Custom colors theming, date format, languages
 - [ ] Mouse support toggle
 - [ ] Show icons toggle
 - [ ] Cache with configurable TTL
