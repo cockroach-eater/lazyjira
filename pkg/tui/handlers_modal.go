@@ -123,10 +123,10 @@ func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model,
 		}
 	case editBranch:
 		if msg.Text != "" {
-			switch {
-			case git.BranchExists(a.gitRepoPath, msg.Text):
+			switch git.ResolveBranchAction(a.gitRepoPath, msg.Text) {
+			case git.ActionCheckout:
 				return a, gitCheckoutBranch(a.gitRepoPath, msg.Text)
-			case strings.Contains(msg.Text, "/"):
+			case git.ActionCheckoutTracking:
 				return a, gitCheckoutTracking(a.gitRepoPath, msg.Text)
 			default:
 				return a, gitCreateBranch(a.gitRepoPath, msg.Text)
