@@ -41,11 +41,20 @@ nix develop
 make check
 ```
 
-To update Nix dependency lockfile after changing `go.mod`:
+### Adding a Go dependency
+
+After you add a new package to `go.mod`, refresh the Nix lockfile
 
 ```bash
-nix develop -c make nix-deps
+make nix-deps
 ```
+
+You need `gomod2nix` for this. Get it one of two ways
+
+- With Nix `nix develop -c make nix-deps`
+- With Go `go install github.com/nix-community/gomod2nix@latest`
+
+Commit `gomod2nix.toml` together with `go.mod` and `go.sum`. If you skip it the `nix` CI job fails with a checksum error
 
 ## Code style
 

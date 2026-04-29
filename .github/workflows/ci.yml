@@ -8,6 +8,7 @@ on:
 
 jobs:
   check:
+    name: check (make check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,16 +17,19 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: golangci-lint
+      - name: make lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.11.3
 
-      - run: go vet ./...
+      - name: make vet
+        run: make vet
 
-      - run: go build ./cmd/lazyjira
+      - name: make build
+        run: make build
 
   nix:
+    name: nix (make nix-deps)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,4 +38,5 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: nix build .#lazyjira
+      - name: nix build .#lazyjira
+        run: nix build .#lazyjira
