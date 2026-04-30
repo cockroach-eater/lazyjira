@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Catppuccin theme support. Pick from Latte, Frappé, Macchiato or Mocha via `gui.theme` in config. Default ANSI palette stays the same. Catppuccin flavors use hex colors and need a terminal with truecolor support (#59)
+
+### Changed
+
+- CI step names mirror the `make` targets they run. Failed jobs now point at the exact command to run locally
+- CONTRIBUTING documents how to refresh `gomod2nix.toml` after a Go dependency change. Both `nix develop -c make nix-deps` and `go install gomod2nix` paths are listed. Skipping the refresh fails the nix CI job with a checksum error (#60)
+
 ## [2.10.2] - 2026-04-26
 
 ### Changed
