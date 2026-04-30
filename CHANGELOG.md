@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [2.11.1] - 2026-04-30
+
 ## [2.11.0] - 2026-04-30
 
 ### Added
@@ -364,7 +366,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Cross-platform: macOS, Linux, Windows
 - Homebrew install via tap
 
-[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.11.0...HEAD
+[Unreleased]: https://github.com/textfuel/lazyjira/compare/v2.11.1...HEAD
+[2.11.1]: https://github.com/textfuel/lazyjira/compare/v2.11.0...v2.11.1
 [2.11.0]: https://github.com/textfuel/lazyjira/compare/v2.10.2...v2.11.0
 [2.10.2]: https://github.com/textfuel/lazyjira/compare/v2.10.1...v2.10.2
 [2.10.1]: https://github.com/textfuel/lazyjira/compare/v2.10.0...v2.10.1
