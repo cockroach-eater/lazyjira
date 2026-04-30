@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -67,6 +68,39 @@ func RemoteBranches(dir string) ([]string, error) {
 		}
 	}
 	return result, nil
+}
+
+// IsRemoteBranch reports whether name exactly matches a known remote branch.
+// Returns false on error so callers can fall through to local creation.
+func IsRemoteBranch(dir, name string) bool {
+	remotes, err := RemoteBranches(dir)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(remotes, name)
+}
+
+// BranchAction is the routing decision for a confirmed branch name.
+type BranchAction int
+
+const (
+	ActionCreate BranchAction = iota
+	ActionCheckout
+	ActionCheckoutTracking
+)
+
+// ResolveBranchAction decides how to act on a confirmed branch name.
+// Order: existing local -> Checkout; exact remote match -> CheckoutTracking;
+// otherwise -> Create. See spec-lj-0023.
+func ResolveBranchAction(dir, name string) BranchAction {
+	switch {
+	case BranchExists(dir, name):
+		return ActionCheckout
+	case IsRemoteBranch(dir, name):
+		return ActionCheckoutTracking
+	default:
+		return ActionCreate
+	}
 }
 
 // BranchExists returns true if a local branch with the given name exists
