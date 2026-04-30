@@ -213,6 +213,8 @@ func fetchJQLSuggestions(client jira.ClientInterface, fieldName, partial string)
 
 type myselfLoadedMsg struct{ user *jira.User }
 
+type fieldsDiscoveredMsg struct{ err error }
+
 type issueUpdatedMsg struct{ issueKey string }
 type commentAddedMsg struct{ issueKey string }
 type commentUpdatedMsg struct{ issueKey string }
@@ -334,6 +336,12 @@ func fetchMyself(client jira.ClientInterface) tea.Cmd {
 			return errorMsg{err: err}
 		}
 		return myselfLoadedMsg{user: user}
+	}
+}
+
+func fetchFieldDiscovery(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		return fieldsDiscoveredMsg{err: client.DiscoverFields(context.Background())}
 	}
 }
 

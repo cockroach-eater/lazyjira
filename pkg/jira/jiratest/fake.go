@@ -164,6 +164,8 @@ type FakeClient struct {
 	GetJQLAutocompleteSuggestionsFunc func(ctx context.Context, fieldName, fieldValue string) ([]jira.AutocompleteSuggestion, error)
 	SetOnRequestFunc                  func(fn func(jira.RequestLog))
 	SetCustomFieldsFunc               func(ids []string)
+	DiscoverFieldsFunc                func(ctx context.Context) error
+	SprintFieldIDFunc                 func() string
 
 	// Call recorders (populated before the *Func is invoked).
 	GetIssueCalls                      []GetIssueCall
@@ -194,6 +196,8 @@ type FakeClient struct {
 	GetJQLAutocompleteSuggestionsCalls []GetJQLAutocompleteSuggestionsCall
 	SetOnRequestCalls                  int
 	SetCustomFieldsCalls               [][]string
+	DiscoverFieldsCalls                []context.Context
+	SprintFieldIDCalls                 int
 }
 
 func (f *FakeClient) fatal(name string) {
@@ -453,6 +457,24 @@ func (f *FakeClient) SetCustomFields(ids []string) {
 		return
 	}
 	f.SetCustomFieldsFunc(ids)
+}
+
+func (f *FakeClient) DiscoverFields(ctx context.Context) error {
+	f.DiscoverFieldsCalls = append(f.DiscoverFieldsCalls, ctx)
+	if f.DiscoverFieldsFunc == nil {
+		f.fatal("DiscoverFields")
+		return nil
+	}
+	return f.DiscoverFieldsFunc(ctx)
+}
+
+func (f *FakeClient) SprintFieldID() string {
+	f.SprintFieldIDCalls++
+	if f.SprintFieldIDFunc == nil {
+		f.fatal("SprintFieldID")
+		return ""
+	}
+	return f.SprintFieldIDFunc()
 }
 
 var _ jira.ClientInterface = (*FakeClient)(nil)

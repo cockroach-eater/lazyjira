@@ -369,16 +369,18 @@ func (a *App) Shutdown() {
 }
 
 func (a *App) Init() tea.Cmd {
-	var cmds []tea.Cmd
-	cmds = append(cmds, fetchMyself(a.client))
-	cmds = append(cmds, fetchProjects(a.client))
-	cmds = append(cmds, fetchBoards(a.client))
+	cmds := []tea.Cmd{
+		fetchMyself(a.client),
+		fetchFieldDiscovery(a.client),
+		fetchProjects(a.client),
+		fetchBoards(a.client),
+		tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
+			return autoFetchTickMsg{}
+		}),
+	}
 	if cmd := a.fetchActiveTab(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
-		return autoFetchTickMsg{}
-	}))
 	return tea.Batch(cmds...)
 }
 
@@ -433,6 +435,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handlePrioritiesLoaded(msg)
 	case myselfLoadedMsg:
 		a.currentUser = msg.user
+		return a, nil
+	case fieldsDiscoveredMsg:
+		if msg.err != nil {
+			a.statusPanel.SetError(msg.err.Error())
+		}
 		return a, nil
 	case boardsLoadedMsg:
 		return a.handleBoardsLoaded(msg)
