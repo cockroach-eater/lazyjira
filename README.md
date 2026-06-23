@@ -69,6 +69,24 @@ Or add to your flake inputs:
 inputs.lazyjira.url = "github:textfuel/lazyjira";
 ```
 
+Or import the package
+
+```nix
+let
+  version = "...";
+  src =
+    fetchFromGitHub {
+      owner = "textfuel";
+      repo = "lazyjira";
+      tag = "v${version}";
+      hash = "...";
+    };
+
+  buildGoApplication = import (lazyjiraSrc + "/nix/build-go-application.nix") system;
+in
+callPackage ./nix/package.nix {inherit buildGoApplication version;}
+```
+
 #### deb (Debian, Ubuntu)
 
 Download `.deb` from [Releases](https://github.com/textfuel/lazyjira/releases):

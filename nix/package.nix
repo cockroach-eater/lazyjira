@@ -1,35 +1,9 @@
 {
-  pkgs ? (
-    let
-      inherit (builtins) fromJSON readFile;
-      inherit ((fromJSON (readFile ../flake.lock)).nodes) nixpkgs gomod2nix;
-      fetchLocked =
-        node:
-        let
-          inherit (node.locked)
-            owner
-            repo
-            rev
-            narHash
-            ;
-        in
-
-        fetchTarball {
-          url = "https://github.com/${owner}/${repo}/archive/${rev}.tar.gz";
-          sha256 = narHash;
-
-        };
-    in
-    import (fetchLocked nixpkgs) {
-      overlays = [
-        (import "${fetchLocked gomod2nix}/overlay.nix")
-      ];
-    }
-  ),
-  buildGoApplication ? pkgs.buildGoApplication,
+  lib,
+  buildGoApplication,
   version ? (
     if builtins.pathExists ../.git then
-      builtins.substring 0 7 (pkgs.lib.commitIdFromGitRepo ../.git)
+      builtins.substring 0 7 (lib.commitIdFromGitRepo ../.git)
     else
       "dev"
   ),
@@ -46,7 +20,7 @@ buildGoApplication {
     "-X main.version=${version}"
   ];
   subPackages = [ "cmd/lazyjira" ];
-  meta = with pkgs.lib; {
+  meta = with lib; {
     description = "Terminal UI for Jira";
     homepage = "https://github.com/textfuel/lazyjira";
     license = licenses.mit;
