@@ -119,6 +119,97 @@ func TestBuiltinRenderer_RenderListItem_NestedList(t *testing.T) {
 	}
 }
 
+type taskItemSpec struct {
+	text   string
+	done   bool
+	nested []taskItemSpec
+}
+
+func makeTaskListADF(items []taskItemSpec) map[string]any {
+	return map[string]any{
+		"type":    "doc",
+		"content": []any{taskListNode(items)},
+	}
+}
+
+func taskListNode(items []taskItemSpec) map[string]any {
+	content := make([]any, 0, len(items))
+	for _, it := range items {
+		state := "TODO"
+		if it.done {
+			state = "DONE"
+		}
+		content = append(content, map[string]any{
+			"type":    adfTaskItem,
+			"attrs":   map[string]any{"state": state},
+			"content": []any{map[string]any{"type": adfText, "text": it.text}},
+		})
+		if len(it.nested) > 0 {
+			content = append(content, taskListNode(it.nested))
+		}
+	}
+	return map[string]any{"type": adfTaskList, "content": content}
+}
+
+func TestBuiltinRenderer_RenderTaskList(t *testing.T) {
+	t.Parallel()
+	adf := makeTaskListADF([]taskItemSpec{
+		{text: "todo item", done: false},
+		{text: "done item", done: true},
+	})
+	lines := BuiltinRenderer{}.Render(adf, 80)
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty output for task list")
+	}
+	joined := stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "[ ] todo item") {
+		t.Errorf("task list output = %q, want '[ ] todo item'", joined)
+	}
+	if !strings.Contains(joined, "[x] done item") {
+		t.Errorf("task list output = %q, want '[x] done item'", joined)
+	}
+}
+
+func TestBuiltinRenderer_RenderTaskList_Nested(t *testing.T) {
+	t.Parallel()
+	adf := map[string]any{
+		"type": "doc",
+		"content": []any{
+			map[string]any{
+				"type": adfTaskList,
+				"content": []any{
+					map[string]any{
+						"type":    adfTaskItem,
+						"attrs":   map[string]any{"state": "TODO"},
+						"content": []any{map[string]any{"type": adfText, "text": "outer task"}},
+					},
+					map[string]any{
+						"type": adfTaskList,
+						"content": []any{
+							map[string]any{
+								"type":    adfTaskItem,
+								"attrs":   map[string]any{"state": "DONE"},
+								"content": []any{map[string]any{"type": adfText, "text": "nested task"}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	lines := BuiltinRenderer{}.Render(adf, 80)
+	if len(lines) == 0 {
+		t.Fatal("expected non-empty output for nested task list")
+	}
+	joined := stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "outer task") {
+		t.Errorf("nested task list output = %q, want 'outer task'", joined)
+	}
+	if !strings.Contains(joined, "nested task") {
+		t.Errorf("nested task list output = %q, want 'nested task'", joined)
+	}
+}
+
 func makeTableADF(rows [][]string) map[string]any {
 	tableRows := make([]any, 0, len(rows))
 	for i, row := range rows {
