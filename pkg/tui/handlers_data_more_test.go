@@ -438,6 +438,31 @@ func TestHandleProjectsLoaded(t *testing.T) {
 			t.Error("expected nil cmd when project key already set")
 		}
 	})
+
+	t.Run("config-preset key resolves ID from loaded list", func(t *testing.T) {
+		t.Parallel()
+		app := newAppWithFake(t, &jiratest.FakeClient{T: t})
+		app.demoMode = true
+		app.projectKey = testProject // simulates projects: config seeding the key with no ID
+
+		_, cmd := app.handleProjectsLoaded(projectsLoadedMsg{projects: []jira.Project{{Key: testProject, ID: "10005"}}})
+
+		testkit.AssertEqual(t, "projectID", app.projectID, "10005")
+		if cmd != nil {
+			t.Error("expected nil cmd when project key already set")
+		}
+	})
+
+	t.Run("config-preset key with no match leaves ID empty", func(t *testing.T) {
+		t.Parallel()
+		app := newAppWithFake(t, &jiratest.FakeClient{T: t})
+		app.demoMode = true
+		app.projectKey = testProject
+
+		_, _ = app.handleProjectsLoaded(projectsLoadedMsg{projects: []jira.Project{{Key: "OPS", ID: "2"}}})
+
+		testkit.AssertEqual(t, "projectID", app.projectID, "")
+	})
 }
 
 func TestPrefetchChildrenDetails(t *testing.T) {

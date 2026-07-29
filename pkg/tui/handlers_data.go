@@ -378,6 +378,11 @@ func (a *App) handleProjectsLoaded(msg projectsLoadedMsg) (tea.Model, tea.Cmd) {
 		a.resolveBoardID()
 		return a, a.fetchActiveTab()
 	}
+	if a.projectID == "" {
+		if id, ok := a.resolveProjectID(a.projectKey); ok {
+			a.projectID = id
+		}
+	}
 	return a, nil
 }
 
