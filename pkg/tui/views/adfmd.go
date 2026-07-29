@@ -1,6 +1,7 @@
 package views
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -22,6 +23,8 @@ const (
 	adfHardBreak   = "hardBreak"
 	adfInlineCard  = "inlineCard"
 	adfListItem    = "listItem"
+	adfTaskList    = "taskList"
+	adfTaskItem    = "taskItem"
 )
 
 // ADFToMarkdown converts an ADF document to Markdown text
@@ -116,6 +119,13 @@ func blockToMarkdown(node any, indent int) string {
 	case "table":
 		return tableToMarkdown(content, indent)
 
+	case adfTaskList:
+		var items []string
+		for _, item := range content {
+			items = append(items, taskItemToMarkdown(item, indent))
+		}
+		return strings.Join(items, "\n")
+
 	default:
 		return opaqueMarker(block)
 	}
@@ -156,6 +166,25 @@ func listItemToMarkdown(node any, indent int, marker string) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func taskItemToMarkdown(node any, indent int) string {
+	item, ok := node.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if t, _ := item["type"].(string); t == adfTaskList {
+		return blockToMarkdown(item, indent+2)
+	}
+	content, _ := item["content"].([]any)
+	box := "[ ]"
+	if attrs, ok := item["attrs"].(map[string]any); ok {
+		if state, _ := attrs["state"].(string); state == "DONE" {
+			box = "[x]"
+		}
+	}
+	prefix := strings.Repeat(" ", indent)
+	return prefix + "- " + box + " " + inlineToMarkdown(content)
 }
 
 func inlineToMarkdown(content []any) string {
@@ -358,6 +387,11 @@ func markdownToADF(md string) any {
 			continue
 		}
 
+		if block, ok := tryParseTaskList(lines, &i, trimmed); ok {
+			blocks = append(blocks, block)
+			continue
+		}
+
 		if strings.HasPrefix(trimmed, "- ") {
 			blocks = append(blocks, parseList(lines, &i, "bullet"))
 			continue
@@ -475,6 +509,7 @@ var (
 	underlineRe   = regexp.MustCompile(`<u>(.+?)</u>`)
 	linkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
 	mentionRe     = regexp.MustCompile(`\[@([^\]]+)\]\(accountid:([^)]+)\)`)
+	taskItemRe    = regexp.MustCompile(`^(\s*)- \[( |x|X)\] (.*)$`)
 )
 
 func parseInline(text string) []any {
@@ -587,6 +622,71 @@ func parseInlineSegment(text string) []any {
 	return result
 }
 
+func tryParseTaskList(lines []string, i *int, trimmed string) (any, bool) {
+	if !taskItemRe.MatchString(trimmed) {
+		return nil, false
+	}
+	return parseTaskList(lines, i), true
+}
+
+func parseTaskList(lines []string, idx *int) map[string]any {
+	var items []any
+	baseIndent := len(lines[*idx]) - len(strings.TrimLeft(lines[*idx], " "))
+
+	for *idx < len(lines) {
+		line := lines[*idx]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			break
+		}
+		currentIndent := len(line) - len(strings.TrimLeft(line, " "))
+		if currentIndent != baseIndent {
+			break
+		}
+		m := taskItemRe.FindStringSubmatch(line)
+		if m == nil {
+			break
+		}
+
+		state := "TODO"
+		if strings.EqualFold(m[2], "x") {
+			state = "DONE"
+		}
+		content := parseInline(m[3])
+		if content == nil {
+			content = []any{}
+		}
+		*idx++
+		items = append(items, map[string]any{
+			"type":    adfTaskItem,
+			"attrs":   map[string]any{"state": state, "localId": newLocalID()},
+			"content": content,
+		})
+
+		if *idx < len(lines) {
+			nextLine := lines[*idx]
+			nextIndent := len(nextLine) - len(strings.TrimLeft(nextLine, " "))
+			if nextIndent > baseIndent && taskItemRe.MatchString(nextLine) {
+				items = append(items, parseTaskList(lines, idx))
+			}
+		}
+	}
+
+	return map[string]any{
+		"type":    adfTaskList,
+		"attrs":   map[string]any{"localId": newLocalID()},
+		"content": items,
+	}
+}
+
+func newLocalID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
 func parseList(lines []string, idx *int, listType string) map[string]any {
 	adfType := "bulletList"
 	markerRe := regexp.MustCompile(`^(\s*)- (.*)$`)
@@ -609,6 +709,9 @@ func parseList(lines []string, idx *int, listType string) map[string]any {
 			break
 		}
 		if currentIndent > baseIndent {
+			break
+		}
+		if listType == "bullet" && len(items) > 0 && taskItemRe.MatchString(line) {
 			break
 		}
 

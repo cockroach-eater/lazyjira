@@ -141,6 +141,17 @@ func (r *adfRenderer) renderBlock(node any, indent int) {
 			r.renderListItem(item, indent, fmt.Sprintf("%d. ", i+1))
 		}
 
+	case adfTaskList:
+		for _, item := range content {
+			if itemMap, ok := item.(map[string]any); ok {
+				if t, _ := itemMap["type"].(string); t == adfTaskList {
+					r.renderBlock(item, indent+2)
+					continue
+				}
+			}
+			r.renderTaskItem(item, indent)
+		}
+
 	case adfCodeBlock:
 		lang := ""
 		if attrs, ok := block["attrs"].(map[string]any); ok {
@@ -224,6 +235,26 @@ func (r *adfRenderer) renderListItem(node any, indent int, marker string) {
 			r.renderBlock(child, indent+markerW)
 		}
 	}
+}
+
+func (r *adfRenderer) renderTaskItem(node any, indent int) {
+	item, ok := node.(map[string]any)
+	if !ok {
+		return
+	}
+	content, _ := item["content"].([]any)
+	done := false
+	if attrs, ok := item["attrs"].(map[string]any); ok {
+		state, _ := attrs["state"].(string)
+		done = state == "DONE"
+	}
+	text := r.collectInline(content)
+	marker := "[ ] "
+	if done {
+		marker = "[x] "
+		text = lipgloss.NewStyle().Strikethrough(true).Foreground(theme.ColorGray).Render(text)
+	}
+	r.appendWrapped(text, indent, marker)
 }
 
 func (r *adfRenderer) collectInline(content []any) string {
