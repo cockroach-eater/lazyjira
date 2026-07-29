@@ -345,6 +345,26 @@ func TestDetailView_ClickItem_NegativeLineNoop(t *testing.T) {
 	}
 }
 
+func TestDetailView_ClickItem_AccountsForSummaryHeader(t *testing.T) {
+	t.Parallel()
+	detail := makeFocusedDetail()
+	detail.SetIssue(&jira.Issue{
+		Key:      testKey,
+		Summary:  "Short summary",
+		Comments: []jira.Comment{{Body: "first"}, {Body: "second"}},
+	})
+	detail.SetActiveTab(TabComments)
+
+	contentWidth, _ := components.PanelDimensions(detail.width, detail.height)
+	header := detail.summaryHeaderLines(contentWidth)
+	if len(header) == 0 {
+		t.Fatal("expected a non-empty summary header")
+	}
+
+	detail.ClickItem(1 + len(header))
+	testkit.AssertEqual(t, "cursor selects first block accounting for header offset", detail.listCursor, 0)
+}
+
 func TestDetailView_IsListTab_FalseForDetails(t *testing.T) {
 	t.Parallel()
 	detail := NewDetailView(BuiltinRenderer{})
@@ -624,11 +644,32 @@ func TestDetailView_View_DescriptionBodyShown(t *testing.T) {
 	}
 }
 
+func TestDetailView_View_ShowsFullSummaryWrapped(t *testing.T) {
+	t.Parallel()
+	detail := makeFocusedDetail()
+	longSummary := "This is a deliberately long issue summary that will not fit on a single narrow terminal row"
+	detail.SetIssue(&jira.Issue{
+		Key:         testKey,
+		Summary:     longSummary,
+		Description: "body text",
+	})
+	output := stripANSI(detail.View())
+	for _, word := range strings.Fields(longSummary) {
+		if !strings.Contains(output, word) {
+			t.Errorf("detail view missing summary word %q; view = %q", word, output)
+		}
+	}
+	if strings.Contains(output, "…") {
+		t.Errorf("summary should wrap, not truncate with ellipsis; view = %q", output)
+	}
+}
+
 func TestDetailView_View_CommentsTab_ShowsAuthor(t *testing.T) {
 	t.Parallel()
 	detail := makeFocusedDetail()
 	detail.SetIssue(&jira.Issue{
-		Key: testKey,
+		Key:     testKey,
+		Summary: "Visible even on the comments tab",
 		Comments: []jira.Comment{
 			{
 				Author: &jira.User{DisplayName: "Bob"},
@@ -643,6 +684,9 @@ func TestDetailView_View_CommentsTab_ShowsAuthor(t *testing.T) {
 	}
 	if !strings.Contains(output, "great idea") {
 		t.Errorf("comments view = %q, want to contain comment body", output)
+	}
+	if !strings.Contains(output, "Visible even on the comments tab") {
+		t.Errorf("comments view = %q, want summary header present on non-Body tab", output)
 	}
 }
 

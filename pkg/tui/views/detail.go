@@ -268,13 +268,17 @@ func (d *DetailView) ClickItem(relY int) tea.Cmd {
 	if !d.IsListTab() || d.issue == nil {
 		return nil
 	}
-	// relY=0 is title bar, relY=1+ is content. Find which block the click falls in.
+	// relY=0 is title bar, relY=1+ is the summary header then content. Find which block the click falls in.
 	// We need to map content line to block index.
-	// Simple approach: the clicked line (accounting for scroll) maps to a block.
-	clickedLine := d.scrollY + relY - 1 // -1 for title border
-	if clickedLine < 0 {
+	// Simple approach: the clicked line (accounting for scroll and the pinned
+	// summary header) maps to a block.
+	contentWidth, _ := components.PanelDimensions(d.width, d.height)
+	headerLen := len(d.summaryHeaderLines(contentWidth))
+	clickedLine := relY - 1 // -1 for title border
+	if clickedLine < headerLen {
 		return nil
 	}
+	clickedLine += d.scrollY - headerLen
 
 	// Walk blocks to find which one contains the clicked line.
 	blockWidth := max(d.width-2, 10) - 1 // -1 for list bar prefix
@@ -477,6 +481,8 @@ func (d *DetailView) View() string {
 	}
 
 	title := d.buildTitle(contentWidth)
+	header := d.summaryHeaderLines(contentWidth)
+	visible = max(visible-len(header), 1)
 
 	var contentLines []string
 	if count := d.listTabItemCount(); count > 0 {
@@ -492,6 +498,7 @@ func (d *DetailView) View() string {
 
 	totalLines := len(contentLines)
 	contentLines = d.clampAndSliceScroll(contentLines, visible)
+	contentLines = append(header, contentLines...)
 
 	body := strings.Join(contentLines, "\n")
 
@@ -634,6 +641,19 @@ func (d *DetailView) buildTitle(maxWidth int) string {
 
 	sep := sepStyle.Render(" - ")
 	return prefix + sep + strings.Join(tabParts, sep)
+}
+
+// summaryHeaderLines renders the full issue summary as a wrapped header shown above the tab content.
+func (d *DetailView) summaryHeaderLines(width int) []string {
+	if d.issue == nil || d.issue.Summary == "" {
+		return nil
+	}
+	wrapped := wrapText(d.issue.Summary, width-1)
+	lines := make([]string, 0, len(wrapped)+1)
+	for _, l := range wrapped {
+		lines = append(lines, " "+d.theme.Title.Render(l))
+	}
+	return append(lines, "")
 }
 
 func (d *DetailView) renderDescription(width int) []string {
