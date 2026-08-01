@@ -26,14 +26,39 @@ type TabSwitchedMsg struct {
 
 const statusOpen = "○"
 
+// tabKind distinguishes the source/lifecycle of a tab in the visible bar.
+type tabKind int
+
+const (
+	tabKindConfig    tabKind = iota // from config.yml issueTabs
+	tabKindManaged                  // from saved_tabs.yml (Phase 2)
+	tabKindJQLSearch                // transient JQL search
+	tabKindHierarchy                // transient child/parent
+)
+
+// tab is one entry in the visible tab bar. It carries its kind and, for
+// managed tabs, the store identity (storeIdx) as fields rather than relying
+// on index position.
+type tab struct {
+	kind     tabKind
+	cfg      config.IssueTabConfig // Name, JQL, MaxResults
+	storeIdx int                   // index in savedTabs; -1 when not managed
+	issues   []jira.Issue          // loaded issues (was tabCache[idx])
+	loaded   bool                  // distinguishes "not loaded" from "empty"
+}
+
 type IssuesList struct {
 	components.ListBase
 	issues           []jira.Issue
 	allIssues        []jira.Issue
 	filter           string
-	tabs             []config.IssueTabConfig
+	tabs             []tab
 	tab              int
-	tabCache         map[int][]jira.Issue
+	configTabs       []config.IssueTabConfig // raw config.yml tabs, before assembly
+	savedTabs        []config.ManagedTab     // raw managed store, before assembly
+	projectKey       string                  // current project, for managed-tab filtering
+	tabEpoch         int                     // bumped on every reassembly; guards stale tab fetches
+	jqlOriginTab     int                     // tab to return to when the JQL tab is closed
 	userEmail        string
 	keyColWidth      int
 	fields           []string
@@ -45,14 +70,32 @@ type IssuesList struct {
 	priorityIcons    map[string]string
 	priorityIconCols int
 	jqlQuery         string
-	jqlTabIdx        int
-	hierarchyTabIdx  int
 	hierarchyTitle   string
 	hierarchyStack   *navstack.NavStack
 }
 
 func NewIssuesList() *IssuesList {
-	return &IssuesList{theme: theme.Default, jqlTabIdx: -1, hierarchyTabIdx: -1}
+	return &IssuesList{theme: theme.Default}
+}
+
+// jqlTabIndex returns the index of the transient JQL tab, or (-1, false).
+func (m *IssuesList) jqlTabIndex() (int, bool) {
+	for i := range m.tabs {
+		if m.tabs[i].kind == tabKindJQLSearch {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+// hierarchyTabIndex returns the index of the transient hierarchy tab, or (-1, false).
+func (m *IssuesList) hierarchyTabIndex() (int, bool) {
+	for i := range m.tabs {
+		if m.tabs[i].kind == tabKindHierarchy {
+			return i, true
+		}
+	}
+	return -1, false
 }
 
 func (m *IssuesList) SetFields(fields []string) { m.fields = fields }
@@ -86,52 +129,105 @@ func (m *IssuesList) SetPriorityIcons(icons map[string]string) {
 	}
 	m.priorityIconCols = max
 }
-func (m *IssuesList) SetTabs(tabs []config.IssueTabConfig) { m.tabs = tabs }
-func (m *IssuesList) SetUserEmail(email string)            { m.userEmail = email }
+
+// SetTabs sets the raw config.yml tabs and reassembles the visible bar. It
+// assembles immediately (rather than deferring to the next external trigger)
+// so m.tabs is never empty between this setter and a project switch.
+func (m *IssuesList) SetTabs(tabs []config.IssueTabConfig) {
+	m.configTabs = tabs
+	m.RebuildTabs(m.projectKey)
+}
+
+// SetSavedTabs sets the raw managed-tab store and reassembles the visible bar.
+func (m *IssuesList) SetSavedTabs(tabs []config.ManagedTab) {
+	m.savedTabs = tabs
+	m.RebuildTabs(m.projectKey)
+}
+
+// RebuildTabs assembles the visible tab bar for projectKey: managed tabs first
+// (filtered to project=="" or ==projectKey, in store order), then config tabs
+// whose name is not shadowed by a managed tab. Transient tabs are not
+// re-injected. Each managed tab carries its store index for later mutation.
+func (m *IssuesList) RebuildTabs(projectKey string) {
+	m.projectKey = projectKey
+	m.tabEpoch++
+
+	var assembled []tab
+	shadow := make(map[string]bool)
+	for i, mt := range m.savedTabs {
+		if mt.Project != "" && mt.Project != projectKey {
+			continue
+		}
+		assembled = append(assembled, tab{
+			kind:     tabKindManaged,
+			cfg:      config.IssueTabConfig{Name: mt.Name, JQL: mt.JQL, MaxResults: mt.MaxResults},
+			storeIdx: i,
+		})
+		shadow[mt.Name] = true
+	}
+	for _, ct := range m.configTabs {
+		if shadow[ct.Name] {
+			continue
+		}
+		assembled = append(assembled, tab{kind: tabKindConfig, cfg: ct, storeIdx: -1})
+	}
+
+	m.tabs = assembled
+	if m.tab < 0 || m.tab >= len(m.tabs) {
+		m.tab = m.HomeTabIndex()
+	}
+	m.loadFromCache()
+}
+func (m *IssuesList) SetUserEmail(email string) { m.userEmail = email }
 func (m *IssuesList) ActiveTab() config.IssueTabConfig {
 	if m.tab >= 0 && m.tab < len(m.tabs) {
-		return m.tabs[m.tab]
+		return m.tabs[m.tab].cfg
 	}
 	return config.IssueTabConfig{}
 }
 
-// AddJQLTab creates or replaces the JQL tab with the given query
+// AddJQLTab creates or replaces the JQL tab with the given query. On creation
+// it records the current tab as the origin to return to when the tab is closed.
 func (m *IssuesList) AddJQLTab(jql string) {
-	if m.jqlTabIdx >= 0 {
+	if idx, ok := m.jqlTabIndex(); ok {
 		m.jqlQuery = jql
-		m.tab = m.jqlTabIdx
+		m.tab = idx
 		return
 	}
-	m.tabs = append(m.tabs, config.IssueTabConfig{Name: "JQL", JQL: ""})
-	m.jqlTabIdx = len(m.tabs) - 1
+	m.jqlOriginTab = m.tab
+	m.tabs = append(m.tabs, tab{kind: tabKindJQLSearch, cfg: config.IssueTabConfig{Name: "JQL"}, storeIdx: -1})
 	m.jqlQuery = jql
-	m.tab = m.jqlTabIdx
+	m.tab = len(m.tabs) - 1
 	m.loadFromCache()
 }
 
-// RemoveJQLTab removes the JQL tab and switches to tab 0
+// RemoveJQLTab removes the JQL tab and returns to the origin tab it was opened
+// from, falling back to the home tab if that origin is no longer valid.
 func (m *IssuesList) RemoveJQLTab() {
-	if m.jqlTabIdx < 0 {
+	idx, ok := m.jqlTabIndex()
+	if !ok {
 		return
 	}
-	m.tabs = m.tabs[:m.jqlTabIdx]
-	if m.tabCache != nil {
-		delete(m.tabCache, m.jqlTabIdx)
-	}
-	m.jqlTabIdx = -1
+	m.tabs = m.tabs[:idx]
 	m.jqlQuery = ""
-	m.tab = 0
+	if m.jqlOriginTab >= 0 && m.jqlOriginTab < len(m.tabs) {
+		m.tab = m.jqlOriginTab
+	} else {
+		m.tab = m.HomeTabIndex()
+	}
 	m.loadFromCache()
 }
 
 // HasJQLTab returns true if a JQL tab currently exists
 func (m *IssuesList) HasJQLTab() bool {
-	return m.jqlTabIdx >= 0
+	_, ok := m.jqlTabIndex()
+	return ok
 }
 
 // IsJQLTab returns true if the currently active tab is the JQL tab
 func (m *IssuesList) IsJQLTab() bool {
-	return m.jqlTabIdx >= 0 && m.tab == m.jqlTabIdx
+	idx, ok := m.jqlTabIndex()
+	return ok && m.tab == idx
 }
 
 // JQLQuery returns the raw JQL query for the JQL tab
@@ -142,36 +238,33 @@ func (m *IssuesList) JQLQuery() string {
 // Appends and focuses a hierarchy tab. If one already exists, behaves
 // like ReplaceHierarchyTabContent and returns the existing index.
 func (m *IssuesList) AddHierarchyTab(title string, issues []jira.Issue) int {
-	if m.hierarchyTabIdx >= 0 {
+	if idx, ok := m.hierarchyTabIndex(); ok {
 		m.ReplaceHierarchyTabContent(title, issues)
-		return m.hierarchyTabIdx
+		return idx
 	}
-	m.tabs = append(m.tabs, config.IssueTabConfig{Name: title, JQL: ""})
-	m.hierarchyTabIdx = len(m.tabs) - 1
+	m.tabs = append(m.tabs, tab{kind: tabKindHierarchy, cfg: config.IssueTabConfig{Name: title}, storeIdx: -1})
+	idx := len(m.tabs) - 1
 	m.hierarchyTitle = title
 	m.hierarchyStack = navstack.NewNavStack()
-	if m.tabCache == nil {
-		m.tabCache = make(map[int][]jira.Issue)
-	}
-	m.tabCache[m.hierarchyTabIdx] = issues
-	m.tab = m.hierarchyTabIdx
+	m.tabs[idx].issues = issues
+	m.tabs[idx].loaded = true
+	m.tab = idx
 	m.loadFromCache()
-	return m.hierarchyTabIdx
+	return idx
 }
 
 // Replaces the hierarchy tab's title and issue list while keeping the
 // tab index and stack stable. No-op if no hierarchy tab.
 func (m *IssuesList) ReplaceHierarchyTabContent(title string, issues []jira.Issue) {
-	if m.hierarchyTabIdx < 0 {
+	idx, ok := m.hierarchyTabIndex()
+	if !ok {
 		return
 	}
 	m.hierarchyTitle = title
-	m.tabs[m.hierarchyTabIdx] = config.IssueTabConfig{Name: title, JQL: ""}
-	if m.tabCache == nil {
-		m.tabCache = make(map[int][]jira.Issue)
-	}
-	m.tabCache[m.hierarchyTabIdx] = issues
-	if m.tab == m.hierarchyTabIdx {
+	m.tabs[idx].cfg = config.IssueTabConfig{Name: title}
+	m.tabs[idx].issues = issues
+	m.tabs[idx].loaded = true
+	if m.tab == idx {
 		m.loadFromCache()
 	}
 }
@@ -179,26 +272,57 @@ func (m *IssuesList) ReplaceHierarchyTabContent(title string, issues []jira.Issu
 // Removes the hierarchy tab, drops its stack, and switches to tab 0.
 // No-op if no hierarchy tab.
 func (m *IssuesList) RemoveHierarchyTab() {
-	if m.hierarchyTabIdx < 0 {
+	idx, ok := m.hierarchyTabIndex()
+	if !ok {
 		return
 	}
-	if m.tabCache != nil {
-		delete(m.tabCache, m.hierarchyTabIdx)
-	}
-	m.tabs = append(m.tabs[:m.hierarchyTabIdx], m.tabs[m.hierarchyTabIdx+1:]...)
-	m.hierarchyTabIdx = -1
+	m.tabs = append(m.tabs[:idx], m.tabs[idx+1:]...)
 	m.hierarchyTitle = ""
 	m.hierarchyStack = nil
-	m.tab = 0
+	m.tab = m.HomeTabIndex()
 	m.loadFromCache()
 }
 
 func (m *IssuesList) HasHierarchyTab() bool {
-	return m.hierarchyTabIdx >= 0
+	_, ok := m.hierarchyTabIndex()
+	return ok
 }
 
 func (m *IssuesList) IsHierarchyTab() bool {
-	return m.hierarchyTabIdx >= 0 && m.tab == m.hierarchyTabIdx
+	idx, ok := m.hierarchyTabIndex()
+	return ok && m.tab == idx
+}
+
+// IsManagedTab reports whether the active tab originates from the managed store.
+func (m *IssuesList) IsManagedTab() bool {
+	return m.tab >= 0 && m.tab < len(m.tabs) && m.tabs[m.tab].kind == tabKindManaged
+}
+
+// IsConfigTab reports whether the active tab originates from config.yml.
+func (m *IssuesList) IsConfigTab() bool {
+	return m.tab >= 0 && m.tab < len(m.tabs) && m.tabs[m.tab].kind == tabKindConfig
+}
+
+// ActiveManagedStoreIdx returns the active tab's index in the managed store, or
+// -1 when the active tab is not managed.
+func (m *IssuesList) ActiveManagedStoreIdx() int {
+	if m.IsManagedTab() {
+		return m.tabs[m.tab].storeIdx
+	}
+	return -1
+}
+
+// VisibleManagedStoreIndices returns the store indices of the currently visible
+// managed tabs, in visible (left-to-right) order. Reorder maps a visible
+// neighbor back to its store entry through this.
+func (m *IssuesList) VisibleManagedStoreIndices() []int {
+	var idxs []int
+	for i := range m.tabs {
+		if m.tabs[i].kind == tabKindManaged {
+			idxs = append(idxs, m.tabs[i].storeIdx)
+		}
+	}
+	return idxs
 }
 
 // The current hierarchy tab title ("Children"/"Parent"/"Link").
@@ -229,19 +353,35 @@ func (m *IssuesList) PrevTab() {
 }
 
 func (m *IssuesList) loadFromCache() {
-	if m.tabCache != nil {
-		if cached, ok := m.tabCache[m.tab]; ok {
-			m.allIssues = cached
-			m.updateKeyColWidth(cached)
-			m.applyFilter()
-			return
-		}
+	if m.tab >= 0 && m.tab < len(m.tabs) && m.tabs[m.tab].loaded {
+		cached := m.tabs[m.tab].issues
+		m.allIssues = cached
+		m.updateKeyColWidth(cached)
+		m.applyFilter()
+		return
 	}
 	m.allIssues = nil
 	m.applyFilter()
 }
 
 func (m *IssuesList) GetTabIndex() int { return m.tab }
+
+// TabEpoch returns the current reassembly generation. A tab fetch captures it
+// at issue time; a result whose epoch no longer matches targets a stale tab
+// layout and must be discarded.
+func (m *IssuesList) TabEpoch() int { return m.tabEpoch }
+
+// HomeTabIndex returns the index of the first config tab (the primary issue
+// list), or 0 if none exists. With managed tabs prepended, index 0 is no
+// longer necessarily the home list.
+func (m *IssuesList) HomeTabIndex() int {
+	for i := range m.tabs {
+		if m.tabs[i].kind == tabKindConfig {
+			return i
+		}
+	}
+	return 0
+}
 
 func (m *IssuesList) CurrentIssues() []jira.Issue { return m.allIssues }
 
@@ -260,10 +400,10 @@ func (m *IssuesList) SetIssues(issues []jira.Issue) {
 		selectedKey = sel.Key
 	}
 
-	if m.tabCache == nil {
-		m.tabCache = make(map[int][]jira.Issue)
+	if m.tab >= 0 && m.tab < len(m.tabs) {
+		m.tabs[m.tab].issues = issues
+		m.tabs[m.tab].loaded = true
 	}
-	m.tabCache[m.tab] = issues
 
 	m.allIssues = issues
 	m.updateKeyColWidth(issues)
@@ -285,10 +425,8 @@ func (m *IssuesList) PatchIssue(updated *jira.Issue) {
 		}
 	}
 	patch(m.allIssues)
-	if m.tabCache != nil {
-		if cached, ok := m.tabCache[m.tab]; ok {
-			patch(cached)
-		}
+	if m.tab >= 0 && m.tab < len(m.tabs) && m.tabs[m.tab].loaded {
+		patch(m.tabs[m.tab].issues)
 	}
 	m.applyFilterKeepCursor()
 }
@@ -302,43 +440,40 @@ func (m *IssuesList) updateKeyColWidth(issues []jira.Issue) {
 	}
 }
 
-// HasCachedTab returns true if the current tab has cached data
+// HasCachedTab returns true if the current tab has loaded data
 func (m *IssuesList) HasCachedTab() bool {
-	if m.tabCache == nil {
-		return false
-	}
-	_, ok := m.tabCache[m.tab]
-	return ok
+	return m.tab >= 0 && m.tab < len(m.tabs) && m.tabs[m.tab].loaded
 }
 
-// SetIssuesForTab stores issues in the cache for a specific tab without updating the display
+// SetIssuesForTab stores issues for a specific tab without updating the display.
+// Out-of-bounds indices are ignored (stale async fetch after a tab rebuild).
 func (m *IssuesList) SetIssuesForTab(tab int, issues []jira.Issue) {
-	if m.tabCache == nil {
-		m.tabCache = make(map[int][]jira.Issue)
+	if tab < 0 || tab >= len(m.tabs) {
+		return
 	}
-	m.tabCache[tab] = issues
+	m.tabs[tab].issues = issues
+	m.tabs[tab].loaded = true
 }
 
-// InvalidateTabCache clears all cached tab data and removes transient tabs (JQL and Hierarchy).
+// InvalidateTabCache drops loaded issues from persistent tabs and removes
+// transient tabs (JQL and Hierarchy). Surviving tabs reset to not-loaded so
+// the next access refetches.
 func (m *IssuesList) InvalidateTabCache() {
-	m.tabCache = nil
-	trimFrom := len(m.tabs)
-	if m.jqlTabIdx >= 0 && m.jqlTabIdx < trimFrom {
-		trimFrom = m.jqlTabIdx
+	kept := m.tabs[:0:0]
+	for _, t := range m.tabs {
+		if t.kind == tabKindJQLSearch || t.kind == tabKindHierarchy {
+			continue
+		}
+		t.issues = nil
+		t.loaded = false
+		kept = append(kept, t)
 	}
-	if m.hierarchyTabIdx >= 0 && m.hierarchyTabIdx < trimFrom {
-		trimFrom = m.hierarchyTabIdx
-	}
-	if trimFrom < len(m.tabs) {
-		m.tabs = m.tabs[:trimFrom]
-	}
-	m.jqlTabIdx = -1
+	m.tabs = kept
 	m.jqlQuery = ""
-	m.hierarchyTabIdx = -1
 	m.hierarchyTitle = ""
 	m.hierarchyStack = nil
 	if m.tab >= len(m.tabs) {
-		m.tab = 0
+		m.tab = m.HomeTabIndex()
 	}
 }
 
@@ -371,31 +506,33 @@ func (m *IssuesList) FindInAnyTab(key string) (int, bool) {
 			return m.tab, true
 		}
 	}
-	for tab, issues := range m.tabCache {
-		if tab == m.tab {
+	for i := range m.tabs {
+		if i == m.tab {
 			continue
 		}
-		for _, issue := range issues {
+		for _, issue := range m.tabs[i].issues {
 			if issue.Key == key {
-				return tab, true
+				return i, true
 			}
 		}
 	}
 	return -1, false
 }
 
-// InjectIssue adds an issue to tab 0 cache if not already present
+// InjectIssue adds an issue to the home tab's cache if not already present
 func (m *IssuesList) InjectIssue(issue jira.Issue) {
-	if m.tabCache == nil {
-		m.tabCache = make(map[int][]jira.Issue)
+	if len(m.tabs) == 0 {
+		return
 	}
-	cached := m.tabCache[0]
+	h := m.HomeTabIndex()
+	cached := m.tabs[h].issues
 	for _, iss := range cached {
 		if iss.Key == issue.Key {
 			return
 		}
 	}
-	m.tabCache[0] = append([]jira.Issue{issue}, cached...)
+	m.tabs[h].issues = append([]jira.Issue{issue}, cached...)
+	m.tabs[h].loaded = true
 }
 
 // SelectByKey moves cursor to the issue with the given key and returns true if found
@@ -503,7 +640,7 @@ func (m *IssuesList) ClickTabAt(x int) bool {
 	sepW := 3
 	pos := prefix
 	for i, t := range m.tabs {
-		labelW := len(t.Name)
+		labelW := len(t.cfg.Name)
 		var zoneEnd int
 		if i < len(m.tabs)-1 {
 			zoneEnd = pos + labelW + sepW
@@ -542,9 +679,9 @@ func (m *IssuesList) buildTitle(maxTitleW int) string {
 	labelW := make([]int, len(m.tabs))
 	for i, t := range m.tabs {
 		if i == m.tab {
-			labels[i] = activeStyle.Render(t.Name)
+			labels[i] = activeStyle.Render(t.cfg.Name)
 		} else {
-			labels[i] = inactiveStyle.Render(t.Name)
+			labels[i] = inactiveStyle.Render(t.cfg.Name)
 		}
 		labelW[i] = lipgloss.Width(labels[i])
 	}
@@ -564,7 +701,7 @@ func (m *IssuesList) buildTitle(maxTitleW int) string {
 	// If the active tab label alone exceeds the budget, truncate it so the
 	// title never returns wider than maxTitleW regardless of label length.
 	if budget > 0 && labelW[m.tab] > budget {
-		truncated := components.TruncateEnd(m.tabs[m.tab].Name, budget)
+		truncated := components.TruncateEnd(m.tabs[m.tab].cfg.Name, budget)
 		labels[m.tab] = activeStyle.Render(truncated)
 		labelW[m.tab] = lipgloss.Width(labels[m.tab])
 	}

@@ -16,6 +16,9 @@ import (
 
 // handleIssuesLoaded processes newly fetched issues
 func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.epoch != a.issuesList.TabEpoch() {
+		return a, nil // stale: tabs were reassembled after this fetch was issued
+	}
 	a.statusPanel.SetError("")
 	*a.logFlag = false
 	a.statusPanel.SetOnline(true)
@@ -53,8 +56,8 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 		case a.issuesList.SelectByKey(detectedKey):
 			cmds = append(cmds, fetchIssueDetail(a.client, detectedKey))
 			a.gitDetectedKey = ""
-		case a.issuesList.GetTabIndex() != 0:
-			a.issuesList.SetTabIndex(0)
+		case a.issuesList.GetTabIndex() != a.issuesList.HomeTabIndex():
+			a.issuesList.SetTabIndex(a.issuesList.HomeTabIndex())
 			cmds = append(cmds, a.fetchActiveTab())
 		default:
 			a.gitDetectedKey = ""
@@ -371,11 +374,7 @@ func (a *App) handleProjectsLoaded(msg projectsLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	a.projectList.SetProjects(projects)
 	if a.projectKey == "" && len(projects) > 0 {
-		a.projectKey = projects[0].Key
-		a.projectID = projects[0].ID
-		a.statusPanel.SetProject(a.projectKey)
-		a.projectList.SetActiveKey(a.projectKey)
-		a.resolveBoardID()
+		a.setActiveProject(projects[0].Key, projects[0].ID)
 		return a, a.fetchActiveTab()
 	}
 	return a, nil

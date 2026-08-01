@@ -173,16 +173,25 @@ func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model,
 				return a, gitCreateBranch(a.gitRepoPath, msg.Text)
 			}
 		}
+	case editTabName:
+		return a, a.saveManagedTab(strings.TrimSpace(msg.Text), ctx.tabJQL, ctx.tabMaxResults)
 	}
 	return a, nil
 }
 
-// handleInputCancelled clears edit context
+// handleInputCancelled clears edit context. A save-tab prompt opened via Ctrl+S
+// from the JQL search modal reopens that search with the pending query, so an
+// aborted save does not discard the user's in-progress query.
 func (a *App) handleInputCancelled() (tea.Model, tea.Cmd) {
-	if a.editContext.kind == editCreateField {
+	ctx := a.editContext
+	a.editContext = editCtx{}
+	if ctx.kind == editCreateField {
 		a.createForm.Resume()
 	}
-	a.editContext = editCtx{}
+	if ctx.returnToJQLModal {
+		a.editingManagedTab = ctx.prevEditingManagedTab
+		a.jqlModal.Show(ctx.tabJQL, LoadJQLHistory())
+	}
 	return a, nil
 }
 

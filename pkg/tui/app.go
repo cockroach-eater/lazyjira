@@ -62,6 +62,7 @@ const (
 	editBranch
 	editCreateField
 	editCreateDesc
+	editTabName
 )
 
 type editCtx struct {
@@ -71,6 +72,14 @@ type editCtx struct {
 	fieldID        string
 	fieldIndex     int
 	converterState any
+	tabJQL         string // captured at prompt time; source for editTabName confirm
+	tabMaxResults  *int   // promote carries the config tab's page size; nil for save
+	// returnToJQLModal marks the save-tab prompt opened via Ctrl+S from the JQL
+	// search modal: cancelling reopens the search with tabJQL instead of dropping it.
+	returnToJQLModal bool
+	// prevEditingManagedTab restores the managed-tab-edit context on that reopen,
+	// so the reopened search behaves and labels itself as it did before Ctrl+S.
+	prevEditingManagedTab int
 }
 
 type createCtx struct {
@@ -89,6 +98,7 @@ type onChecklistFunc func([]components.ModalItem) tea.Cmd
 type issuesLoadedMsg struct {
 	issues []jira.Issue
 	tab    int
+	epoch  int
 }
 type issueDetailLoadedMsg struct{ issue *jira.Issue }
 
@@ -212,6 +222,14 @@ type App struct {
 
 	customCmds []config.ResolvedCustomCommand
 
+	// savedTabs is the source of truth for the managed-tab store. Mutations
+	// persist to saved_tabs.yml and re-sync issuesList via SetSavedTabs.
+	savedTabs []config.ManagedTab
+
+	// editingManagedTab is the store index whose query an open JQL modal will
+	// overwrite on submit, or -1 when the modal performs a fresh search.
+	editingManagedTab int
+
 	panelSideW     int
 	panelStatusH   int
 	panelIssuesH   int
@@ -274,6 +292,12 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		issuesList.SetPriorityIcons(cfg.GUI.PriorityIcons)
 	}
 	issuesList.SetTabs(cfg.IssueTabs)
+	savedTabs := config.LoadSavedTabs()
+	issuesList.SetSavedTabs(savedTabs)
+	// Assemble for the initial project so the list's project filter matches
+	// a.projectKey from the start; otherwise managed tabs stay hidden (and
+	// fail to shadow their config namesakes) until the first project switch.
+	issuesList.RebuildTabs(projectKey)
 	issuesList.SetFocused(true)
 	issuesList.SetUserEmail(cfg.Jira.Email)
 	infoPanel := views.NewInfoPanel()
@@ -327,34 +351,36 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 	}
 
 	app := &App{
-		cfg:             cfg,
-		client:          client,
-		keymap:          KeymapFromConfig(cfg.Keybinding),
-		splashInfo:      splash,
-		statusPanel:     statusPanel,
-		issuesList:      issuesList,
-		infoPanel:       infoPanel,
-		projectList:     projectList,
-		detailView:      detailView,
-		logPanel:        logPanel,
-		helpBar:         helpBar,
-		searchBar:       searchBar,
-		modal:           modal,
-		jqlModal:        jqlModal,
-		diffView:        diffView,
-		inputModal:      inputModal,
-		createForm:      createForm,
-		side:            sideLeft,
-		leftFocus:       focusIssues,
-		projectKey:      projectKey,
-		isCloud:         cfg.Jira.IsCloud(),
-		demoMode:        authMethod == AuthDemo,
-		logFlag:         logFlag,
-		usersCache:      make(map[string][]jira.User),
-		issueCache:      make(map[string]*jira.Issue),
-		childrenCache:   make(map[string][]jira.Issue),
-		createMetaCache: make(map[string][]jira.CreateMetaField),
-		converter:       BuiltinConverter{},
+		cfg:               cfg,
+		client:            client,
+		keymap:            KeymapFromConfig(cfg.Keybinding),
+		splashInfo:        splash,
+		statusPanel:       statusPanel,
+		issuesList:        issuesList,
+		infoPanel:         infoPanel,
+		projectList:       projectList,
+		detailView:        detailView,
+		logPanel:          logPanel,
+		helpBar:           helpBar,
+		searchBar:         searchBar,
+		modal:             modal,
+		jqlModal:          jqlModal,
+		diffView:          diffView,
+		inputModal:        inputModal,
+		createForm:        createForm,
+		savedTabs:         savedTabs,
+		editingManagedTab: -1,
+		side:              sideLeft,
+		leftFocus:         focusIssues,
+		projectKey:        projectKey,
+		isCloud:           cfg.Jira.IsCloud(),
+		demoMode:          authMethod == AuthDemo,
+		logFlag:           logFlag,
+		usersCache:        make(map[string][]jira.User),
+		issueCache:        make(map[string]*jira.Issue),
+		childrenCache:     make(map[string][]jira.Issue),
+		createMetaCache:   make(map[string][]jira.CreateMetaField),
+		converter:         BuiltinConverter{},
 	}
 	// cfg.Converter is validated at config-load time; "" and "builtin"
 	// both fall through to the BuiltinConverter set above.
@@ -574,11 +600,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case components.JQLSubmitMsg:
 		return a.handleJQLSubmit(msg)
+	case components.JQLSaveTabMsg:
+		return a.handleJQLSaveTab(msg)
 	case jqlSearchResultMsg:
 		return a.handleJQLSearchResult(msg)
 	case jqlSearchErrorMsg:
 		return a.handleJQLSearchError(msg)
 	case components.JQLCancelMsg:
+		a.editingManagedTab = -1
 		return a, nil
 	case components.JQLInputChangedMsg:
 		return a.handleJQLInputChanged(msg)
@@ -1154,7 +1183,7 @@ func (a *App) fetchActiveTab() tea.Cmd {
 		}
 		tabIdx := a.issuesList.GetTabIndex()
 		*a.logFlag = true
-		return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveGlobalMaxResults())
+		return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveGlobalMaxResults(), a.issuesList.TabEpoch())
 	}
 	if a.projectKey == "" {
 		return nil
@@ -1166,7 +1195,7 @@ func (a *App) fetchActiveTab() tea.Cmd {
 	tabIdx := a.issuesList.GetTabIndex()
 	jql := resolveTabJQL(tab, a.projectKey, a.cfg.Jira.Email)
 	*a.logFlag = true
-	return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveMaxResults(tab))
+	return fetchIssuesByJQL(a.client, jql, tabIdx, a.cfg.ResolveMaxResults(tab), a.issuesList.TabEpoch())
 }
 
 func (a *App) updateFocusState() {

@@ -112,9 +112,9 @@ func (a *App) navigateToIssue(key string) {
 		a.showCachedIssue(key)
 		return
 	}
-	// Switch to first tab (typically "All") and try again.
-	if a.issuesList.GetTabIndex() != 0 {
-		a.issuesList.SetTabIndex(0)
+	// Switch to the home tab (typically "All") and try again.
+	if a.issuesList.GetTabIndex() != a.issuesList.HomeTabIndex() {
+		a.issuesList.SetTabIndex(a.issuesList.HomeTabIndex())
 		if a.issuesList.SelectByKey(key) {
 			a.side = sideLeft
 			a.leftFocus = focusIssues

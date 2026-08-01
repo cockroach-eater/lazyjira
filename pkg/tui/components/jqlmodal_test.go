@@ -255,6 +255,31 @@ func TestJQLModal_TabInsertsSuggestionWhenOnlyOne(t *testing.T) {
 	}
 }
 
+func TestJQLModal_ctrlS_emitsSaveMsg(t *testing.T) {
+	t.Parallel()
+	m := NewJQLModal()
+	m.SetSize(80, 24)
+	m.Show(testQueryText, nil)
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if cmd == nil {
+		t.Fatal("expected save command")
+	}
+	msg, ok := cmd().(JQLSaveTabMsg)
+	if !ok {
+		t.Fatalf("expected JQLSaveTabMsg, got %T", cmd())
+	}
+	testkit.AssertEqual(t, "save query", msg.Query, testQueryText)
+}
+
+func TestJQLModal_ctrlS_emptyInputNoop(t *testing.T) {
+	t.Parallel()
+	m := NewJQLModal()
+	m.SetSize(80, 24)
+	m.Show("", nil)
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	testkit.AssertEqual(t, "no command when empty", cmd == nil, true)
+}
+
 func TestJQLModal_ListNavWithJK(t *testing.T) {
 	t.Parallel()
 	m := NewJQLModal()

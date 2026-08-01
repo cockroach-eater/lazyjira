@@ -13,6 +13,9 @@ import (
 // JQLSubmitMsg is sent when the user submits a JQL query
 type JQLSubmitMsg struct{ Query string }
 
+// JQLSaveTabMsg is sent when the user saves the current query as a managed tab
+type JQLSaveTabMsg struct{ Query string }
+
 // JQLCancelMsg is sent when the user cancels the JQL modal
 type JQLCancelMsg struct{}
 
@@ -162,6 +165,13 @@ func (m *JQLModal) handleKey(msg tea.KeyMsg) (JQLModal, tea.Cmd) {
 		}
 		m.focusInput = !m.focusInput
 		return *m, nil
+
+	case tea.KeyCtrlS:
+		q := m.input.Value()
+		if strings.TrimSpace(q) == "" {
+			return *m, nil
+		}
+		return *m, func() tea.Msg { return JQLSaveTabMsg{Query: q} }
 
 	case tea.KeyEnter:
 		return m.handleEnter()

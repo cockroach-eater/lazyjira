@@ -41,6 +41,27 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `b` | Create branch from issue |
 | `s` | JQL search |
 | `x` | Close JQL tab |
+| `M` | Manage the active tab (see below) |
+| `D` | Delete the active managed tab (asks for confirmation) |
+| `<` / `>` | Move the active managed tab left / right within the managed section |
+
+### Managed tabs
+
+The `M` key is context-sensitive and is how you turn queries into lasting, named tabs (stored in `saved_tabs.yml`, see [Config](Config.md#managed-tabs-saved_tabsyml)):
+
+- On a transient JQL tab (created with `s`): **Save** it as a managed tab. You are prompted for a name, and the tab is bound to the current project.
+- On a config tab (from `issueTabs`): **Promote** a copy into the store. The name is pre-filled. The config original is then shadowed by the managed copy; `config.yml` is left untouched.
+
+`D` deletes the active managed tab after a confirmation. If a same-named config tab was shadowed, it reappears (un-promote). `<` and `>` reorder the active managed tab. All three are no-ops on tabs they do not apply to (for example `D` does nothing on a config tab). `x` still only closes a transient JQL tab.
+
+These keys are remappable under `keybinding.issues` in `config.yml`:
+
+| Action | Config key | Default |
+|--------|-----------|---------|
+| Manage (save / promote) | `manageTab` | `M` |
+| Delete managed tab | `deleteManagedTab` | `D` |
+| Reorder left | `reorderTabLeft` | `<` |
+| Reorder right | `reorderTabRight` | `>` |
 
 ## Help popup
 

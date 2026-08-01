@@ -18,6 +18,8 @@ func newTestApp() *App {
 		detailView:  views.NewDetailView(views.BuiltinRenderer{}),
 		side:        sideLeft,
 		leftFocus:   focusIssues,
+
+		editingManagedTab: -1,
 	}
 }
 

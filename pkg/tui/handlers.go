@@ -80,18 +80,27 @@ func (a *App) handleAutoFetch() (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
+// setActiveProject is the single mutator for the current project. Every project
+// change must go through it: it keeps a.projectKey and the issue list's tab
+// filter (issuesList.RebuildTabs) in sync. They used to drift when a caller set
+// a.projectKey directly, leaving managed tabs hidden and unable to shadow their
+// config namesakes. Invariant: never assign a.projectKey outside this method.
+func (a *App) setActiveProject(key, id string) {
+	a.projectKey = key
+	a.projectID = id
+	a.statusPanel.SetProject(key)
+	a.projectList.SetActiveKey(key)
+	a.issuesList.RebuildTabs(key)
+	a.resolveBoardID()
+}
+
 func (a *App) selectProject(p *jira.Project) tea.Cmd {
-	a.projectKey = p.Key
-	a.projectID = p.ID
-	a.statusPanel.SetProject(p.Key)
-	a.projectList.SetActiveKey(p.Key)
-	a.issuesList.InvalidateTabCache()
+	a.setActiveProject(p.Key, p.ID)
 	a.issueCache = make(map[string]*jira.Issue)
 	a.childrenCache = make(map[string][]jira.Issue)
 	a.createMetaCache = make(map[string][]jira.CreateMetaField)
 	a.invalidateInFlight()
 	a.infoPanel.SetIssue(nil)
-	a.resolveBoardID()
 	if !a.demoMode {
 		go saveLastProject(p.Key)
 	}

@@ -53,13 +53,13 @@ func gitCheckoutTracking(repoPath, remoteBranch string) tea.Cmd {
 	}
 }
 
-func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab, maxResults int) tea.Cmd {
+func fetchIssuesByJQL(client jira.ClientInterface, jql string, tab, maxResults, epoch int) tea.Cmd {
 	return func() tea.Msg {
 		result, err := client.SearchIssues(context.Background(), jql, 0, maxResults)
 		if err != nil {
 			return errorMsg{err: err}
 		}
-		return issuesLoadedMsg{issues: result.Issues, tab: tab}
+		return issuesLoadedMsg{issues: result.Issues, tab: tab, epoch: epoch}
 	}
 }
 

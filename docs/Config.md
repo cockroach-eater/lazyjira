@@ -372,6 +372,48 @@ issueTabs:
 
 Resolution order: per-tab `maxResults` → global `maxResults` → built-in default (50). Values `<= 0` are treated as unset. Note that the Jira server may enforce its own upper bound and silently return fewer issues than requested.
 
+## Managed tabs (`saved_tabs.yml`)
+
+Tabs created from inside the TUI are stored in a separate file, `saved_tabs.yml`, in the same config directory as `config.yml` (so `~/.config/lazyjira/saved_tabs.yml` on Linux, and honoring `LAZYJIRA_CONFIG_DIR` / `XDG_CONFIG_HOME`). This keeps `config.yml` untouched: lazyjira never rewrites it, so your hand-edited comments and formatting are safe.
+
+There are two sources of tabs:
+
+| Source | File | Edited via | Templates |
+|--------|------|------------|-----------|
+| Config tabs | `config.yml` `issueTabs` | hand-edited (read-only from the TUI) | yes (`{{.ProjectKey}}`) |
+| Managed tabs | `saved_tabs.yml` | created, deleted, reordered in the TUI | no (concrete JQL) |
+
+You normally do not edit `saved_tabs.yml` by hand. It is written by the Save, Delete, Promote, and Reorder actions (see [Keybindings](Keybindings.md#issues)). The format is an ordered list, and the list order is the tab order shown in the bar:
+
+```yaml
+tabs:
+  - name: "My Bugs"
+    jql: "project = ABC AND type = Bug AND statusCategory != Done"
+    project: "ABC"      # bind to one project; empty = global (shown under every project)
+    maxResults: 50      # optional, same meaning as on issueTabs
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Tab label. |
+| `jql` | Concrete JQL (no template expansion). |
+| `project` | Project key the tab belongs to. Empty means global: the tab appears under every project. |
+| `maxResults` | Optional per-tab page size, same resolution as for `issueTabs`. |
+
+### Tab order
+
+For the active project the bar is assembled in this order:
+
+1. Managed tabs whose `project` matches the current project or is empty (global), in `saved_tabs.yml` order.
+2. Config tabs from `issueTabs`, except those shadowed by a managed tab (see below).
+3. Transient tabs (ad-hoc JQL search, hierarchy view) created at runtime.
+
+### Shadow, promote, un-promote
+
+A managed tab and a config tab can share a name. When they do, the managed tab **shadows** the config one: the config tab is hidden while a same-named managed tab exists. Matching is by name.
+
+This is what the Promote action uses. Promoting a config tab copies it (name, JQL, `maxResults`) into `saved_tabs.yml`, bound to the current project. The config original is then shadowed, but `config.yml` is never modified, so promote is non-destructive and reversible. Deleting the managed copy **un-promotes** it: the config tab reappears unchanged.
+
 ## Keybindings
 
 All keybindings are remappable. See [Keybindings](Keybindings.md) for the full list of defaults.
@@ -607,5 +649,6 @@ Available in every scope:
 | File | Description |
 |------|-------------|
 | `config.yml` | Main configuration |
+| `saved_tabs.yml` | Managed tabs created from inside the TUI |
 | `auth.json` | Credentials, created automatically with restricted permissions |
 | `jql_history.txt` | JQL search history, up to 50 entries |

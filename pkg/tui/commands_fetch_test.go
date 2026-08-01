@@ -33,7 +33,7 @@ func TestFetchIssuesByJQL(t *testing.T) {
 			return &jira.SearchResult{Issues: []jira.Issue{{Key: testKey}}}, nil
 		}
 
-		msg := fetchIssuesByJQL(fake, "project = PLAT", 2, 50)()
+		msg := fetchIssuesByJQL(fake, "project = PLAT", 2, 50, 7)()
 
 		loaded, ok := msg.(issuesLoadedMsg)
 		if !ok {
@@ -41,6 +41,9 @@ func TestFetchIssuesByJQL(t *testing.T) {
 		}
 		if loaded.tab != 2 || len(loaded.issues) != 1 {
 			t.Errorf("loaded = %+v, want tab=2 with one issue", loaded)
+		}
+		if loaded.epoch != 7 {
+			t.Errorf("loaded.epoch = %d, want 7 (captured at fetch time)", loaded.epoch)
 		}
 	})
 
@@ -50,7 +53,7 @@ func TestFetchIssuesByJQL(t *testing.T) {
 		fake.SearchIssuesFunc = func(_ context.Context, _ string, _, _ int) (*jira.SearchResult, error) {
 			return nil, errors.New("boom")
 		}
-		assertErrorMsg(t, fetchIssuesByJQL(fake, "x", 0, 10)())
+		assertErrorMsg(t, fetchIssuesByJQL(fake, "x", 0, 10, 0)())
 	})
 }
 

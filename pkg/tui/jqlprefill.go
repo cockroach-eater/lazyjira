@@ -11,9 +11,18 @@ import (
 const currentUserMarker = "__currentUser__"
 
 var (
-	jqlAndRe = regexp.MustCompile(`(?i)\s+AND\s+`)
-	jqlEqRe  = regexp.MustCompile(`^\s*(\w+)\s*=\s*(.+?)\s*$`)
+	jqlAndRe        = regexp.MustCompile(`(?i)\s+AND\s+`)
+	jqlEqRe         = regexp.MustCompile(`^\s*(\w+)\s*=\s*(.+?)\s*$`)
+	jqlWhitespaceRe = regexp.MustCompile(`\s+`)
 )
+
+// normalizeJQL collapses runs of whitespace (including the newlines allowed in
+// multi-line config.yml block scalars) into single spaces, so a query is
+// editable in the single-line JQL input. Whitespace is insignificant in JQL,
+// so this preserves meaning.
+func normalizeJQL(jql string) string {
+	return strings.TrimSpace(jqlWhitespaceRe.ReplaceAllString(jql, " "))
+}
 
 // ParseJQLPrefill extracts simple equality clauses from JQL
 // Skips OR, NOT, IN and complex functions except currentUser()

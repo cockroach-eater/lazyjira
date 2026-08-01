@@ -166,6 +166,11 @@ type IssueKeys struct {
 	CreateBranch  string `yaml:"createBranch"`
 	CreateIssue   string `yaml:"createIssue"`
 	CreateSubtask string `yaml:"createSubtask"`
+
+	ManageTab        string `yaml:"manageTab"`
+	DeleteManagedTab string `yaml:"deleteManagedTab"`
+	ReorderTabLeft   string `yaml:"reorderTabLeft"`
+	ReorderTabRight  string `yaml:"reorderTabRight"`
 }
 
 type ProjectKeys struct {

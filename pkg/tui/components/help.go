@@ -37,6 +37,11 @@ func (h *HelpBar) SetStatusMsg(msg string) {
 	h.statusMsg = msg
 }
 
+// StatusMsg returns the current transient message.
+func (h *HelpBar) StatusMsg() string {
+	return h.statusMsg
+}
+
 // SetWidth updates the help bar width.
 func (h *HelpBar) SetWidth(w int) {
 	h.width = w

@@ -73,6 +73,21 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActCloseJQLTab, "close JQL tab"),
 			Binding{"[]", "switch tab"},
 		)
+		// Tab-management keys depend on the active tab kind so the reference
+		// never advertises an action that does nothing on the current tab.
+		switch {
+		case a.issuesList.IsJQLTab():
+			bindings = append(bindings, a.bind(ActManageTab, "save as managed tab"))
+		case a.issuesList.IsConfigTab():
+			bindings = append(bindings, a.bind(ActManageTab, "promote to managed tab"))
+		case a.issuesList.IsManagedTab():
+			bindings = append(bindings,
+				a.bind(ActJQLSearch, "edit query"),
+				a.bind(ActDeleteManagedTab, "delete managed tab"),
+				a.bind(ActReorderTabLeft, "move tab left"),
+				a.bind(ActReorderTabRight, "move tab right"),
+			)
+		}
 		bindings = append(bindings, a.customCommandBindings(config.CtxIssues)...)
 		return bindings
 
@@ -158,9 +173,17 @@ func (a *App) helpBarItems() []components.HelpItem {
 		}
 		return items
 	case a.jqlModal.IsVisible():
+		// Enter and Ctrl+S do different things depending on whether the modal is
+		// editing an existing managed tab (Enter overwrites it) or running an
+		// ad-hoc search (Enter searches); label them by what they actually do.
+		enterDesc, saveDesc := "search", "save tab"
+		if a.editingManagedTab >= 0 {
+			enterDesc, saveDesc = "update tab", "save as new tab"
+		}
 		return []components.HelpItem{
-			{Key: "enter", Description: "search"},
+			{Key: "enter", Description: enterDesc},
 			{Key: "tab", Description: "switch focus"},
+			{Key: "ctrl+s", Description: saveDesc},
 			{Key: "esc", Description: "cancel"},
 		}
 	case a.showHelp:
@@ -204,6 +227,18 @@ func (a *App) helpBarItems() []components.HelpItem {
 		if a.issuesList.IsJQLTab() {
 			items = append(items, components.HelpItem{Key: km.Keys(ActCloseJQLTab), Description: "close JQL"})
 		}
+		switch {
+		case a.issuesList.IsJQLTab():
+			items = append(items, components.HelpItem{Key: km.Keys(ActManageTab), Description: "save tab"})
+		case a.issuesList.IsConfigTab():
+			items = append(items, components.HelpItem{Key: km.Keys(ActManageTab), Description: "promote tab"})
+		case a.issuesList.IsManagedTab():
+			items = append(items,
+				components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "edit query"},
+				components.HelpItem{Key: km.Keys(ActDeleteManagedTab), Description: "delete tab"},
+				components.HelpItem{Key: km.Keys(ActReorderTabLeft) + km.Keys(ActReorderTabRight), Description: "move tab"},
+			)
+		}
 		cur := a.currentIssue()
 		enterDesc := "detail"
 		if cur != nil {
@@ -222,8 +257,12 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
 			components.HelpItem{Key: km.Keys(ActCreateBranch), Description: "branch"},
 			components.HelpItem{Key: km.Keys(ActNew), Description: "create"},
-			components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"},
 		)
+		// On a managed tab the JQL key edits that tab's query (shown above);
+		// elsewhere it starts a fresh search.
+		if !a.issuesList.IsManagedTab() {
+			items = append(items, components.HelpItem{Key: km.Keys(ActJQLSearch), Description: "JQL search"})
+		}
 		if a.canCreateSubtask() {
 			items = append(items, components.HelpItem{Key: km.Keys(ActCreateSubtask), Description: "subtask"})
 		}

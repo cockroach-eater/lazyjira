@@ -357,11 +357,37 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 		}
 		return a, nil, true
 
+	case ActManageTab:
+		m, cmd := a.startManageTab()
+		return m, cmd, true
+
+	case ActDeleteManagedTab:
+		m, cmd := a.startDeleteManagedTab()
+		return m, cmd, true
+
+	case ActReorderTabLeft:
+		if a.side == sideLeft && a.leftFocus == focusIssues {
+			return a, a.reorderManagedTab(-1), true
+		}
+		return a, nil, true
+
+	case ActReorderTabRight:
+		if a.side == sideLeft && a.leftFocus == focusIssues {
+			return a, a.reorderManagedTab(1), true
+		}
+		return a, nil, true
+
 	case ActJQLSearch:
 		history := LoadJQLHistory()
 		prefill := ""
-		if a.projectKey != "" {
-			prefill = "project = " + a.projectKey + " AND "
+		if a.issuesList.IsManagedTab() {
+			prefill = normalizeJQL(a.issuesList.ActiveTab().JQL)
+			a.editingManagedTab = a.issuesList.ActiveManagedStoreIdx()
+		} else {
+			if a.projectKey != "" {
+				prefill = "project = " + a.projectKey + " AND "
+			}
+			a.editingManagedTab = -1
 		}
 		a.jqlModal.Show(prefill, history)
 		var cmds []tea.Cmd
@@ -666,7 +692,7 @@ func (a *App) navigateToLinkedIssue() (tea.Model, tea.Cmd) {
 		}
 	} else if cached, ok := a.issueCache[key]; ok {
 		a.issuesList.InjectIssue(*cached)
-		a.issuesList.SetTabIndex(0)
+		a.issuesList.SetTabIndex(a.issuesList.HomeTabIndex())
 	}
 	a.issuesList.SelectByKey(key)
 	a.leftFocus = focusIssues

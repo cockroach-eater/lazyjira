@@ -31,6 +31,37 @@ func TestKeymapFromConfig_EmptyKeepsDefaults(t *testing.T) {
 	testkit.AssertSliceEqual(t, "quit default preserved", keymap[ActQuit], defaults[ActQuit])
 }
 
+func TestDefaultKeymap_managedTabKeys(t *testing.T) {
+	t.Parallel()
+
+	km := DefaultKeymap()
+
+	testkit.AssertEqual(t, "manageTab default", km.Match("M"), ActManageTab)
+	testkit.AssertEqual(t, "deleteManagedTab default", km.Match("D"), ActDeleteManagedTab)
+	testkit.AssertEqual(t, "reorderTabLeft default", km.Match("<"), ActReorderTabLeft)
+	testkit.AssertEqual(t, "reorderTabRight default", km.Match(">"), ActReorderTabRight)
+	// No collision with existing single-key bindings.
+	testkit.AssertEqual(t, "S stays createSubtask", km.Match("S"), ActCreateSubtask)
+	testkit.AssertEqual(t, "x stays closeJQLTab", km.Match("x"), ActCloseJQLTab)
+}
+
+func TestKeymapFromConfig_overridesManagedTabKeys(t *testing.T) {
+	t.Parallel()
+
+	var kcfg config.KeybindingConfig
+	kcfg.Issues.ManageTab = "ctrl+s"
+	kcfg.Issues.DeleteManagedTab = "ctrl+d"
+	kcfg.Issues.ReorderTabLeft = "ctrl+h"
+	kcfg.Issues.ReorderTabRight = "ctrl+l"
+
+	km := KeymapFromConfig(kcfg)
+
+	testkit.AssertSliceEqual(t, "manageTab override", km[ActManageTab], []string{"ctrl+s"})
+	testkit.AssertSliceEqual(t, "deleteManagedTab override", km[ActDeleteManagedTab], []string{"ctrl+d"})
+	testkit.AssertSliceEqual(t, "reorderTabLeft override", km[ActReorderTabLeft], []string{"ctrl+h"})
+	testkit.AssertSliceEqual(t, "reorderTabRight override", km[ActReorderTabRight], []string{"ctrl+l"})
+}
+
 func TestKeymap_MatchUnknownReturnsEmpty(t *testing.T) {
 	t.Parallel()
 
