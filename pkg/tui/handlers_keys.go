@@ -420,6 +420,12 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 		m, cmd := a.startCreateIssue()
 		return m, cmd, true
 
+	case ActLinkIssue:
+		return a.startLinkIssue()
+
+	case ActDeleteSelection:
+		return a.startDeleteSelection()
+
 	case ActCreateSubtask:
 		if a.canCreateSubtask() {
 			m, cmd := a.startCreateSubtask()

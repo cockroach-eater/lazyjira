@@ -71,6 +71,7 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActNew, "create issue"),
 			a.bind(ActDuplicateIssue, "duplicate issue"),
 			a.bind(ActCloseJQLTab, "close JQL tab"),
+			a.bind(ActLinkIssue, "link to another issue"),
 			Binding{"[]", "switch tab"},
 		)
 		bindings = append(bindings, a.customCommandBindings(config.CtxIssues)...)
@@ -86,6 +87,8 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActLinkIssue, "link to another issue"),
+			a.bind(ActDeleteSelection, "delete link or subtask"),
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
 		)
@@ -237,7 +240,15 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActTransition), Description: "transition"},
 			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
 			components.HelpItem{Key: km.Keys(ActAssignee), Description: "assignee"},
+			components.HelpItem{Key: km.Keys(ActLinkIssue), Description: "link"},
 		)
+		switch a.infoPanel.ActiveTab() {
+		case views.InfoTabLinks:
+			items = append(items, components.HelpItem{Key: km.Keys(ActDeleteSelection), Description: "remove link"})
+		case views.InfoTabSubtasks:
+			items = append(items, components.HelpItem{Key: km.Keys(ActDeleteSelection), Description: "delete subtask"})
+		case views.InfoTabFields:
+		}
 		items = append(items, a.customCommandHelpItems(config.CtxInfo)...)
 		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
 		return items

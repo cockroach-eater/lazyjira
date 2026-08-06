@@ -148,6 +148,7 @@ type IssueLink struct {
 }
 
 type IssueLinkType struct {
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Inward  string `json:"inward"`
 	Outward string `json:"outward"`

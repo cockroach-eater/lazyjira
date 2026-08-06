@@ -231,6 +231,12 @@ func (m *Modal) IsVisible() bool   { return m.visible }
 func (m *Modal) IsSearching() bool { return m.searching }
 func (m *Modal) IsChecklist() bool { return m.checklist }
 
+// Title is the heading currently displayed.
+func (m *Modal) Title() string { return m.title }
+
+// Items are the rows currently offered, in display order.
+func (m *Modal) Items() []ModalItem { return m.items }
+
 // SearchView renders the modal search bar for external use
 func (m *Modal) SearchView(_ int) string {
 	return RenderFilterBarInput(&m.filterInput)

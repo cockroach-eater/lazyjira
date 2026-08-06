@@ -393,6 +393,8 @@ keybinding:
     transition: "t"
     browser: "o"
     createBranch: "b"
+    linkIssue: "L"
+    deleteSelection: "D"
 ```
 
 Only include keys you want to change. Missing keys keep their defaults.

@@ -166,6 +166,9 @@ type IssueKeys struct {
 	CreateBranch  string `yaml:"createBranch"`
 	CreateIssue   string `yaml:"createIssue"`
 	CreateSubtask string `yaml:"createSubtask"`
+	LinkIssue     string `yaml:"linkIssue"`
+	// DeleteSelection removes the link or subtask under the Info cursor.
+	DeleteSelection string `yaml:"deleteSelection"`
 }
 
 type ProjectKeys struct {

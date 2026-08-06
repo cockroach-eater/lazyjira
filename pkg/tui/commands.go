@@ -356,6 +356,68 @@ func fetchPriorities(client jira.ClientInterface) tea.Cmd {
 	}
 }
 
+type issueLinkTypesLoadedMsg struct{ types []jira.IssueLinkType }
+
+// issueLinkChangedMsg reports that the links of issueKey changed and its
+// detail has to be refetched.
+type issueLinkChangedMsg struct{ issueKey string }
+
+// issueDeletedMsg reports a deleted issue. parentKey, when set, is the issue
+// whose subtask list has to be refreshed.
+type issueDeletedMsg struct {
+	issueKey  string
+	parentKey string
+}
+
+// errCmd reports a validation failure through the normal error path, without
+// touching the API.
+func errCmd(format string, args ...any) tea.Cmd {
+	return func() tea.Msg {
+		return errorMsg{err: fmt.Errorf(format, args...)}
+	}
+}
+
+func fetchIssueLinkTypes(client jira.ClientInterface) tea.Cmd {
+	return func() tea.Msg {
+		types, err := client.GetIssueLinkTypes(context.Background())
+		if err != nil {
+			return errorMsg{err: err}
+		}
+		return issueLinkTypesLoadedMsg{types: types}
+	}
+}
+
+// createIssueLink links two issues. refreshKey is the issue whose detail the
+// UI reloads afterwards.
+func createIssueLink(client jira.ClientInterface, typeName, inwardKey, outwardKey, refreshKey string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.CreateIssueLink(context.Background(), typeName, inwardKey, outwardKey); err != nil {
+			return errorMsg{err: err}
+		}
+		return issueLinkChangedMsg{issueKey: refreshKey}
+	}
+}
+
+func deleteIssueLink(client jira.ClientInterface, linkID, refreshKey string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.DeleteIssueLink(context.Background(), linkID); err != nil {
+			return errorMsg{err: err}
+		}
+		return issueLinkChangedMsg{issueKey: refreshKey}
+	}
+}
+
+// deleteIssue removes an issue along with its subtasks: the confirmation the
+// user already answered covers them.
+func deleteIssue(client jira.ClientInterface, issueKey, parentKey string) tea.Cmd {
+	return func() tea.Msg {
+		if err := client.DeleteIssue(context.Background(), issueKey, true); err != nil {
+			return errorMsg{err: err}
+		}
+		return issueDeletedMsg{issueKey: issueKey, parentKey: parentKey}
+	}
+}
+
 func fetchMyself(client jira.ClientInterface) tea.Cmd {
 	return func() tea.Msg {
 		user, err := client.GetMyself(context.Background())

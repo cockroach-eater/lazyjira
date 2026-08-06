@@ -575,6 +575,116 @@ func (d *DemoClient) GetPriorities(_ context.Context) ([]Priority, error) {
 		{ID: "4", Name: "Low"},
 	}, nil
 }
+func (d *DemoClient) GetIssueLinkTypes(_ context.Context) ([]IssueLinkType, error) {
+	d.logRequest("GET", "/issueLinkType")
+	return []IssueLinkType{
+		{ID: "10000", Name: "Blocks", Inward: "is blocked by", Outward: "blocks"},
+		{ID: "10001", Name: "Relates", Inward: "relates to", Outward: "relates to"},
+		{ID: "10002", Name: "Duplicate", Inward: "is duplicated by", Outward: "duplicates"},
+	}, nil
+}
+
+func (d *DemoClient) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	d.logRequest("POST", "/issueLink")
+	inward, ok := d.issueIndex[inwardKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", inwardKey)
+	}
+	outward, ok := d.issueIndex[outwardKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", outwardKey)
+	}
+	types, _ := d.GetIssueLinkTypes(ctx)
+	var linkType *IssueLinkType
+	for i := range types {
+		if strings.EqualFold(types[i].Name, typeName) {
+			linkType = &types[i]
+			break
+		}
+	}
+	if linkType == nil {
+		return fmt.Errorf("unknown link type %q", typeName)
+	}
+
+	id := strconv.Itoa(d.nextLinkID())
+	// Both endpoints carry the same link, each pointing at the other. The side
+	// an issue stores decides how it is phrased: the outward end reads
+	// "blocks X", the inward end "is blocked by Y".
+	outward.IssueLinks = append(outward.IssueLinks, IssueLink{
+		ID: id, Type: linkType, OutwardIssue: &Issue{Key: inward.Key, Summary: inward.Summary, Status: inward.Status},
+	})
+	inward.IssueLinks = append(inward.IssueLinks, IssueLink{
+		ID: id, Type: linkType, InwardIssue: &Issue{Key: outward.Key, Summary: outward.Summary, Status: outward.Status},
+	})
+	return nil
+}
+
+func (d *DemoClient) nextLinkID() int {
+	maxID := 20000
+	for _, iss := range d.issueIndex {
+		for _, l := range iss.IssueLinks {
+			if n, err := strconv.Atoi(l.ID); err == nil && n >= maxID {
+				maxID = n + 1
+			}
+		}
+	}
+	return maxID
+}
+
+func (d *DemoClient) DeleteIssueLink(_ context.Context, linkID string) error {
+	d.logRequest("DELETE", "/issueLink/"+linkID)
+	found := false
+	for _, iss := range d.issueIndex {
+		kept := iss.IssueLinks[:0]
+		for _, l := range iss.IssueLinks {
+			if l.ID == linkID {
+				found = true
+				continue
+			}
+			kept = append(kept, l)
+		}
+		iss.IssueLinks = kept
+	}
+	if !found {
+		return fmt.Errorf("issue link %s not found", linkID)
+	}
+	return nil
+}
+
+func (d *DemoClient) DeleteIssue(_ context.Context, issueKey string, deleteSubtasks bool) error {
+	d.logRequest("DELETE", "/issue/"+issueKey)
+	iss, ok := d.issueIndex[issueKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", issueKey)
+	}
+	if len(iss.Subtasks) > 0 && !deleteSubtasks {
+		return fmt.Errorf("issue %s has subtasks: pass deleteSubtasks to remove them too", issueKey)
+	}
+
+	remove := []string{issueKey}
+	if deleteSubtasks {
+		for _, sub := range iss.Subtasks {
+			remove = append(remove, sub.Key)
+		}
+	}
+	for _, key := range remove {
+		delete(d.issueIndex, key)
+		delete(d.comments, key)
+		delete(d.changelog, key)
+		for projectKey, list := range d.issues {
+			kept := list[:0]
+			for _, candidate := range list {
+				if candidate.Key == key {
+					continue
+				}
+				kept = append(kept, candidate)
+			}
+			d.issues[projectKey] = kept
+		}
+	}
+	return nil
+}
+
 func (d *DemoClient) GetSprints(_ context.Context, _ int) ([]Sprint, error) {
 	d.logRequest("GET", "/board/1/sprint")
 	return []Sprint{
@@ -952,6 +1062,12 @@ func (d *DemoClient) initDemoData() {
 	for _, iss := range mobiIssues {
 		d.addIssue("MOBI", iss)
 	}
+
+	// Issue links, so the Lnk tab has something to show.
+	ctx := context.Background()
+	_ = d.CreateIssueLink(ctx, "Blocks", "SHOP-2", "SHOP-1")
+	_ = d.CreateIssueLink(ctx, "Relates", "SHOP-3", "SHOP-1")
+	_ = d.CreateIssueLink(ctx, "Blocks", "SHOP-9", "SHOP-2")
 
 	// Comments
 	d.comments["SHOP-1"] = []Comment{

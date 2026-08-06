@@ -214,32 +214,47 @@ func (p *InfoPanel) SelectedLinkKey() string {
 // whatever fields the parent payload carried, typically key + summary +
 // status), or nil when no link is selected.
 func (p *InfoPanel) SelectedLinkIssue() *jira.Issue {
+	_, issue := p.selectedLink()
+	return issue
+}
+
+// SelectedLink returns the whole link under the cursor, which carries the id
+// needed to delete it.
+func (p *InfoPanel) SelectedLink() *jira.IssueLink {
+	link, _ := p.selectedLink()
+	return link
+}
+
+// selectedLink walks the rendered link rows -- one per direction, since a link
+// can name an issue on either side -- and returns the row under the cursor.
+func (p *InfoPanel) selectedLink() (*jira.IssueLink, *jira.Issue) {
 	if p.issue == nil || p.activeTab != InfoTabLinks {
-		return nil
+		return nil, nil
 	}
 	target := p.resolveOriginalIndex()
 	if target < 0 {
-		return nil
+		return nil, nil
 	}
 	idx := 0
-	for _, link := range p.issue.IssueLinks {
+	for i := range p.issue.IssueLinks {
+		link := &p.issue.IssueLinks[i]
 		if link.Type == nil {
 			continue
 		}
 		if link.OutwardIssue != nil {
 			if idx == target {
-				return link.OutwardIssue
+				return link, link.OutwardIssue
 			}
 			idx++
 		}
 		if link.InwardIssue != nil {
 			if idx == target {
-				return link.InwardIssue
+				return link, link.InwardIssue
 			}
 			idx++
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // SelectedSubtaskKey returns the issue key of the selected subtask

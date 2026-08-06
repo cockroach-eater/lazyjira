@@ -162,6 +162,8 @@ func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model,
 			a.optimisticFieldUpdate(ctx.issueKey, ctx.fieldID, msg.Text)
 			return a, updateIssueField(a.client, ctx.issueKey, ctx.fieldID, msg.Text)
 		}
+	case editLinkTarget:
+		return a, a.applyLinkTarget(ctx, msg.Text)
 	case editBranch:
 		if msg.Text != "" {
 			switch git.ResolveBranchAction(a.gitRepoPath, msg.Text) {
