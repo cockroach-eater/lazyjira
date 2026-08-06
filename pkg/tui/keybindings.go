@@ -122,6 +122,7 @@ func (a *App) ContextBindings() []Binding {
 			bindings = append(bindings,
 				a.bind(ActEdit, "edit comment"),
 				a.bind(ActNew, "new comment"),
+				a.bind(ActReplyComment, "reply to comment"),
 			)
 		} else {
 			bindings = append(bindings,
@@ -264,6 +265,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 			items = append(items,
 				components.HelpItem{Key: km.Keys(ActEdit), Description: "edit comment"},
 				components.HelpItem{Key: km.Keys(ActNew), Description: "new comment"},
+				components.HelpItem{Key: km.Keys(ActReplyComment), Description: "reply"},
 			)
 		default:
 			items = append(items,

@@ -181,6 +181,8 @@ type DetailKeys struct {
 	ScrollUp     string `yaml:"scrollUp"`
 	HalfPageDown string `yaml:"halfPageDown"`
 	HalfPageUp   string `yaml:"halfPageUp"`
+	// ReplyComment quotes the selected comment in a new one.
+	ReplyComment string `yaml:"replyComment"`
 }
 
 type JiraConfig struct {

@@ -524,7 +524,7 @@ func TestHandleIssueAction_MoreBranches(t *testing.T) {
 			wantCmd: true,
 		},
 		{
-			name:   "new on comments tab launches comment editor",
+			name:   "new on comments tab opens the comment popup",
 			action: ActNew,
 			setup: func(app *App, fake *jiratest.FakeClient) {
 				app.side = sideRight
@@ -535,11 +535,13 @@ func TestHandleIssueAction_MoreBranches(t *testing.T) {
 				app.detailView.SetIssue(issue)
 				app.detailView.SetActiveTab(views.TabComments)
 			},
-			wantCmd: true,
 			assert: func(t *testing.T, app *App) {
 				t.Helper()
 				if app.editContext.kind != editCommentNew {
 					t.Errorf("editContext kind = %v, want editCommentNew", app.editContext.kind)
+				}
+				if !app.textModal.IsVisible() {
+					t.Error("the comment popup was not shown")
 				}
 			},
 		},

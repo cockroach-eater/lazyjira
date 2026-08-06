@@ -190,7 +190,7 @@ func TestInputModal_RenderDrawsOnBackground(t *testing.T) {
 func TestInputModal_RenderInvisibleReturnsBackground(t *testing.T) {
 	t.Parallel()
 	m := NewInputModal()
-	bg := "background"
+	bg := testBackground
 	out := m.Render(bg, 80, 24)
 	testkit.AssertEqual(t, "bg passthrough", out, bg)
 }

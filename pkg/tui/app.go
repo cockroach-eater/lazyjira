@@ -151,6 +151,7 @@ type App struct {
 	jqlModal   components.JQLModal
 	diffView   components.DiffView
 	inputModal components.InputModal
+	textModal  components.TextAreaModal
 	createForm components.CreateForm
 	overlays   components.OverlayStack
 
@@ -385,6 +386,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		&app.createForm,
 		&app.jqlModal,
 		&app.inputModal,
+		&app.textModal,
 		&app.diffView,
 		&app.modal,
 	}
@@ -571,6 +573,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.handleInputConfirmed(msg)
 	case components.InputCancelledMsg:
 		return a.handleInputCancelled()
+	case components.TextAreaConfirmedMsg:
+		return a.handleTextAreaConfirmed(msg.Text)
+	case components.TextAreaCancelledMsg:
+		a.editContext = editCtx{}
+		return a, nil
+	case components.TextAreaHandoffMsg:
+		return a.handleTextAreaHandoff(msg.Text)
 
 	case components.JQLSubmitMsg:
 		return a.handleJQLSubmit(msg)
