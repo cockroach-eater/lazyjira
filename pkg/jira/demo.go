@@ -333,12 +333,72 @@ func (d *DemoClient) UpdateComment(_ context.Context, issueKey, commentID string
 }
 func (d *DemoClient) AssignIssue(_ context.Context, _ string, _ string) error { return nil }
 func (d *DemoClient) GetBoards(_ context.Context) ([]Board, error) {
+	d.logRequest("GET", "/board")
+	// SHOP has two boards with different layouts, PLAT one, MOBI none: the
+	// project without a board exercises the status-derived fallback.
 	return []Board{
-		{ID: 1, Name: "SHOP Board", Type: "scrum", ProjectKey: "SHOP"},
+		{ID: 1, Name: "Delivery", Type: "scrum", ProjectKey: "SHOP"},
+		{ID: 2, Name: "Bugs", Type: "kanban", ProjectKey: "SHOP"},
+		{ID: 3, Name: "Platform", Type: "kanban", ProjectKey: "PLAT"},
 	}, nil
 }
-func (d *DemoClient) GetBoardIssues(_ context.Context, _ int, _ string) ([]Issue, error) {
-	return nil, nil
+
+// GetBoardConfiguration gives each demo board its own columns. Board 1 merges
+// In Progress and In Review into one column, which is the case a project's
+// status list cannot express.
+func (d *DemoClient) GetBoardConfiguration(_ context.Context, boardID int) (*BoardConfiguration, error) {
+	d.logRequest("GET", fmt.Sprintf("/board/%d/configuration", boardID))
+	switch boardID {
+	case 1:
+		return &BoardConfiguration{BoardID: 1, Columns: []BoardColumn{
+			{Name: "Backlog", StatusIDs: []string{"1"}},
+			{Name: "Doing", StatusIDs: []string{"3", "4"}},
+			{Name: "Shipped", StatusIDs: []string{"5"}},
+		}}, nil
+	case 2:
+		return &BoardConfiguration{BoardID: 2, Columns: []BoardColumn{
+			{Name: "Triage", StatusIDs: []string{"1"}},
+			{Name: "Fixing", StatusIDs: []string{"3"}},
+			{Name: "Verifying", StatusIDs: []string{"4"}},
+			{Name: "Closed", StatusIDs: []string{"5"}},
+		}}, nil
+	case 3:
+		return &BoardConfiguration{BoardID: 3, Columns: []BoardColumn{
+			{Name: "To Do", StatusIDs: []string{"1"}},
+			{Name: "In Progress", StatusIDs: []string{"3"}},
+			{Name: "In Review", StatusIDs: []string{"4"}},
+			{Name: "Done", StatusIDs: []string{"5"}},
+		}}, nil
+	}
+	return nil, fmt.Errorf("board %d not found", boardID)
+}
+
+// demoBoardProject maps a demo board to the project whose issues it carries.
+func demoBoardProject(boardID int) (projectKey string, bugsOnly bool) {
+	switch boardID {
+	case 1:
+		return "SHOP", false
+	case 2:
+		return "SHOP", true
+	case 3:
+		return "PLAT", false
+	}
+	return "", false
+}
+func (d *DemoClient) GetBoardIssues(_ context.Context, boardID int, _ string) ([]Issue, error) {
+	d.logRequest("GET", fmt.Sprintf("/board/%d/issue", boardID))
+	projectKey, bugsOnly := demoBoardProject(boardID)
+	if projectKey == "" {
+		return nil, fmt.Errorf("board %d not found", boardID)
+	}
+	var out []Issue
+	for _, iss := range d.issues[projectKey] {
+		if bugsOnly && (iss.IssueType == nil || iss.IssueType.Name != "Bug") {
+			continue
+		}
+		out = append(out, *iss)
+	}
+	return out, nil
 }
 func (d *DemoClient) UpdateIssue(_ context.Context, issueKey string, fields map[string]any) error {
 	d.logRequest("PUT", "/issue/"+issueKey)
@@ -414,6 +474,20 @@ func (d *DemoClient) UpdateIssue(_ context.Context, issueKey string, fields map[
 	}
 	if _, ok := fields["sprint"]; ok {
 		iss.Sprint = nil
+	}
+	if tt, ok := fields["timetracking"].(map[string]string); ok {
+		if iss.TimeTracking == nil {
+			iss.TimeTracking = &TimeTracking{}
+		}
+		if v, set := tt["originalEstimate"]; set {
+			iss.TimeTracking.OriginalEstimate = v
+		}
+		if v, set := tt["remainingEstimate"]; set {
+			iss.TimeTracking.RemainingEstimate = v
+		}
+		if iss.TimeTracking.IsZero() {
+			iss.TimeTracking = nil
+		}
 	}
 	if p, ok := fields["parent"].(map[string]string); ok {
 		if parent, found := d.issueIndex[p["key"]]; found {
@@ -575,6 +649,133 @@ func (d *DemoClient) GetPriorities(_ context.Context) ([]Priority, error) {
 		{ID: "4", Name: "Low"},
 	}, nil
 }
+
+// demoStatuses are the board columns of every demo project, matching the
+// statuses transitionsForStatus can reach.
+func demoStatuses() []Status {
+	return []Status{
+		{ID: "1", Name: "To Do", Description: "Not started yet", CategoryKey: "new"},
+		{ID: "3", Name: "In Progress", Description: "Work has begun on this issue", CategoryKey: "indeterminate"},
+		{ID: "4", Name: "In Review", Description: "Code is ready for peer review", CategoryKey: "indeterminate"},
+		{ID: "5", Name: "Done", Description: "Issue is resolved and verified", CategoryKey: "done"},
+	}
+}
+
+func (d *DemoClient) GetProjectStatuses(_ context.Context, projectKey string) ([]Status, error) {
+	d.logRequest("GET", "/project/"+projectKey+"/statuses")
+	return demoStatuses(), nil
+}
+
+func (d *DemoClient) GetIssueLinkTypes(_ context.Context) ([]IssueLinkType, error) {
+	d.logRequest("GET", "/issueLinkType")
+	return []IssueLinkType{
+		{ID: "10000", Name: "Blocks", Inward: "is blocked by", Outward: "blocks"},
+		{ID: "10001", Name: "Relates", Inward: "relates to", Outward: "relates to"},
+		{ID: "10002", Name: "Duplicate", Inward: "is duplicated by", Outward: "duplicates"},
+	}, nil
+}
+
+func (d *DemoClient) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	d.logRequest("POST", "/issueLink")
+	inward, ok := d.issueIndex[inwardKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", inwardKey)
+	}
+	outward, ok := d.issueIndex[outwardKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", outwardKey)
+	}
+	types, _ := d.GetIssueLinkTypes(ctx)
+	var linkType *IssueLinkType
+	for i := range types {
+		if strings.EqualFold(types[i].Name, typeName) {
+			linkType = &types[i]
+			break
+		}
+	}
+	if linkType == nil {
+		return fmt.Errorf("unknown link type %q", typeName)
+	}
+
+	id := strconv.Itoa(d.nextLinkID())
+	// Both endpoints carry the same link, each pointing at the other. The side
+	// an issue stores decides how it is phrased: the outward end reads
+	// "blocks X", the inward end "is blocked by Y".
+	outward.IssueLinks = append(outward.IssueLinks, IssueLink{
+		ID: id, Type: linkType, OutwardIssue: &Issue{Key: inward.Key, Summary: inward.Summary, Status: inward.Status},
+	})
+	inward.IssueLinks = append(inward.IssueLinks, IssueLink{
+		ID: id, Type: linkType, InwardIssue: &Issue{Key: outward.Key, Summary: outward.Summary, Status: outward.Status},
+	})
+	return nil
+}
+
+func (d *DemoClient) nextLinkID() int {
+	maxID := 20000
+	for _, iss := range d.issueIndex {
+		for _, l := range iss.IssueLinks {
+			if n, err := strconv.Atoi(l.ID); err == nil && n >= maxID {
+				maxID = n + 1
+			}
+		}
+	}
+	return maxID
+}
+
+func (d *DemoClient) DeleteIssueLink(_ context.Context, linkID string) error {
+	d.logRequest("DELETE", "/issueLink/"+linkID)
+	found := false
+	for _, iss := range d.issueIndex {
+		kept := iss.IssueLinks[:0]
+		for _, l := range iss.IssueLinks {
+			if l.ID == linkID {
+				found = true
+				continue
+			}
+			kept = append(kept, l)
+		}
+		iss.IssueLinks = kept
+	}
+	if !found {
+		return fmt.Errorf("issue link %s not found", linkID)
+	}
+	return nil
+}
+
+func (d *DemoClient) DeleteIssue(_ context.Context, issueKey string, deleteSubtasks bool) error {
+	d.logRequest("DELETE", "/issue/"+issueKey)
+	iss, ok := d.issueIndex[issueKey]
+	if !ok {
+		return fmt.Errorf("issue %s not found", issueKey)
+	}
+	if len(iss.Subtasks) > 0 && !deleteSubtasks {
+		return fmt.Errorf("issue %s has subtasks: pass deleteSubtasks to remove them too", issueKey)
+	}
+
+	remove := []string{issueKey}
+	if deleteSubtasks {
+		for _, sub := range iss.Subtasks {
+			remove = append(remove, sub.Key)
+		}
+	}
+	for _, key := range remove {
+		delete(d.issueIndex, key)
+		delete(d.comments, key)
+		delete(d.changelog, key)
+		for projectKey, list := range d.issues {
+			kept := list[:0]
+			for _, candidate := range list {
+				if candidate.Key == key {
+					continue
+				}
+				kept = append(kept, candidate)
+			}
+			d.issues[projectKey] = kept
+		}
+	}
+	return nil
+}
+
 func (d *DemoClient) GetSprints(_ context.Context, _ int) ([]Sprint, error) {
 	d.logRequest("GET", "/board/1/sprint")
 	return []Sprint{
@@ -681,7 +882,8 @@ func (d *DemoClient) initDemoData() {
 			Status:      inProgress, Priority: high, Assignee: demo, Reporter: alice,
 			IssueType: story, Sprint: sprint1,
 			Labels: []string{"frontend", "ux"}, Components: []Component{{ID: "c1", Name: "Cart"}},
-			Created: now.Add(-10 * day), Updated: now.Add(-1 * day),
+			TimeTracking: &TimeTracking{OriginalEstimate: "3d", RemainingEstimate: "1d", TimeSpent: "2d"},
+			Created:      now.Add(-10 * day), Updated: now.Add(-1 * day),
 		},
 		{
 			ID: "102", Key: "SHOP-2", Summary: "Fix checkout total not updating on quantity change",
@@ -689,7 +891,8 @@ func (d *DemoClient) initDemoData() {
 			Status:      inReview, Priority: critical, Assignee: bob, Reporter: dave,
 			IssueType: bug, Sprint: sprint1,
 			Labels: []string{"bug", "checkout"}, Components: []Component{{ID: "c2", Name: "Checkout"}},
-			Created: now.Add(-5 * day), Updated: now.Add(-6 * time.Hour),
+			TimeTracking: &TimeTracking{OriginalEstimate: "4h", RemainingEstimate: "1h", TimeSpent: "3h"},
+			Created:      now.Add(-5 * day), Updated: now.Add(-6 * time.Hour),
 		},
 		{
 			ID: "103", Key: "SHOP-3", Summary: "Add product search with Elasticsearch",
@@ -952,6 +1155,12 @@ func (d *DemoClient) initDemoData() {
 	for _, iss := range mobiIssues {
 		d.addIssue("MOBI", iss)
 	}
+
+	// Issue links, so the Lnk tab has something to show.
+	ctx := context.Background()
+	_ = d.CreateIssueLink(ctx, "Blocks", "SHOP-2", "SHOP-1")
+	_ = d.CreateIssueLink(ctx, "Relates", "SHOP-3", "SHOP-1")
+	_ = d.CreateIssueLink(ctx, "Blocks", "SHOP-9", "SHOP-2")
 
 	// Comments
 	d.comments["SHOP-1"] = []Comment{

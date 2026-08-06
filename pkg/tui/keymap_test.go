@@ -39,3 +39,29 @@ func TestKeymap_MatchUnknownReturnsEmpty(t *testing.T) {
 	testkit.AssertEqual(t, "unknown key", keymap.Match("this-key-is-unbound"), Action(""))
 	testkit.AssertEqual(t, "unknown nav key", keymap.MatchNav("this-key-is-unbound"), components.NavNone)
 }
+
+// TestDefaultKeymapHasNoDuplicateKeys guards a silent failure mode: Keymap.Match
+// iterates a map, so a key bound to two actions resolves to a random one of
+// them, differently on each run.
+func TestDefaultKeymapHasNoDuplicateKeys(t *testing.T) {
+	t.Parallel()
+	owners := map[string][]Action{}
+	for action, keys := range DefaultKeymap() {
+		for _, key := range keys {
+			owners[key] = append(owners[key], action)
+		}
+	}
+	for key, actions := range owners {
+		if len(actions) > 1 {
+			t.Errorf("key %q is bound to %v; Match would pick one at random", key, actions)
+		}
+	}
+}
+
+func TestKeymapFromConfigOverridesFilterAssignees(t *testing.T) {
+	t.Parallel()
+	km := KeymapFromConfig(config.KeybindingConfig{Issues: config.IssueKeys{FilterAssignees: "F"}})
+	if got := km.Keys(ActFilterAssignees); got != "F" {
+		t.Errorf("filterAssignees = %q, want F", got)
+	}
+}

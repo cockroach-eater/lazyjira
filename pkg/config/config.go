@@ -166,6 +166,8 @@ type IssueKeys struct {
 	CreateBranch  string `yaml:"createBranch"`
 	CreateIssue   string `yaml:"createIssue"`
 	CreateSubtask string `yaml:"createSubtask"`
+	// FilterAssignees filters the project board by assignee.
+	FilterAssignees string `yaml:"filterAssignees"`
 }
 
 type ProjectKeys struct {

@@ -393,6 +393,7 @@ keybinding:
     transition: "t"
     browser: "o"
     createBranch: "b"
+    filterAssignees: "f"
 ```
 
 Only include keys you want to change. Missing keys keep their defaults.

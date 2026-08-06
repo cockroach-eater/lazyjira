@@ -245,6 +245,10 @@ func (m *IssuesList) GetTabIndex() int { return m.tab }
 
 func (m *IssuesList) CurrentIssues() []jira.Issue { return m.allIssues }
 
+// VisibleIssues are the rows on screen: the active tab narrowed by the search
+// filter, which is what CurrentIssues deliberately ignores.
+func (m *IssuesList) VisibleIssues() []jira.Issue { return m.issues }
+
 // SetTabIndex switches to the given tab and loads from cache if available
 func (m *IssuesList) SetTabIndex(idx int) {
 	if idx < 0 || idx >= len(m.tabs) {

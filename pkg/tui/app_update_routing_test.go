@@ -466,7 +466,7 @@ func TestUpdate_RoutesCreateAndEditMessages(t *testing.T) {
 		{
 			name: "checklist confirmed dispatches callback",
 			setup: func(app *App, fake *jiratest.FakeClient) {
-				app.onChecklist = func([]components.ModalItem) tea.Cmd { return func() tea.Msg { return nil } }
+				app.onChecklist = func(components.ChecklistConfirmedMsg) tea.Cmd { return func() tea.Msg { return nil } }
 			},
 			msg:     components.ChecklistConfirmedMsg{},
 			wantCmd: true,

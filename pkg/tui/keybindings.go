@@ -107,6 +107,18 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActFocusRight, "switch to detail panel"),
 		)
 
+	case a.side == sideRight && a.boardVisible():
+		bindings := slices.Concat(global, []Binding{
+			{"hjkl", "move between cards"},
+			a.bind(ActOpen, "open the highlighted task"),
+			a.bind(ActFilterAssignees, "filter by assignee"),
+			a.bind(ActFocusLeft, "back to left panel"),
+		})
+		if len(a.projectBoards()) > 1 {
+			bindings = append(bindings, Binding{"[]", "previous/next board"})
+		}
+		return bindings
+
 	case a.side == sideRight:
 		bindings := slices.Concat(global, a.navBindings())
 		bindings = append(bindings,
@@ -238,6 +250,7 @@ func (a *App) helpBarItems() []components.HelpItem {
 			components.HelpItem{Key: km.Keys(ActPriority), Description: "priority"},
 			components.HelpItem{Key: km.Keys(ActAssignee), Description: "assignee"},
 		)
+
 		items = append(items, a.customCommandHelpItems(config.CtxInfo)...)
 		items = append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
 		return items
@@ -255,6 +268,17 @@ func (a *App) helpBarItems() []components.HelpItem {
 			{Key: km.Keys(ActSwitchPanel) + "/" + km.Keys(ActFocusRight), Description: "detail"},
 			{Key: km.Keys(ActHelp), Description: "help"},
 		}
+	case a.side == sideRight && a.boardVisible():
+		items := []components.HelpItem{
+			{Key: "hjkl", Description: "move"},
+			{Key: km.Keys(ActOpen), Description: "open"},
+			{Key: km.Keys(ActFilterAssignees), Description: "filter"},
+			{Key: km.Keys(ActFocusLeft), Description: "back"},
+		}
+		if len(a.projectBoards()) > 1 {
+			items = append(items, components.HelpItem{Key: "[]", Description: "board"})
+		}
+		return append(items, components.HelpItem{Key: km.Keys(ActHelp), Description: "help"})
 	case a.side == sideRight:
 		items := []components.HelpItem{
 			{Key: "[]", Description: "tabs"},

@@ -42,6 +42,33 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `s` | JQL search |
 | `x` | Close JQL tab |
 
+## Kanban board
+
+The board of the active project fills the detail panel whenever no task is
+open. Selecting a project shows it, `enter` on a card opens that task, and
+`esc` brings the board back.
+
+A project can have several agile boards. Each is shown with its own columns
+and its own issues, exactly as configured in Jira, and they appear as tabs in
+the panel title with the active one in brackets. A project with no agile board
+falls back to one column per project status, filled from the active issue tab.
+
+The board mirrors whatever the issue list is showing: switching to a narrower
+tab such as **Assigned**, or typing a `/` filter, narrows the board with it. A
+board card the list is not showing drops off the board.
+
+| Key | Action |
+| --- | --- |
+| `[` / `]` | Previous / next board of the project |
+| `h` `j` `k` `l` | Move between cards and columns |
+| `enter` / `space` | Open the highlighted task |
+| `f` | Filter the board by assignee (works from any panel while the board is up) |
+| `esc` | Back to the left panels |
+
+In the assignee filter, `enter` applies the highlighted person; `space` ticks
+several before confirming. The first row, **(Everyone)**, clears the filter.
+The choice is remembered per project.
+
 ## Help popup
 
 | Key | Action |

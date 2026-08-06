@@ -31,6 +31,9 @@ const (
 	ModeIssue MainMode = iota
 	ModeSplash
 	ModeProject
+	// ModeKanban shows the board of the active project. It is what the panel
+	// falls back to while no issue is open.
+	ModeKanban
 )
 
 // SplashInfo holds data for the splash/status screen
@@ -71,6 +74,7 @@ type DetailView struct {
 	blocks     [][]string
 	blockKeys  []string
 	dblClick   components.DblClickDetector
+	kanban     *KanbanView
 	width      int
 	height     int
 	focused    bool
@@ -81,7 +85,7 @@ type DetailView struct {
 
 // NewDetailView constructs a DetailView with the given ADF renderer.
 func NewDetailView(renderer ADFRenderer) *DetailView {
-	return &DetailView{theme: theme.Default, mode: ModeIssue, renderer: renderer}
+	return &DetailView{theme: theme.Default, mode: ModeIssue, renderer: renderer, kanban: NewKanbanView()}
 }
 
 func (d *DetailView) Mode() MainMode { return d.mode }
@@ -133,7 +137,37 @@ func (d *DetailView) SetSplash(info SplashInfo) {
 	d.scrollY = 0
 }
 
-func (d *DetailView) SetSize(w, h int) { d.width = w; d.height = h }
+// Kanban exposes the board so the app can feed it data and move its cursor.
+func (d *DetailView) Kanban() *KanbanView { return d.kanban }
+
+// ShowKanban switches the panel to the board of the given project.
+func (d *DetailView) ShowKanban(projectKey string) {
+	d.kanban.SetProjectKey(projectKey)
+	d.mode = ModeKanban
+	d.issue = nil
+	d.scrollY = 0
+	d.listCursor = 0
+}
+
+// CloseIssue drops the open issue and returns to the board, or to the splash
+// screen when no project is active.
+func (d *DetailView) CloseIssue() {
+	if d.kanban.ProjectKey() != "" {
+		d.ShowKanban(d.kanban.ProjectKey())
+		return
+	}
+	d.issue = nil
+	d.mode = ModeIssue
+	d.scrollY = 0
+	d.listCursor = 0
+}
+
+func (d *DetailView) SetSize(w, h int) {
+	d.width = w
+	d.height = h
+	contentWidth, innerH := components.PanelDimensions(w, h)
+	d.kanban.SetSize(contentWidth, innerH)
+}
 func (d *DetailView) SetFocused(focused bool) {
 	if d.focused && !focused {
 		// Actually losing focus — reset list cursor.
@@ -466,6 +500,10 @@ func (d *DetailView) View() string {
 	}
 	if d.mode == ModeProject && d.project != nil {
 		return d.renderProjectView(contentWidth, innerH)
+	}
+	if d.mode == ModeKanban {
+		d.kanban.SetSize(contentWidth, innerH)
+		return components.RenderPanel(d.kanban.Title(), d.kanban.View(), d.width, innerH, d.focused)
 	}
 
 	visible := d.VisibleRows()

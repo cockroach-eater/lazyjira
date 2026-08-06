@@ -29,6 +29,7 @@ make build-demo
 
 - **JQL search** with autocomplete, syntax highlighting, and persistent history
 - **4-panel layout** - issues, projects, detail, status - with vim-style navigation
+- **Kanban boards** - every agile board of the project with its own columns, switchable with `[`/`]` and filterable by assignee
 - **Inline editing** - transitions, priority, assignee, labels, comments, description (`$EDITOR`)
 - **Configurable** - custom keybindings (including navigation keys), JQL tabs, issue columns, custom fields
 - **Themes** - default ANSI palette plus all four Catppuccin flavors (Latte, Frappé, Macchiato, Mocha)
@@ -200,6 +201,7 @@ Press `?` inside the app for all keybindings.
 - [x] Searchable keybindings help popup
 - [x] Scroll detail panel without switching focus
 - [x] Create subtasks from TUI
+- [x] Kanban board per agile board, with assignee filter
 - [ ] Link issues (add/remove issue links)
 - [ ] CLI mode (non-interactive commands for scripting and automation)
 - [ ] Robust issue type changer (handle subtask/parent unlinking, field validation)

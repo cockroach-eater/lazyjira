@@ -232,6 +232,14 @@ type issueUpdatedMsg struct {
 type commentAddedMsg struct{ issueKey string }
 type commentUpdatedMsg struct{ issueKey string }
 type prioritiesLoadedMsg struct{ priorities []jira.Priority }
+
+// projectStatusesLoadedMsg carries the board columns of a project. An empty
+// slice means the lookup failed; the board then derives its columns from the
+// issues it already has, so this is never reported as an error.
+type projectStatusesLoadedMsg struct {
+	projectKey string
+	statuses   []jira.Status
+}
 type usersLoadedMsg struct {
 	users    []jira.User
 	issueKey string
@@ -353,6 +361,48 @@ func fetchPriorities(client jira.ClientInterface) tea.Cmd {
 			return errorMsg{err: err}
 		}
 		return prioritiesLoadedMsg{priorities: priorities}
+	}
+}
+
+// boardDataLoadedMsg carries one agile board's own layout and cards. A failed
+// piece is left nil: the board falls back to the project statuses, or to the
+// issues of the active list tab.
+type boardDataLoadedMsg struct {
+	boardID int
+	columns []jira.BoardColumn
+	issues  []jira.Issue
+	err     error
+}
+
+// fetchBoardData pulls a board's column configuration and its issues together:
+// neither is useful without the other.
+func fetchBoardData(client jira.ClientInterface, boardID int) tea.Cmd {
+	return func() tea.Msg {
+		msg := boardDataLoadedMsg{boardID: boardID}
+		config, err := client.GetBoardConfiguration(context.Background(), boardID)
+		if err != nil {
+			msg.err = err
+		} else if config != nil {
+			msg.columns = config.Columns
+		}
+		issues, err := client.GetBoardIssues(context.Background(), boardID, "")
+		if err != nil {
+			msg.err = err
+			return msg
+		}
+		msg.issues = issues
+		return msg
+	}
+}
+
+func fetchProjectStatuses(client jira.ClientInterface, projectKey string) tea.Cmd {
+	return func() tea.Msg {
+		statuses, err := client.GetProjectStatuses(context.Background(), projectKey)
+		if err != nil {
+			// Not fatal: the board falls back to the statuses of the issues.
+			return projectStatusesLoadedMsg{projectKey: projectKey}
+		}
+		return projectStatusesLoadedMsg{projectKey: projectKey, statuses: statuses}
 	}
 }
 

@@ -71,7 +71,7 @@ func TestHandleChecklistConfirmed(t *testing.T) {
 		t.Parallel()
 		app := newAppWithFake(t, &jiratest.FakeClient{T: t})
 		called := false
-		app.onChecklist = func([]components.ModalItem) tea.Cmd {
+		app.onChecklist = func(components.ChecklistConfirmedMsg) tea.Cmd {
 			called = true
 			return nil
 		}
@@ -100,7 +100,7 @@ func TestHandleModalCancelled_ClearsCallbacks(t *testing.T) {
 	t.Parallel()
 	app := newAppWithFake(t, &jiratest.FakeClient{T: t})
 	app.onSelect = func(components.ModalItem) tea.Cmd { return nil }
-	app.onChecklist = func([]components.ModalItem) tea.Cmd { return nil }
+	app.onChecklist = func(components.ChecklistConfirmedMsg) tea.Cmd { return nil }
 	app.createCtx = createCtx{projectKey: testProject}
 
 	_, _ = app.handleModalCancelled()

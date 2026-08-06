@@ -24,6 +24,7 @@ func (a *App) handleIssuesLoaded(msg issuesLoadedMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	if msg.tab == a.issuesList.GetTabIndex() {
 		a.issuesList.SetIssues(msg.issues)
+		a.refreshBoard()
 		for _, issue := range msg.issues {
 			cmds = append(cmds, prefetchIssue(a.client, issue.Key))
 		}
@@ -71,13 +72,14 @@ func (a *App) handleIssueDetailLoaded(msg issueDetailLoadedMsg) (tea.Model, tea.
 	*a.logFlag = false
 	a.statusPanel.SetOnline(true)
 	a.issueCache[msg.issue.Key] = msg.issue
-	if a.previewKey == "" || a.previewKey == msg.issue.Key {
+	if !a.boardVisible() && (a.previewKey == "" || a.previewKey == msg.issue.Key) {
 		a.detailView.UpdateIssueData(msg.issue)
 	}
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
 		a.infoPanel.SetIssue(msg.issue)
 	}
 	a.issuesList.PatchIssue(msg.issue)
+	a.refreshBoard()
 
 	return a, a.prefetchRelated(msg.issue)
 }
@@ -89,7 +91,7 @@ func (a *App) handleIssuePrefetched(msg issuePrefetchedMsg) (tea.Model, tea.Cmd)
 	}
 	a.issueCache[msg.issue.Key] = msg.issue
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == msg.issue.Key {
-		if a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key {
+		if !a.boardVisible() && (a.detailView.IssueKey() == "" || a.detailView.IssueKey() == msg.issue.Key) {
 			a.detailView.UpdateIssueData(msg.issue)
 		}
 		if a.infoPanel.IssueKey() == "" || a.infoPanel.IssueKey() == msg.issue.Key {
@@ -164,6 +166,10 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 	if msg.issueKey == "" {
 		return a, nil
 	}
+	if msg.issueKey == boardFilterSentinel {
+		a.showBoardFilterModal(msg.users)
+		return a, nil
+	}
 	if msg.issueKey == createUsersSentinel {
 		if a.onChecklist != nil {
 			a.modal.ShowChecklist("Select users", a.buildUserItems(msg.users), nil)
@@ -219,6 +225,11 @@ func (a *App) handleUsersLoaded(msg usersLoadedMsg) (tea.Model, tea.Cmd) {
 func (a *App) handleBoardsLoaded(msg boardsLoadedMsg) (tea.Model, tea.Cmd) {
 	a.boards = msg.boards
 	a.resolveBoardID()
+	// Boards land after the board panel is already up, so it has to be laid
+	// out again now that the project's agile boards are known.
+	if a.boardVisible() {
+		return a, a.showBoard()
+	}
 	return a, nil
 }
 
@@ -376,7 +387,9 @@ func (a *App) handleProjectsLoaded(msg projectsLoadedMsg) (tea.Model, tea.Cmd) {
 		a.statusPanel.SetProject(a.projectKey)
 		a.projectList.SetActiveKey(a.projectKey)
 		a.resolveBoardID()
-		return a, a.fetchActiveTab()
+		// The project is picked here rather than through selectProject, so the
+		// board has to be raised explicitly: at Init there was no project yet.
+		return a, tea.Batch(a.fetchActiveTab(), a.showBoard())
 	}
 	return a, nil
 }
