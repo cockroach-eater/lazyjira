@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -39,14 +40,15 @@ const (
 )
 
 const (
-	fldPriority    = "priority"
-	fldSprint      = "sprint"
-	fldLabels      = "labels"
-	fldComponents  = "components"
-	fldAssignee    = "assignee"
-	fldAccountID   = "accountId"
-	fldName        = "name"
-	fldDescription = "description"
+	fldPriority     = "priority"
+	fldSprint       = "sprint"
+	fldLabels       = "labels"
+	fldComponents   = "components"
+	fldAssignee     = "assignee"
+	fldAccountID    = "accountId"
+	fldName         = "name"
+	fldDescription  = "description"
+	fldTimeTracking = "timetracking"
 )
 
 type editKind int
@@ -185,6 +187,9 @@ type App struct {
 	issueCache      map[string]*jira.Issue
 	childrenCache   map[string][]jira.Issue
 	createMetaCache map[string][]jira.CreateMetaField
+	// branchCache maps an issue key to the local git branch naming it, or ""
+	// when the lookup found none.
+	branchCache map[string]string
 	// previewKey identifies the issue displayed in the right-side views.
 	// Empty means nothing is displayed.
 	previewKey string
@@ -313,16 +318,24 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		Project:    projectKey,
 	}
 
+	var customIDs []string
+	for _, f := range cfg.Fields {
+		if isCustomField(f.ID) {
+			customIDs = append(customIDs, f.ID)
+		}
+	}
+	// The reviewer is a custom field like any other, so it has to be
+	// requested explicitly or the API never sends it.
+	if reviewer := cfg.Jira.ReviewerField; reviewer != "" {
+		infoPanel.SetReviewerField(reviewer)
+		if !slices.Contains(customIDs, reviewer) {
+			customIDs = append(customIDs, reviewer)
+		}
+	}
+	if len(customIDs) > 0 {
+		client.SetCustomFields(customIDs)
+	}
 	if len(cfg.Fields) > 0 {
-		var customIDs []string
-		for _, f := range cfg.Fields {
-			if isCustomField(f.ID) {
-				customIDs = append(customIDs, f.ID)
-			}
-		}
-		if len(customIDs) > 0 {
-			client.SetCustomFields(customIDs)
-		}
 		infoPanel.SetFields(cfg.Fields)
 	}
 
@@ -354,6 +367,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		issueCache:      make(map[string]*jira.Issue),
 		childrenCache:   make(map[string][]jira.Issue),
 		createMetaCache: make(map[string][]jira.CreateMetaField),
+		branchCache:     make(map[string]string),
 		converter:       BuiltinConverter{},
 	}
 	// cfg.Converter is validated at config-load time; "" and "builtin"
@@ -393,6 +407,7 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		cwd, _ := os.Getwd()
 		if git.IsRepo(cwd) {
 			app.gitRepoPath = cwd
+			app.infoPanel.EnableBranchField(true)
 			if branch, err := git.CurrentBranch(cwd); err == nil && branch != "" {
 				app.gitBranch = branch
 				app.gitDetectedKey = git.ExtractIssueKey(branch)
@@ -619,7 +634,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.infoPanel.SetIssue(msg.Issue)
 		}
 		_, previewCmd := a.Update(views.PreviewRequestMsg{Key: msg.Issue.Key})
-		return a, tea.Batch(previewCmd, a.prefetchRelated(msg.Issue), a.infoPanel.MaybeChildrenRequest())
+		return a, tea.Batch(previewCmd, a.prefetchRelated(msg.Issue),
+			a.infoPanel.MaybeChildrenRequest(), a.maybeFetchBranch(msg.Issue.Key))
 
 	case views.PreviewRequestMsg:
 		a.previewKey = msg.Key
@@ -696,6 +712,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detailView.UpdateIssueData(msg.issue)
 		a.issuesList.PatchIssue(msg.issue)
 		return a, nil
+	case branchLoadedMsg:
+		return a.handleBranchLoaded(msg)
+
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)
@@ -769,6 +788,10 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 	field := a.infoPanel.SelectedInfoField()
 	if field == nil {
 		return a, nil
+	}
+	// Branch is not a Jira field: editing it runs the branch flow instead.
+	if field.FieldID == views.BranchFieldID {
+		return a.promptBranch()
 	}
 	*a.logFlag = true
 	switch field.Type {

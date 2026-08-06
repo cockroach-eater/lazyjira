@@ -415,6 +415,17 @@ func (d *DemoClient) UpdateIssue(_ context.Context, issueKey string, fields map[
 	if _, ok := fields["sprint"]; ok {
 		iss.Sprint = nil
 	}
+	if tt, ok := fields["timetracking"].(map[string]string); ok {
+		if iss.TimeTracking == nil {
+			iss.TimeTracking = &TimeTracking{}
+		}
+		if v, set := tt["originalEstimate"]; set {
+			iss.TimeTracking.OriginalEstimate = v
+		}
+		if iss.TimeTracking.IsZero() {
+			iss.TimeTracking = nil
+		}
+	}
 	if p, ok := fields["parent"].(map[string]string); ok {
 		if parent, found := d.issueIndex[p["key"]]; found {
 			iss.Parent = &Issue{Key: parent.Key, Summary: parent.Summary}
@@ -681,7 +692,8 @@ func (d *DemoClient) initDemoData() {
 			Status:      inProgress, Priority: high, Assignee: demo, Reporter: alice,
 			IssueType: story, Sprint: sprint1,
 			Labels: []string{"frontend", "ux"}, Components: []Component{{ID: "c1", Name: "Cart"}},
-			Created: now.Add(-10 * day), Updated: now.Add(-1 * day),
+			TimeTracking: &TimeTracking{OriginalEstimate: "3d", RemainingEstimate: "1d", TimeSpent: "2d"},
+			Created:      now.Add(-10 * day), Updated: now.Add(-1 * day),
 		},
 		{
 			ID: "102", Key: "SHOP-2", Summary: "Fix checkout total not updating on quantity change",

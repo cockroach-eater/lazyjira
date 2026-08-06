@@ -2,6 +2,7 @@ package views
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -13,7 +14,10 @@ import (
 	"github.com/textfuel/lazyjira/v2/pkg/tui/theme"
 )
 
-const fieldStatus = "status"
+const (
+	fieldStatus   = "status"
+	fieldAssignee = "assignee"
+)
 
 type builtinFieldDef struct {
 	name    string
@@ -56,7 +60,7 @@ var builtinFieldRegistry = []builtinFieldDef{
 		},
 	},
 	{
-		name: "Assignee", fieldID: "assignee", typ: FieldPerson,
+		name: "Assignee", fieldID: fieldAssignee, typ: FieldPerson,
 		getValue: func(i *jira.Issue) (string, bool) {
 			if i.Assignee != nil {
 				return i.Assignee.DisplayName, true
@@ -122,6 +126,41 @@ var builtinFieldRegistry = []builtinFieldDef{
 				return ""
 			}
 			return i.Parent.Key
+		},
+	},
+	{
+		// Jira duration strings ("2w 3d 4h"): the length of a day is
+		// per-instance config, so they are shown and edited verbatim.
+		name: "Estimate", fieldID: "timetracking", typ: FieldSingleText,
+		getValue: func(i *jira.Issue) (string, bool) {
+			if i.TimeTracking.IsZero() {
+				return noneLabelUpper, true
+			}
+			value := i.TimeTracking.OriginalEstimate
+			if value == "" {
+				value = noneLabelUpper
+			}
+			if spent := i.TimeTracking.TimeSpent; spent != "" {
+				value += " (spent " + spent + ")"
+			}
+			return value, true
+		},
+		setValue: func(i *jira.Issue, v any) {
+			estimate, _ := v.(string)
+			if estimate == "" {
+				i.TimeTracking = nil
+				return
+			}
+			if i.TimeTracking == nil {
+				i.TimeTracking = &jira.TimeTracking{}
+			}
+			i.TimeTracking.OriginalEstimate = estimate
+		},
+		editValue: func(i *jira.Issue) string {
+			if i.TimeTracking == nil {
+				return ""
+			}
+			return i.TimeTracking.OriginalEstimate
 		},
 	},
 	{
@@ -209,7 +248,7 @@ var builtinFieldMap = func() map[string]builtinFieldDef {
 	return m
 }()
 
-var defaultFieldIDs = []string{"status", "priority", "assignee", "reporter", "issuetype", "parent", "sprint"}
+var defaultFieldIDs = []string{fieldStatus, "priority", fieldAssignee, "reporter", "issuetype", "parent", "sprint", "timetracking"}
 
 type InfoFieldType int
 
@@ -228,13 +267,21 @@ type InfoField struct {
 	Value   string
 }
 
-func buildInfoFields(issue *jira.Issue, cfgFields []config.FieldConfig) []InfoField {
+// extraInfoFields are the Info rows that are not Jira issue fields: the
+// per-instance reviewer custom field and the local git branch.
+type extraInfoFields struct {
+	reviewerID string
+	branch     string
+	showBranch bool
+}
+
+func buildInfoFields(issue *jira.Issue, cfgFields []config.FieldConfig, extra extraInfoFields) []InfoField {
 	if issue == nil {
 		return nil
 	}
 
 	if cfgFields == nil {
-		return buildDefaultInfoFields(issue)
+		return extra.apply(buildDefaultInfoFields(issue), issue)
 	}
 
 	var fields []InfoField
@@ -260,7 +307,56 @@ func buildInfoFields(issue *jira.Issue, cfgFields []config.FieldConfig) []InfoFi
 			fields = append(fields, InfoField{Name: name, FieldID: cf.ID, Type: ft, Value: val})
 		}
 	}
+	return extra.apply(fields, issue)
+}
+
+// BranchFieldID marks the pseudo-field showing the git branch of an issue. It
+// is not a Jira field: editing it runs the branch-creation flow.
+const BranchFieldID = "_branch"
+
+func (e extraInfoFields) apply(fields []InfoField, issue *jira.Issue) []InfoField {
+	fields = e.withReviewer(fields, issue)
+	if e.showBranch {
+		value := e.branch
+		if value == "" {
+			value = noneLabelUpper
+		}
+		fields = append(fields, InfoField{
+			Name: "Branch", FieldID: BranchFieldID, Type: FieldSingleText, Value: value,
+		})
+	}
 	return fields
+}
+
+// withReviewer inserts the configured reviewer custom field right after the
+// assignee, where a reader expects to find it. It is a no-op when no reviewer
+// field is configured or the user already listed it in their own fields.
+func (e extraInfoFields) withReviewer(fields []InfoField, issue *jira.Issue) []InfoField {
+	if e.reviewerID == "" {
+		return fields
+	}
+	for _, f := range fields {
+		if f.FieldID == e.reviewerID {
+			return fields
+		}
+	}
+
+	reviewer := InfoField{
+		Name:    "Reviewer",
+		FieldID: e.reviewerID,
+		Type:    FieldPerson,
+		Value:   formatCustomFieldValue(issue.CustomFields[e.reviewerID]),
+	}
+	if reviewer.Value == "" {
+		reviewer.Value = noneLabelUpper
+	}
+
+	for i, f := range fields {
+		if f.FieldID == fieldAssignee {
+			return slices.Insert(fields, i+1, reviewer)
+		}
+	}
+	return append(fields, reviewer)
 }
 
 func buildDefaultInfoFields(issue *jira.Issue) []InfoField {
@@ -284,12 +380,12 @@ func buildDefaultInfoFields(issue *jira.Issue) []InfoField {
 	return fields
 }
 
-func infoFieldCount(issue *jira.Issue, cfgFields []config.FieldConfig) int {
-	return len(buildInfoFields(issue, cfgFields))
+func infoFieldCount(issue *jira.Issue, cfgFields []config.FieldConfig, extra extraInfoFields) int {
+	return len(buildInfoFields(issue, cfgFields, extra))
 }
 
-func renderInfoRowPairs(issue *jira.Issue, cfgFields []config.FieldConfig, th *theme.Theme, maxWidth int) (styled, plain []string) {
-	fields := buildInfoFields(issue, cfgFields)
+func renderInfoRowPairs(issue *jira.Issue, cfgFields []config.FieldConfig, extra extraInfoFields, th *theme.Theme, maxWidth int) (styled, plain []string) {
+	fields := buildInfoFields(issue, cfgFields, extra)
 	styled = renderFieldRows(fields, issue, th, maxWidth)
 	plain = renderFieldRows(fields, issue, nil, maxWidth)
 	return

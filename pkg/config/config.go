@@ -184,11 +184,17 @@ type DetailKeys struct {
 }
 
 type JiraConfig struct {
-	Host       string    `yaml:"host"`
-	Email      string    `yaml:"email"`
-	Token      string    `yaml:"-"`
-	ServerType string    `yaml:"serverType"`
-	TLS        TLSConfig `yaml:"tls"`
+	Host       string `yaml:"host"`
+	Email      string `yaml:"email"`
+	Token      string `yaml:"-"`
+	ServerType string `yaml:"serverType"`
+	// ReviewerField is the custom field id holding the reviewer, e.g.
+	// customfield_10101. Jira has no standard reviewer field, so the id
+	// differs per instance and there is nothing sensible to default to.
+	// When set, a Reviewer row appears in the Info panel, editable like any
+	// other person field.
+	ReviewerField string    `yaml:"reviewerField"`
+	TLS           TLSConfig `yaml:"tls"`
 }
 
 // IsCloud returns true if this is a Jira Cloud instance (or unset, which defaults to Cloud)

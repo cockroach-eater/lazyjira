@@ -34,6 +34,26 @@ func (a *App) applyParentEdit(issueKey, text string) tea.Cmd {
 	return updateIssueField(a.client, issueKey, "parent", map[string]string{"key": text})
 }
 
+// estimateRegex matches a Jira duration such as "2w", "3d 4h" or "90m".
+var estimateRegex = regexp.MustCompile(`^\d+[wdhm](\s+\d+[wdhm])*$`)
+
+// applyEstimateEdit dispatches an original-estimate submission. Empty input
+// clears the estimate; anything else must be a Jira duration, which is
+// validated here because the API answers a malformed one with a generic 400.
+func (a *App) applyEstimateEdit(issueKey, text string) tea.Cmd {
+	if text == "" {
+		a.optimisticFieldUpdate(issueKey, fldTimeTracking, "")
+		return updateIssueField(a.client, issueKey, fldTimeTracking, map[string]string{"originalEstimate": ""})
+	}
+	if !estimateRegex.MatchString(text) {
+		return func() tea.Msg {
+			return errorMsg{err: fmt.Errorf("invalid estimate %q (expected a Jira duration like \"2w 3d 4h\")", text)}
+		}
+	}
+	a.optimisticFieldUpdate(issueKey, fldTimeTracking, text)
+	return updateIssueField(a.client, issueKey, fldTimeTracking, map[string]string{"originalEstimate": text})
+}
+
 // handleModalSelected dispatches modal selection via the onSelect callback
 func (a *App) handleModalSelected(msg components.ModalSelectedMsg) (tea.Model, tea.Cmd) {
 	a.createForm.Resume()
@@ -157,6 +177,9 @@ func (a *App) handleInputConfirmed(msg components.InputConfirmedMsg) (tea.Model,
 	case editField:
 		if ctx.fieldID == "parent" {
 			return a, a.applyParentEdit(ctx.issueKey, strings.TrimSpace(msg.Text))
+		}
+		if ctx.fieldID == fldTimeTracking {
+			return a, a.applyEstimateEdit(ctx.issueKey, strings.TrimSpace(msg.Text))
 		}
 		if msg.Text != "" {
 			a.optimisticFieldUpdate(ctx.issueKey, ctx.fieldID, msg.Text)

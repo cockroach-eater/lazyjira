@@ -784,6 +784,13 @@ func (a *App) handleActionCreateBranch() (tea.Model, tea.Cmd) {
 	if a.side != sideLeft || a.leftFocus != focusIssues {
 		return a, nil
 	}
+	return a.promptBranch()
+}
+
+// promptBranch opens the branch input prefilled from the configured template,
+// hinting at branches that already name the issue. Shared by the b key and by
+// editing the Branch row of the Info panel.
+func (a *App) promptBranch() (tea.Model, tea.Cmd) {
 	if a.gitRepoPath == "" {
 		a.statusPanel.SetError("not a git repository")
 		return a, nil

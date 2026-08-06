@@ -34,8 +34,18 @@ const (
 
 type InfoPanel struct {
 	components.ListBase
-	issue           *jira.Issue
-	fields          []config.FieldConfig
+	issue  *jira.Issue
+	fields []config.FieldConfig
+	// reviewerField is the custom field id configured as the reviewer, or
+	// empty. Jira has no standard reviewer field, so it cannot be a builtin.
+	reviewerField string
+	// branch is the local git branch matching branchFor. It does not come
+	// from Jira, so the app feeds it in with SetBranch.
+	branch    string
+	branchFor string
+	// showBranch stays false outside a git repository, where the row would
+	// be permanently empty.
+	showBranch      bool
 	filter          string
 	activeTab       InfoPanelTab
 	theme           *theme.Theme
@@ -146,6 +156,46 @@ func (p *InfoPanel) SetFields(fields []config.FieldConfig) {
 	p.fields = fields
 }
 
+// SetReviewerField configures the custom field shown as Reviewer.
+func (p *InfoPanel) SetReviewerField(fieldID string) {
+	p.reviewerField = fieldID
+}
+
+// EnableBranchField makes the Branch row appear. Only meaningful inside a git
+// repository.
+func (p *InfoPanel) EnableBranchField(enabled bool) {
+	p.showBranch = enabled
+	p.syncItemCount()
+}
+
+// SetBranch records the branch found for issueKey. A stale answer (the cursor
+// already moved on) is dropped.
+func (p *InfoPanel) SetBranch(issueKey, branch string) {
+	if p.issue == nil || p.issue.Key != issueKey {
+		return
+	}
+	p.branchFor = issueKey
+	p.branch = branch
+	p.syncItemCount()
+}
+
+// extraFields bundles the non-Jira rows for the issue on screen.
+func (p *InfoPanel) extraFields() extraInfoFields {
+	return extraInfoFields{
+		reviewerID: p.reviewerField,
+		branch:     p.branchValue(),
+		showBranch: p.showBranch,
+	}
+}
+
+// branchValue is the Branch row content for the issue on screen.
+func (p *InfoPanel) branchValue() string {
+	if p.issue == nil || p.branchFor != p.issue.Key {
+		return ""
+	}
+	return p.branch
+}
+
 func (p *InfoPanel) SetFilter(query string) {
 	p.filter = query
 	p.filteredIndices = nil
@@ -177,7 +227,7 @@ func (p *InfoPanel) SetActiveTab(tab InfoPanelTab) {
 }
 
 func (p *InfoPanel) Fields() []InfoField {
-	return buildInfoFields(p.issue, p.fields)
+	return buildInfoFields(p.issue, p.fields, p.extraFields())
 }
 
 func (p *InfoPanel) SelectedInfoField() *InfoField {
@@ -214,32 +264,47 @@ func (p *InfoPanel) SelectedLinkKey() string {
 // whatever fields the parent payload carried, typically key + summary +
 // status), or nil when no link is selected.
 func (p *InfoPanel) SelectedLinkIssue() *jira.Issue {
+	_, issue := p.selectedLink()
+	return issue
+}
+
+// SelectedLink returns the whole link under the cursor, which carries the id
+// needed to delete it.
+func (p *InfoPanel) SelectedLink() *jira.IssueLink {
+	link, _ := p.selectedLink()
+	return link
+}
+
+// selectedLink walks the rendered link rows -- one per direction, since a link
+// can name an issue on either side -- and returns the row under the cursor.
+func (p *InfoPanel) selectedLink() (*jira.IssueLink, *jira.Issue) {
 	if p.issue == nil || p.activeTab != InfoTabLinks {
-		return nil
+		return nil, nil
 	}
 	target := p.resolveOriginalIndex()
 	if target < 0 {
-		return nil
+		return nil, nil
 	}
 	idx := 0
-	for _, link := range p.issue.IssueLinks {
+	for i := range p.issue.IssueLinks {
+		link := &p.issue.IssueLinks[i]
 		if link.Type == nil {
 			continue
 		}
 		if link.OutwardIssue != nil {
 			if idx == target {
-				return link.OutwardIssue
+				return link, link.OutwardIssue
 			}
 			idx++
 		}
 		if link.InwardIssue != nil {
 			if idx == target {
-				return link.InwardIssue
+				return link, link.InwardIssue
 			}
 			idx++
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // SelectedSubtaskKey returns the issue key of the selected subtask
@@ -321,7 +386,7 @@ func (p *InfoPanel) tabItemCount() int {
 	}
 	switch p.activeTab {
 	case InfoTabFields:
-		return infoFieldCount(p.issue, p.fields)
+		return infoFieldCount(p.issue, p.fields, p.extraFields())
 	case InfoTabLinks:
 		count := 0
 		for _, link := range p.issue.IssueLinks {
@@ -508,7 +573,7 @@ func (p *InfoPanel) renderTabRows(width int) (styled, plain []string) {
 }
 
 func (p *InfoPanel) renderFieldRowPairs() (styled, plain []string) {
-	return renderInfoRowPairs(p.issue, p.fields, p.theme, p.Width-2)
+	return renderInfoRowPairs(p.issue, p.fields, p.extraFields(), p.theme, p.Width-2)
 }
 
 func (p *InfoPanel) renderLinkRowPairs(width int) (styled, plain []string) {
