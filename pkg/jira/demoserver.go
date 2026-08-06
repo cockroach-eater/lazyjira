@@ -634,6 +634,13 @@ func issueToJSON(iss *Issue) map[string]any {
 			"id": iss.Sprint.ID, "name": iss.Sprint.Name, "state": iss.Sprint.State,
 		}
 	}
+	if !iss.TimeTracking.IsZero() {
+		fields["timetracking"] = map[string]any{
+			"originalEstimate":  iss.TimeTracking.OriginalEstimate,
+			"remainingEstimate": iss.TimeTracking.RemainingEstimate,
+			"timeSpent":         iss.TimeTracking.TimeSpent,
+		}
+	}
 	if iss.IssueType != nil {
 		fields["issuetype"] = map[string]any{
 			"id": iss.IssueType.ID, "name": iss.IssueType.Name,

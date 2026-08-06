@@ -38,6 +38,7 @@ jira:
     host: ""
     email: ""
     serverType: cloud
+    reviewerField: ""   # custom field id shown as Reviewer, e.g. customfield_10101
 projects: []
 gui:
     theme: default
@@ -407,7 +408,27 @@ Setting a navigation key replaces all defaults for that action. For example, `do
 
 See [Custom Fields](Custom_Fields.md) for details on configuring the info panel.
 
-Without any `fields:` config, the info panel shows default fields: status, priority, assignee, reporter, issuetype, sprint (plus labels and components when set on the issue).
+Without any `fields:` config, the info panel shows default fields: status, priority, assignee, reporter, issuetype, parent, sprint, estimate (plus labels and components when set on the issue).
+
+Two extra rows are not Jira fields and are not part of `fields:`:
+
+- **Branch** appears whenever lazyjira runs inside a git repository, showing the local branch naming the issue. Editing it opens the branch-creation flow.
+- **Reviewer** appears when `jira.reviewerField` is set (see below).
+
+### Reviewer
+
+Jira has no standard reviewer field, so its custom field id differs per instance and there is nothing to default to. Point lazyjira at yours:
+
+```yaml
+jira:
+    reviewerField: customfield_10101
+```
+
+The row is placed right after the assignee and is edited like any other person field. See [Custom Fields](Custom_Fields.md) for how to find the id.
+
+### Estimate
+
+The **Estimate** row is the Jira `timetracking` original estimate. It is displayed as `2d (spent 4h)` and edited as a plain Jira duration (`2w`, `3d 4h`, `90m`); the unit lengths come from your instance's configuration, so the value is never converted.
 
 To customize which fields appear and in what order, add a `fields:` section. This replaces the defaults entirely.
 

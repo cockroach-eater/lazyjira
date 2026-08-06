@@ -42,6 +42,13 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `s` | JQL search |
 | `x` | Close JQL tab |
 
+## Info panel
+
+The Info tab carries an **Estimate** row (the Jira `timetracking` original
+estimate, written as `2w 3d 4h`), a **Branch** row showing the local git
+branch naming the issue -- editing it runs the branch flow -- and, when
+`jira.reviewerField` is configured, a **Reviewer** row.
+
 ## Help popup
 
 | Key | Action |

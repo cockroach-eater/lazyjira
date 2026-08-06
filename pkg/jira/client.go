@@ -298,7 +298,7 @@ func (c *Client) fillSprintFromCustomField(issue *Issue, raw map[string]json.Raw
 
 func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResults int) (*SearchResult, error) {
 	sprintField := c.SprintFieldID()
-	fields := "summary,description,status,priority,assignee,reporter,labels,components," + sprintField + ",issuetype,created,updated,subtasks,issuelinks,parent"
+	fields := "summary,description,status,priority,assignee,reporter,labels,components," + sprintField + ",issuetype,created,updated,subtasks,issuelinks,parent,timetracking"
 	// Default sprint custom-field ids: 10020 (Cloud), 10010 (older Server/DC).
 	if sprintField == sprintFieldAlias {
 		fields += ",customfield_10010,customfield_10020"
@@ -861,22 +861,23 @@ type issueResponse struct {
 }
 
 type issueFieldsResponse struct {
-	Summary     string                     `json:"summary"`
-	Description any                        `json:"description"`
-	Status      *statusResponse            `json:"status"`
-	Priority    *Priority                  `json:"priority"`
-	Assignee    *userResponse              `json:"assignee"`
-	Reporter    *userResponse              `json:"reporter"`
-	Labels      []string                   `json:"labels"`
-	Components  []Component                `json:"components"`
-	Sprint      *Sprint                    `json:"sprint"`
-	IssueType   *IssueType                 `json:"issuetype"`
-	Parent      *issueResponse             `json:"parent"`
-	Created     JiraTime                   `json:"created"`
-	Updated     JiraTime                   `json:"updated"`
-	Subtasks    []issueResponse            `json:"subtasks"`
-	IssueLinks  []issueLinkResponse        `json:"issuelinks"`
-	RawExtra    map[string]json.RawMessage `json:"-"`
+	Summary      string                     `json:"summary"`
+	Description  any                        `json:"description"`
+	Status       *statusResponse            `json:"status"`
+	Priority     *Priority                  `json:"priority"`
+	Assignee     *userResponse              `json:"assignee"`
+	Reporter     *userResponse              `json:"reporter"`
+	Labels       []string                   `json:"labels"`
+	Components   []Component                `json:"components"`
+	Sprint       *Sprint                    `json:"sprint"`
+	IssueType    *IssueType                 `json:"issuetype"`
+	Parent       *issueResponse             `json:"parent"`
+	Created      JiraTime                   `json:"created"`
+	Updated      JiraTime                   `json:"updated"`
+	Subtasks     []issueResponse            `json:"subtasks"`
+	IssueLinks   []issueLinkResponse        `json:"issuelinks"`
+	TimeTracking *TimeTracking              `json:"timetracking"`
+	RawExtra     map[string]json.RawMessage `json:"-"`
 }
 
 func (f *issueFieldsResponse) UnmarshalJSON(data []byte) error {
@@ -928,6 +929,11 @@ func (r *issueResponse) toIssue() Issue {
 		IssueType:  r.Fields.IssueType,
 		Created:    r.Fields.Created.Time,
 		Updated:    r.Fields.Updated.Time,
+	}
+
+	if !r.Fields.TimeTracking.IsZero() {
+		tt := *r.Fields.TimeTracking
+		issue.TimeTracking = &tt
 	}
 
 	if r.Fields.Status != nil {

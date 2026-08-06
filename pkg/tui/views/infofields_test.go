@@ -26,7 +26,7 @@ func TestParentField_Present(t *testing.T) {
 		},
 	}
 
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	f, ok := findField(fields, "parent")
 	if !ok {
 		t.Fatalf("expected 'parent' field in default info fields, got: %+v", fields)
@@ -46,7 +46,7 @@ func TestParentField_AbsentWhenNil(t *testing.T) {
 	t.Parallel()
 	issue := &jira.Issue{Key: "PROJ-2"}
 
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	if _, ok := findField(fields, "parent"); ok {
 		t.Errorf("expected no 'parent' field when Issue.Parent and IssueType are nil, got one")
 	}
@@ -58,7 +58,7 @@ func TestParentField_NoneForSubtaskWithoutParent(t *testing.T) {
 		Key:       "PROJ-2",
 		IssueType: &jira.IssueType{Name: "Sub-task", Subtask: true},
 	}
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	f, ok := findField(fields, "parent")
 	if !ok {
 		t.Fatalf("expected 'parent' field for subtask without parent, got: %+v", fields)
@@ -74,7 +74,7 @@ func TestParentField_NoneForStandardWithoutParent(t *testing.T) {
 		Key:       "PROJ-2",
 		IssueType: &jira.IssueType{Name: "Story", HierarchyLevel: 0},
 	}
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	f, ok := findField(fields, "parent")
 	if !ok {
 		t.Fatalf("expected 'parent' field for standard issue without parent, got: %+v", fields)
@@ -90,7 +90,7 @@ func TestParentField_HiddenForEpicWithoutParent(t *testing.T) {
 		Key:       "PROJ-2",
 		IssueType: &jira.IssueType{Name: "Epic", HierarchyLevel: 1},
 	}
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	if _, ok := findField(fields, "parent"); ok {
 		t.Errorf("expected no 'parent' field for epic (level 1) without parent, got one")
 	}
@@ -162,7 +162,7 @@ func TestParentField_KeyOnlyDisplay(t *testing.T) {
 		Key:    "PROJ-2",
 		Parent: &jira.Issue{Key: "PROJ-1"},
 	}
-	fields := buildInfoFields(issue, nil)
+	fields := buildInfoFields(issue, nil, extraInfoFields{})
 	f, ok := findField(fields, "parent")
 	if !ok {
 		t.Fatalf("expected 'parent' field, got: %+v", fields)
@@ -180,7 +180,7 @@ func TestParentField_LongSummaryTruncated(t *testing.T) {
 		Parent: &jira.Issue{Key: "PROJ-1", Summary: longSummary},
 	}
 
-	styled, plain := renderInfoRowPairs(issue, nil, nil, 30)
+	styled, plain := renderInfoRowPairs(issue, nil, extraInfoFields{}, nil, 30)
 	_ = styled
 
 	var parentRow string

@@ -356,6 +356,23 @@ func fetchPriorities(client jira.ClientInterface) tea.Cmd {
 	}
 }
 
+type branchLoadedMsg struct {
+	issueKey string
+	branch   string
+}
+
+// fetchIssueBranch looks for a local branch naming issueKey. It shells out to
+// git, so it runs as a command rather than inline on every cursor move.
+func fetchIssueBranch(repoPath, issueKey string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := git.SearchBranches(repoPath, issueKey)
+		if err != nil || result == nil || len(result.Local) == 0 {
+			return branchLoadedMsg{issueKey: issueKey}
+		}
+		return branchLoadedMsg{issueKey: issueKey, branch: result.Local[0]}
+	}
+}
+
 func fetchMyself(client jira.ClientInterface) tea.Cmd {
 	return func() tea.Msg {
 		user, err := client.GetMyself(context.Background())
