@@ -42,6 +42,21 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `s` | JQL search |
 | `x` | Close JQL tab |
 
+## Comments
+
+| Key | Action |
+| --- | --- |
+| `c` | Go to the comments tab |
+| `n` | Write a new comment in a popup |
+| `ctrl+r` | Reply to the selected comment, prefilled with an @-mention and a quote |
+| `e` | Edit the selected comment in `$EDITOR` |
+
+Inside the comment popup: `ctrl+d` sends, `esc` cancels, and `ctrl+e` moves
+what you have written to `$EDITOR`.
+
+Jira has no threaded replies, so a reply is an ordinary comment that quotes
+and mentions the person being answered.
+
 ## Help popup
 
 | Key | Action |

@@ -432,12 +432,10 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 			m, cmd := a.startCreateIssue()
 			return m, cmd, true
 		}
-		cur := a.currentIssue()
-		if cur == nil || a.side != sideRight || a.detailView.ActiveTab() != views.TabComments {
-			return a, nil, true
-		}
-		a.editContext = editCtx{kind: editCommentNew, issueKey: cur.Key}
-		return a, launchEditor("", ".md"), true
+		return a.startNewComment()
+
+	case ActReplyComment:
+		return a.startReplyComment()
 
 	case ActPriority:
 		if cur := a.currentIssue(); cur != nil {

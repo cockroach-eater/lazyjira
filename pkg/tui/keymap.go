@@ -46,6 +46,10 @@ const (
 	ActCreateSubtask  Action = "createSubtask"
 	ActDuplicateIssue Action = "duplicateIssue"
 	ActShowParent     Action = "showParent"
+	// ActReplyComment opens a comment popup quoting the selected comment.
+	// Not bound to plain "r": that is refresh, and Match is global rather
+	// than per-context.
+	ActReplyComment Action = "replyComment"
 
 	ActNavDown     Action = "navDown"
 	ActNavUp       Action = "navUp"
@@ -99,6 +103,7 @@ func DefaultKeymap() Keymap {
 		ActDuplicateIssue: {"ctrl+n"},
 		ActCreateSubtask:  {"S"},
 		ActShowParent:     {"backspace"},
+		ActReplyComment:   {"ctrl+r"},
 
 		ActNavDown:     {"j", "down", "ctrl+j"},
 		ActNavUp:       {"k", "up", "ctrl+k"},
@@ -157,6 +162,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActDetailScrollUp, kcfg.Detail.ScrollUp)
 	set(ActDetailHalfDown, kcfg.Detail.HalfPageDown)
 	set(ActDetailHalfUp, kcfg.Detail.HalfPageUp)
+	set(ActReplyComment, kcfg.Detail.ReplyComment)
 	// Navigation
 	set(ActNavDown, kcfg.Navigation.Down)
 	set(ActNavUp, kcfg.Navigation.Up)

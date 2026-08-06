@@ -393,6 +393,8 @@ keybinding:
     transition: "t"
     browser: "o"
     createBranch: "b"
+  detail:
+    replyComment: "ctrl+r"
 ```
 
 Only include keys you want to change. Missing keys keep their defaults.
