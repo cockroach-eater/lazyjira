@@ -46,6 +46,11 @@ const (
 	ActCreateSubtask  Action = "createSubtask"
 	ActDuplicateIssue Action = "duplicateIssue"
 	ActShowParent     Action = "showParent"
+	// ActLinkIssue links the current issue to another one.
+	ActLinkIssue Action = "linkIssue"
+	// ActDeleteSelection removes the link or subtask under the cursor.
+	// Not "x": that closes the JQL tab.
+	ActDeleteSelection Action = "deleteSelection"
 
 	ActNavDown     Action = "navDown"
 	ActNavUp       Action = "navUp"
@@ -100,6 +105,9 @@ func DefaultKeymap() Keymap {
 		ActCreateSubtask:  {"S"},
 		ActShowParent:     {"backspace"},
 
+		ActLinkIssue:       {"L"},
+		ActDeleteSelection: {"D"},
+
 		ActNavDown:     {"j", "down", "ctrl+j"},
 		ActNavUp:       {"k", "up", "ctrl+k"},
 		ActNavTop:      {"g", "home"},
@@ -150,6 +158,8 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActCreateBranch, kcfg.Issues.CreateBranch)
 	set(ActCreateIssue, kcfg.Issues.CreateIssue)
 	set(ActCreateSubtask, kcfg.Issues.CreateSubtask)
+	set(ActLinkIssue, kcfg.Issues.LinkIssue)
+	set(ActDeleteSelection, kcfg.Issues.DeleteSelection)
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)

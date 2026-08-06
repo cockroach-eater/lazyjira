@@ -41,6 +41,15 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `b` | Create branch from issue |
 | `s` | JQL search |
 | `x` | Close JQL tab |
+| `L` | Link the issue to another one: pick a relation, then the target key |
+
+## Info panel
+
+| Key | Action |
+| --- | --- |
+| `[` / `]` | Switch tab (Info / Lnk / Sub) |
+| `L` | Link the issue to another one |
+| `D` | Delete the link or subtask under the cursor, after confirming |
 
 ## Help popup
 

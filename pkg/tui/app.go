@@ -62,6 +62,7 @@ const (
 	editBranch
 	editCreateField
 	editCreateDesc
+	editLinkTarget
 )
 
 type editCtx struct {
@@ -696,6 +697,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detailView.UpdateIssueData(msg.issue)
 		a.issuesList.PatchIssue(msg.issue)
 		return a, nil
+	case issueLinkTypesLoadedMsg:
+		return a.handleIssueLinkTypesLoaded(msg)
+	case issueLinkChangedMsg:
+		return a.handleIssueLinkChanged(msg)
+	case issueDeletedMsg:
+		return a.handleIssueDeleted(msg)
+
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)

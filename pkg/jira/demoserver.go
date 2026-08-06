@@ -87,11 +87,28 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			s.handleCreateIssue(w, r)
 		}
-	case strings.HasPrefix(path, "/issue/"):
-		key := strings.TrimPrefix(path, "/issue/")
-		if r.Method == http.MethodPut {
-			s.handleUpdateIssue(w, r, key)
+	case path == "/issueLink":
+		if r.Method == http.MethodPost {
+			s.handleCreateIssueLink(w, r)
 		} else {
+			http.NotFound(w, r)
+		}
+	case strings.HasPrefix(path, "/issueLink/"):
+		if r.Method == http.MethodDelete {
+			s.handleDeleteIssueLink(w, strings.TrimPrefix(path, "/issueLink/"))
+		} else {
+			http.NotFound(w, r)
+		}
+	case path == "/issueLinkType":
+		s.handleIssueLinkTypes(w)
+	case strings.HasPrefix(path, "/issue/"):
+		key, _, _ := strings.Cut(strings.TrimPrefix(path, "/issue/"), "?")
+		switch r.Method {
+		case http.MethodPut:
+			s.handleUpdateIssue(w, r, key)
+		case http.MethodDelete:
+			s.handleDeleteIssue(w, r, key)
+		default:
 			s.handleIssue(w, key)
 		}
 	case path == "/priority":
@@ -352,6 +369,46 @@ func (s *DemoServer) handleAddComment(w http.ResponseWriter, r *http.Request, ke
 		return
 	}
 	writeJSON(w, commentToJSON(comment))
+}
+
+func (s *DemoServer) handleIssueLinkTypes(w http.ResponseWriter) {
+	types, _ := s.data.GetIssueLinkTypes(context.Background())
+	writeJSON(w, map[string]any{"issueLinkTypes": types})
+}
+
+func (s *DemoServer) handleCreateIssueLink(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Type         struct{ Name string } `json:"type"`
+		InwardIssue  struct{ Key string }  `json:"inwardIssue"`
+		OutwardIssue struct{ Key string }  `json:"outwardIssue"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	err := s.data.CreateIssueLink(context.Background(), body.Type.Name, body.InwardIssue.Key, body.OutwardIssue.Key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *DemoServer) handleDeleteIssueLink(w http.ResponseWriter, linkID string) {
+	if err := s.data.DeleteIssueLink(context.Background(), linkID); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *DemoServer) handleDeleteIssue(w http.ResponseWriter, r *http.Request, key string) {
+	deleteSubtasks := r.URL.Query().Get("deleteSubtasks") == "true"
+	if err := s.data.DeleteIssue(context.Background(), key, deleteSubtasks); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *DemoServer) handlePriorities(w http.ResponseWriter) {

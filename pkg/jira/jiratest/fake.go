@@ -30,6 +30,24 @@ type GetTransitionsCall struct {
 	Key string
 }
 
+type CreateIssueLinkCall struct {
+	Ctx        context.Context
+	TypeName   string
+	InwardKey  string
+	OutwardKey string
+}
+
+type DeleteIssueLinkCall struct {
+	Ctx    context.Context
+	LinkID string
+}
+
+type DeleteIssueCall struct {
+	Ctx            context.Context
+	Key            string
+	DeleteSubtasks bool
+}
+
 type DoTransitionCall struct {
 	Ctx          context.Context
 	Key          string
@@ -161,6 +179,10 @@ type FakeClient struct {
 	UpdateIssueFunc                   func(ctx context.Context, key string, fields map[string]any) error
 	RemoveIssueParentFunc             func(ctx context.Context, key string) error
 	GetPrioritiesFunc                 func(ctx context.Context) ([]jira.Priority, error)
+	GetIssueLinkTypesFunc             func(ctx context.Context) ([]jira.IssueLinkType, error)
+	CreateIssueLinkFunc               func(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	DeleteIssueLinkFunc               func(ctx context.Context, linkID string) error
+	DeleteIssueFunc                   func(ctx context.Context, key string, deleteSubtasks bool) error
 	CreateIssueFunc                   func(ctx context.Context, fields map[string]any) (*jira.Issue, error)
 	GetCreateMetaFunc                 func(ctx context.Context, projectKey, issueTypeID string) ([]jira.CreateMetaField, error)
 	GetCommentsFunc                   func(ctx context.Context, key string) ([]jira.Comment, error)
@@ -195,6 +217,10 @@ type FakeClient struct {
 	UpdateIssueCalls                   []UpdateIssueCall
 	RemoveIssueParentCalls             []RemoveIssueParentCall
 	GetPrioritiesCalls                 []context.Context
+	GetIssueLinkTypesCalls             []context.Context
+	CreateIssueLinkCalls               []CreateIssueLinkCall
+	DeleteIssueLinkCalls               []DeleteIssueLinkCall
+	DeleteIssueCalls                   []DeleteIssueCall
 	CreateIssueCalls                   []CreateIssueCall
 	GetCreateMetaCalls                 []GetCreateMetaCall
 	GetCommentsCalls                   []GetCommentsCall
@@ -354,6 +380,44 @@ func (f *FakeClient) GetPriorities(ctx context.Context) ([]jira.Priority, error)
 		return nil, nil
 	}
 	return f.GetPrioritiesFunc(ctx)
+}
+
+func (f *FakeClient) GetIssueLinkTypes(ctx context.Context) ([]jira.IssueLinkType, error) {
+	f.GetIssueLinkTypesCalls = append(f.GetIssueLinkTypesCalls, ctx)
+	if f.GetIssueLinkTypesFunc == nil {
+		f.fatal("GetIssueLinkTypes")
+		return nil, nil
+	}
+	return f.GetIssueLinkTypesFunc(ctx)
+}
+
+func (f *FakeClient) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	f.CreateIssueLinkCalls = append(f.CreateIssueLinkCalls, CreateIssueLinkCall{
+		Ctx: ctx, TypeName: typeName, InwardKey: inwardKey, OutwardKey: outwardKey,
+	})
+	if f.CreateIssueLinkFunc == nil {
+		f.fatal("CreateIssueLink")
+		return nil
+	}
+	return f.CreateIssueLinkFunc(ctx, typeName, inwardKey, outwardKey)
+}
+
+func (f *FakeClient) DeleteIssueLink(ctx context.Context, linkID string) error {
+	f.DeleteIssueLinkCalls = append(f.DeleteIssueLinkCalls, DeleteIssueLinkCall{Ctx: ctx, LinkID: linkID})
+	if f.DeleteIssueLinkFunc == nil {
+		f.fatal("DeleteIssueLink")
+		return nil
+	}
+	return f.DeleteIssueLinkFunc(ctx, linkID)
+}
+
+func (f *FakeClient) DeleteIssue(ctx context.Context, key string, deleteSubtasks bool) error {
+	f.DeleteIssueCalls = append(f.DeleteIssueCalls, DeleteIssueCall{Ctx: ctx, Key: key, DeleteSubtasks: deleteSubtasks})
+	if f.DeleteIssueFunc == nil {
+		f.fatal("DeleteIssue")
+		return nil
+	}
+	return f.DeleteIssueFunc(ctx, key, deleteSubtasks)
 }
 
 func (f *FakeClient) CreateIssue(ctx context.Context, fields map[string]any) (*jira.Issue, error) {

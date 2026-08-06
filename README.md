@@ -30,6 +30,7 @@ make build-demo
 - **JQL search** with autocomplete, syntax highlighting, and persistent history
 - **4-panel layout** - issues, projects, detail, status - with vim-style navigation
 - **Inline editing** - transitions, priority, assignee, labels, comments, description (`$EDITOR`)
+- **Relations** - view, create and remove issue links; create and delete subtasks
 - **Configurable** - custom keybindings (including navigation keys), JQL tabs, issue columns, custom fields
 - **Themes** - default ANSI palette plus all four Catppuccin flavors (Latte, Frappé, Macchiato, Mocha)
 - **Adaptive** - side-by-side or stacked layout, mouse support
@@ -200,7 +201,7 @@ Press `?` inside the app for all keybindings.
 - [x] Searchable keybindings help popup
 - [x] Scroll detail panel without switching focus
 - [x] Create subtasks from TUI
-- [ ] Link issues (add/remove issue links)
+- [x] Link issues (add/remove issue links)
 - [ ] CLI mode (non-interactive commands for scripting and automation)
 - [ ] Robust issue type changer (handle subtask/parent unlinking, field validation)
 - [ ] Clickable hyperlinks in terminal (OSC 8) for URLs in descriptions and comments

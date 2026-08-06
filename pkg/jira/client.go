@@ -29,6 +29,10 @@ type ClientInterface interface {
 	UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error
 	RemoveIssueParent(ctx context.Context, issueKey string) error
 	GetPriorities(ctx context.Context) ([]Priority, error)
+	GetIssueLinkTypes(ctx context.Context) ([]IssueLinkType, error)
+	CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	DeleteIssueLink(ctx context.Context, linkID string) error
+	DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error
 	CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error)
 	GetCreateMeta(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error)
 	GetComments(ctx context.Context, issueKey string) ([]Comment, error)
@@ -542,6 +546,48 @@ func (c *Client) GetPriorities(ctx context.Context) ([]Priority, error) {
 		return nil, fmt.Errorf("get priorities: %w", err)
 	}
 	return raw, nil
+}
+
+func (c *Client) GetIssueLinkTypes(ctx context.Context) ([]IssueLinkType, error) {
+	var raw struct {
+		IssueLinkTypes []IssueLinkType `json:"issueLinkTypes"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/issueLinkType", nil, &raw); err != nil {
+		return nil, fmt.Errorf("get issue link types: %w", err)
+	}
+	return raw.IssueLinkTypes, nil
+}
+
+// CreateIssueLink links two issues. The direction is carried by the argument
+// order: inwardKey is the issue the link points at ("is blocked by" side),
+// outwardKey the one it points from ("blocks" side).
+func (c *Client) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	body := map[string]any{
+		"type":         map[string]string{"name": typeName},
+		"inwardIssue":  map[string]string{"key": inwardKey},
+		"outwardIssue": map[string]string{"key": outwardKey},
+	}
+	if err := c.do(ctx, http.MethodPost, "/issueLink", body, nil); err != nil {
+		return fmt.Errorf("create %s link %s -> %s: %w", typeName, outwardKey, inwardKey, err)
+	}
+	return nil
+}
+
+func (c *Client) DeleteIssueLink(ctx context.Context, linkID string) error {
+	if err := c.do(ctx, http.MethodDelete, "/issueLink/"+linkID, nil, nil); err != nil {
+		return fmt.Errorf("delete issue link %s: %w", linkID, err)
+	}
+	return nil
+}
+
+// DeleteIssue removes an issue. Jira rejects the call with 400 when the issue
+// has subtasks and deleteSubtasks is false, so callers can retry after asking.
+func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
+	path := fmt.Sprintf("/issue/%s?deleteSubtasks=%t", issueKey, deleteSubtasks)
+	if err := c.do(ctx, http.MethodDelete, path, nil, nil); err != nil {
+		return fmt.Errorf("delete issue %s: %w", issueKey, err)
+	}
+	return nil
 }
 
 func (c *Client) CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error) {
