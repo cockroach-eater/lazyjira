@@ -50,7 +50,7 @@ func (a *App) handleChecklistConfirmed(msg components.ChecklistConfirmedMsg) (te
 	a.createForm.Resume()
 	if fn := a.onChecklist; fn != nil {
 		a.onChecklist = nil
-		return a, fn(msg.Selected)
+		return a, fn(msg)
 	}
 	return a, nil
 }
@@ -313,9 +313,9 @@ func (a *App) handleCreateFormChecklist(msg components.CreateFormChecklistMsg) (
 	if len(items) == 0 {
 		switch field.FieldID {
 		case fldLabels:
-			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-				labels := make([]string, 0, len(selected))
-				for _, item := range selected {
+			a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+				labels := make([]string, 0, len(confirmed.Selected))
+				for _, item := range confirmed.Selected {
 					labels = append(labels, item.ID)
 				}
 				a.createForm.SetFieldValue(idx, labels, strings.Join(labels, ", "))
@@ -323,10 +323,10 @@ func (a *App) handleCreateFormChecklist(msg components.CreateFormChecklistMsg) (
 			}
 			return a, fetchLabels(a.client)
 		case fldComponents:
-			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-				comps := make([]map[string]string, 0, len(selected))
-				names := make([]string, 0, len(selected))
-				for _, item := range selected {
+			a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+				comps := make([]map[string]string, 0, len(confirmed.Selected))
+				names := make([]string, 0, len(confirmed.Selected))
+				for _, item := range confirmed.Selected {
 					comps = append(comps, map[string]string{"id": item.ID})
 					names = append(names, item.Label)
 				}
@@ -345,10 +345,10 @@ func (a *App) handleCreateFormChecklist(msg components.CreateFormChecklistMsg) (
 		}
 	}
 
-	a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-		names := make([]string, 0, len(selected))
-		ids := make([]map[string]string, 0, len(selected))
-		for _, item := range selected {
+	a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+		names := make([]string, 0, len(confirmed.Selected))
+		ids := make([]map[string]string, 0, len(confirmed.Selected))
+		for _, item := range confirmed.Selected {
 			names = append(names, item.Label)
 			ids = append(ids, map[string]string{"id": item.ID})
 		}
@@ -385,10 +385,10 @@ func (a *App) handleCreateFormUserChecklist(field *components.CreateFormField, i
 	if a.isCloud {
 		key = fldAccountID
 	}
-	a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-		users := make([]map[string]string, 0, len(selected))
-		names := make([]string, 0, len(selected))
-		for _, item := range selected {
+	a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+		users := make([]map[string]string, 0, len(confirmed.Selected))
+		names := make([]string, 0, len(confirmed.Selected))
+		for _, item := range confirmed.Selected {
 			users = append(users, map[string]string{key: item.ID})
 			names = append(names, item.Label)
 		}
@@ -423,4 +423,76 @@ func (a *App) handleExpandBlock(msg views.ExpandBlockMsg) (tea.Model, tea.Cmd) {
 	a.modal.SetSize(a.width, a.height-1)
 	a.modal.ShowReadOnly(msg.Title, items)
 	return a, nil
+}
+
+// handleOverlayMsg routes the results of the editor and of the overlay
+// widgets. It lives apart from Update's main switch, which is already at the
+// limit of what one function should branch on.
+func (a *App) handleOverlayMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	if m, cmd, ok := a.handleCreateFormMsg(msg); ok {
+		return m, cmd, true
+	}
+
+	switch msg := msg.(type) {
+	case components.ModalSelectedMsg:
+		m, cmd := a.handleModalSelected(msg)
+		return m, cmd, true
+	case components.ChecklistConfirmedMsg:
+		m, cmd := a.handleChecklistConfirmed(msg)
+		return m, cmd, true
+	case components.ModalCancelledMsg:
+		m, cmd := a.handleModalCancelled()
+		return m, cmd, true
+
+	case editorFinishedMsg:
+		m, cmd := a.handleEditorFinished(msg)
+		return m, cmd, true
+	case customCommandFinishedMsg:
+		m, cmd := a.handleCustomCommandFinished(msg)
+		return m, cmd, true
+
+	case components.DiffConfirmedMsg:
+		m, cmd := a.handleDiffConfirmed(msg)
+		return m, cmd, true
+	case components.DiffCancelledMsg:
+		m, cmd := a.handleDiffCancelled()
+		return m, cmd, true
+
+	case components.InputConfirmedMsg:
+		m, cmd := a.handleInputConfirmed(msg)
+		return m, cmd, true
+	case components.InputCancelledMsg:
+		m, cmd := a.handleInputCancelled()
+		return m, cmd, true
+
+	}
+	return nil, nil, false
+}
+
+// handleCreateFormMsg routes the create-form overlay's own messages.
+func (a *App) handleCreateFormMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case components.CreateFormTypeSelectedMsg:
+		m, cmd := a.handleCreateFormTypeSelected(msg)
+		return m, cmd, true
+	case components.CreateFormEditTextMsg:
+		m, cmd := a.handleCreateFormEditText(msg)
+		return m, cmd, true
+	case components.CreateFormEditExternalMsg:
+		m, cmd := a.handleCreateFormEditExternal(msg)
+		return m, cmd, true
+	case components.CreateFormPickerMsg:
+		m, cmd := a.handleCreateFormPicker(msg)
+		return m, cmd, true
+	case components.CreateFormChecklistMsg:
+		m, cmd := a.handleCreateFormChecklist(msg)
+		return m, cmd, true
+	case components.CreateFormSubmitMsg:
+		m, cmd := a.handleCreateFormSubmit(msg)
+		return m, cmd, true
+	case components.CreateFormCancelMsg:
+		a.createCtx = createCtx{}
+		return a, nil, true
+	}
+	return nil, nil, false
 }

@@ -12,6 +12,9 @@ import (
 	"github.com/textfuel/lazyjira/v2/pkg/tui/views"
 )
 
+// keyEsc is the escape key as the runtime spells it.
+const keyEsc = "esc"
+
 // handleKeyMsg dispatches keyboard actions.
 // Returns (nil, nil) if the key was not handled and should be forwarded to the focused panel
 func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -28,6 +31,20 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	action := a.keymap.Match(msg.String())
+
+	// The board owns the right panel while no task is open.
+	if a.side == sideRight && a.boardVisible() {
+		if m, cmd, ok := a.handleBoardKeys(action, msg.String()); ok {
+			return m, cmd
+		}
+	}
+
+	// Filtering the board works from anywhere it is on screen: the cursor is
+	// usually still in the issues list when the user reaches for it.
+	if action == ActFilterAssignees && a.boardVisible() {
+		m, cmd, _ := a.openBoardFilter()
+		return m, cmd
+	}
 
 	// In the hierarchy tab, ActFocusLeft pops a NavFrame instead of
 	// shifting focus.
@@ -117,7 +134,7 @@ func (a *App) handleHelpKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		a.helpSearch.SetWidth(a.width - 5)
 		return a, nil
 	}
-	if key == "esc" || key == "q" || key == "?" {
+	if key == keyEsc || key == "q" || key == "?" {
 		a.showHelp = false
 		a.helpFilter = ""
 		a.helpSearching = false
@@ -272,9 +289,15 @@ func (a *App) handleFocusAction(action Action) (tea.Model, tea.Cmd, bool) {
 			return a, nil, true
 		}
 		if a.side == sideRight {
+			// Closing a task hands the panel back to the project board.
+			var cmd tea.Cmd
+			if a.taskOpen {
+				a.detailView.CloseIssue()
+				cmd = a.showBoard()
+			}
 			a.side = sideLeft
 			a.updateFocusState()
-			return a, nil, true
+			return a, cmd, true
 		}
 
 	case ActFocusDetail:
@@ -322,6 +345,7 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			a.detailView.PrevTab()
 		case a.side == sideLeft && a.leftFocus == focusIssues:
 			a.issuesList.PrevTab()
+			a.refreshBoard()
 			if !a.issuesList.HasCachedTab() {
 				return a, a.fetchActiveTab(), true
 			}
@@ -338,6 +362,7 @@ func (a *App) handleTabAction(action Action) (tea.Model, tea.Cmd, bool) {
 			a.detailView.NextTab()
 		case a.side == sideLeft && a.leftFocus == focusIssues:
 			a.issuesList.NextTab()
+			a.refreshBoard()
 			if !a.issuesList.HasCachedTab() {
 				return a, a.fetchActiveTab(), true
 			}
@@ -628,6 +653,8 @@ func (a *App) handleActionOpen() (tea.Model, tea.Cmd) {
 func (a *App) openIssueDetail() (tea.Model, tea.Cmd) {
 	if sel := a.issuesList.SelectedIssue(); sel != nil {
 		a.side = sideRight
+		a.taskOpen = true
+		a.detailView.SetIssue(sel)
 		a.updateFocusState()
 		return a, fetchIssueDetail(a.client, sel.Key)
 	}

@@ -62,6 +62,7 @@ const (
 	editBranch
 	editCreateField
 	editCreateDesc
+	editBoardFilter
 )
 
 type editCtx struct {
@@ -84,7 +85,7 @@ type createCtx struct {
 }
 
 type onSelectFunc func(components.ModalItem) tea.Cmd
-type onChecklistFunc func([]components.ModalItem) tea.Cmd
+type onChecklistFunc func(components.ChecklistConfirmedMsg) tea.Cmd
 
 type issuesLoadedMsg struct {
 	issues []jira.Issue
@@ -185,6 +186,23 @@ type App struct {
 	issueCache      map[string]*jira.Issue
 	childrenCache   map[string][]jira.Issue
 	createMetaCache map[string][]jira.CreateMetaField
+	// projectStatuses caches the workflow statuses per project key. They lay
+	// the board out when the project has no agile board.
+	projectStatuses map[string][]jira.Status
+	// activeBoard is the index into the active project's boards of the one on
+	// screen; -1 means the status-derived board.
+	activeBoard int
+	// boardColumns and boardIssues cache what each agile board reported.
+	boardColumns map[int][]jira.BoardColumn
+	boardIssues  map[int][]jira.Issue
+	// boardFilters holds the board assignee filter per project key, so it
+	// survives tab switches and revisits. Empty means "everyone".
+	boardFilters      map[string]map[string]bool
+	boardFilterLabels map[string]string
+	// taskOpen is true once a task has been opened with enter. While it is
+	// false the right panel belongs to the project board, and list navigation
+	// must not push issues into it.
+	taskOpen bool
 	// previewKey identifies the issue displayed in the right-side views.
 	// Empty means nothing is displayed.
 	previewKey string
@@ -354,7 +372,14 @@ func NewAppWithAuth(cfg *config.Config, client jira.ClientInterface, authMethod 
 		issueCache:      make(map[string]*jira.Issue),
 		childrenCache:   make(map[string][]jira.Issue),
 		createMetaCache: make(map[string][]jira.CreateMetaField),
-		converter:       BuiltinConverter{},
+		projectStatuses: make(map[string][]jira.Status),
+		activeBoard:     -1,
+		boardColumns:    make(map[int][]jira.BoardColumn),
+		boardIssues:     make(map[int][]jira.Issue),
+
+		boardFilters:      make(map[string]map[string]bool),
+		boardFilterLabels: make(map[string]string),
+		converter:         BuiltinConverter{},
 	}
 	// cfg.Converter is validated at config-load time; "" and "builtin"
 	// both fall through to the BuiltinConverter set above.
@@ -434,6 +459,11 @@ func (a *App) Init() tea.Cmd {
 		}),
 	}
 	if cmd := a.fetchActiveTab(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	// A project restored from config is already selected, but never went
+	// through selectProject: put its board up here.
+	if cmd := a.showBoard(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)
@@ -536,42 +566,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case commentUpdatedMsg:
 		return a, fetchIssueDetail(a.client, msg.issueKey)
 
-	case components.CreateFormTypeSelectedMsg:
-		return a.handleCreateFormTypeSelected(msg)
-	case components.CreateFormEditTextMsg:
-		return a.handleCreateFormEditText(msg)
-	case components.CreateFormEditExternalMsg:
-		return a.handleCreateFormEditExternal(msg)
-	case components.CreateFormPickerMsg:
-		return a.handleCreateFormPicker(msg)
-	case components.CreateFormChecklistMsg:
-		return a.handleCreateFormChecklist(msg)
-	case components.CreateFormSubmitMsg:
-		return a.handleCreateFormSubmit(msg)
-	case components.CreateFormCancelMsg:
-		a.createCtx = createCtx{}
-		return a, nil
-
-	case components.ModalSelectedMsg:
-		return a.handleModalSelected(msg)
-	case components.ChecklistConfirmedMsg:
-		return a.handleChecklistConfirmed(msg)
-	case components.ModalCancelledMsg:
-		return a.handleModalCancelled()
-
-	case editorFinishedMsg:
-		return a.handleEditorFinished(msg)
-	case customCommandFinishedMsg:
-		return a.handleCustomCommandFinished(msg)
-	case components.DiffConfirmedMsg:
-		return a.handleDiffConfirmed(msg)
-	case components.DiffCancelledMsg:
-		return a.handleDiffCancelled()
-	case components.InputConfirmedMsg:
-		return a.handleInputConfirmed(msg)
-	case components.InputCancelledMsg:
-		return a.handleInputCancelled()
-
 	case components.JQLSubmitMsg:
 		return a.handleJQLSubmit(msg)
 	case jqlSearchResultMsg:
@@ -619,29 +613,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.infoPanel.SetIssue(msg.Issue)
 		}
 		_, previewCmd := a.Update(views.PreviewRequestMsg{Key: msg.Issue.Key})
-		return a, tea.Batch(previewCmd, a.prefetchRelated(msg.Issue), a.infoPanel.MaybeChildrenRequest())
+		return a, tea.Batch(previewCmd, a.prefetchRelated(msg.Issue),
+			a.infoPanel.MaybeChildrenRequest())
 
 	case views.PreviewRequestMsg:
-		a.previewKey = msg.Key
-		a.previewEpoch++
-		sel := a.issuesList.SelectedIssue()
-		mainListMatches := sel != nil && sel.Key == msg.Key
-		if cached, ok := a.issueCache[msg.Key]; ok && cached != nil {
-			a.detailView.UpdateIssueData(cached)
-			if mainListMatches {
-				a.infoPanel.SetIssue(cached)
-			}
-			return a, nil
-		}
-		if mainListMatches {
-			a.detailView.SetIssue(sel)
-			a.infoPanel.SetIssue(sel)
-		}
-		epoch := a.previewEpoch
-		key := msg.Key
-		return a, tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
-			return previewDebounceMsg{key: key, epoch: epoch}
-		})
+		return a.handlePreviewRequest(msg)
 
 	case previewDebounceMsg:
 		if msg.epoch != a.previewEpoch {
@@ -693,14 +669,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.statusPanel.SetOnline(true)
 		a.issueCache[msg.issue.Key] = msg.issue
 		// DetailView only: InfoPanel belongs to the main list issue.
-		a.detailView.UpdateIssueData(msg.issue)
+		if !a.boardVisible() {
+			a.detailView.UpdateIssueData(msg.issue)
+		}
 		a.issuesList.PatchIssue(msg.issue)
+		a.refreshBoard()
 		return a, nil
+	case projectStatusesLoadedMsg:
+		return a.handleProjectStatusesLoaded(msg)
+
+	case boardDataLoadedMsg:
+		return a.handleBoardDataLoaded(msg)
+
 	case views.ProjectHoveredMsg:
 		if msg.Project != nil {
 			a.detailView.SetProject(msg.Project)
 		}
 		return a, nil
+
+	default:
+		if m, cmd, ok := a.handleOverlayMsg(msg); ok {
+			return m, cmd
+		}
 	}
 
 	return a, a.routeToPanel(msg)
@@ -804,9 +794,9 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 		issueKey := sel.Key
 		switch field.FieldID {
 		case fldLabels:
-			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-				labels := make([]string, 0, len(selected))
-				for _, item := range selected {
+			a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+				labels := make([]string, 0, len(confirmed.Selected))
+				for _, item := range confirmed.Selected {
 					labels = append(labels, item.ID)
 				}
 				a.optimisticFieldUpdate(issueKey, fldLabels, labels)
@@ -814,9 +804,9 @@ func (a *App) editInfoField(sel *jira.Issue) (tea.Model, tea.Cmd) {
 			}
 			return a, fetchLabels(a.client)
 		case fldComponents:
-			a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-				comps := make([]map[string]string, 0, len(selected))
-				for _, item := range selected {
+			a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+				comps := make([]map[string]string, 0, len(confirmed.Selected))
+				for _, item := range confirmed.Selected {
 					comps = append(comps, map[string]string{"id": item.ID})
 				}
 				a.optimisticFieldUpdate(issueKey, fldComponents, comps)
@@ -1051,9 +1041,9 @@ func (a *App) handleCustomFieldOptions(msg customFieldOptionsMsg) (tea.Model, te
 
 	switch msg.fieldType {
 	case views.FieldMultiSelect:
-		a.onChecklist = func(selected []components.ModalItem) tea.Cmd {
-			vals := make([]map[string]string, 0, len(selected))
-			for _, item := range selected {
+		a.onChecklist = func(confirmed components.ChecklistConfirmedMsg) tea.Cmd {
+			vals := make([]map[string]string, 0, len(confirmed.Selected))
+			for _, item := range confirmed.Selected {
 				vals = append(vals, map[string]string{"id": item.ID})
 			}
 			a.optimisticFieldUpdate(msg.issueKey, msg.fieldID, vals)

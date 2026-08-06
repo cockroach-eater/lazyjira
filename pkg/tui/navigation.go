@@ -41,7 +41,9 @@ func (a *App) showCachedIssue(key string) {
 	if !ok {
 		return
 	}
-	a.detailView.SetIssue(cached)
+	if !a.boardVisible() {
+		a.detailView.SetIssue(cached)
+	}
 	if sel := a.issuesList.SelectedIssue(); sel != nil && sel.Key == key {
 		a.infoPanel.SetIssue(cached)
 	}
@@ -53,13 +55,17 @@ func (a *App) previewSelectedIssue() tea.Cmd {
 		return nil
 	}
 	a.previewKey = sel.Key
-	if cached, ok := a.issueCache[sel.Key]; ok {
-		a.detailView.SetIssue(cached)
-		a.infoPanel.SetIssue(cached)
-	} else {
-		a.detailView.SetIssue(sel)
-		a.infoPanel.SetIssue(sel)
+	// While the board owns the right panel it only tracks the cursor; the
+	// InfoPanel still follows the selection.
+	board := a.boardVisible()
+	if board {
+		a.detailView.Kanban().SelectByKey(sel.Key)
 	}
+	issue := sel
+	if cached, ok := a.issueCache[sel.Key]; ok {
+		issue = cached
+	}
+	a.showPreviewIssue(issue, board, true, true)
 	return tea.Batch(a.prefetchRelated(sel), a.infoPanel.MaybeChildrenRequest())
 }
 
@@ -183,4 +189,55 @@ func copyToClipboard(text string) {
 func openBrowser(url string) {
 	name, args := platformCommand("open", url)
 	runExternalCommand("", false, name, args...)
+}
+
+// previewDebounce is how long a cursor must rest on an issue before its detail
+// is fetched, so scrolling a list does not fire a request per row.
+const previewDebounce = 150 * time.Millisecond
+
+// handlePreviewRequest points the right-hand views at an issue. A cached issue
+// is shown at once; otherwise a debounced fetch is scheduled, tagged with the
+// current epoch so a later request supersedes it.
+//
+// While the board owns the panel the detail view is left alone: only the board
+// cursor and the InfoPanel follow the selection.
+func (a *App) handlePreviewRequest(msg views.PreviewRequestMsg) (tea.Model, tea.Cmd) {
+	a.previewKey = msg.Key
+	a.previewEpoch++
+
+	sel := a.issuesList.SelectedIssue()
+	mainListMatches := sel != nil && sel.Key == msg.Key
+
+	board := a.boardVisible()
+	if board {
+		a.detailView.Kanban().SelectByKey(msg.Key)
+	}
+
+	if cached, ok := a.issueCache[msg.Key]; ok && cached != nil {
+		a.showPreviewIssue(cached, board, mainListMatches, false)
+		return a, nil
+	}
+	if mainListMatches {
+		a.showPreviewIssue(sel, board, true, true)
+	}
+
+	epoch, key := a.previewEpoch, msg.Key
+	return a, tea.Tick(previewDebounce, func(_ time.Time) tea.Msg {
+		return previewDebounceMsg{key: key, epoch: epoch}
+	})
+}
+
+// showPreviewIssue routes an issue to the detail and info panels. reset picks
+// SetIssue over UpdateIssueData, which also rewinds the tab and scroll.
+func (a *App) showPreviewIssue(issue *jira.Issue, board, updateInfo, reset bool) {
+	if !board {
+		if reset {
+			a.detailView.SetIssue(issue)
+		} else {
+			a.detailView.UpdateIssueData(issue)
+		}
+	}
+	if updateInfo {
+		a.infoPanel.SetIssue(issue)
+	}
 }

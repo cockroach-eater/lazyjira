@@ -7,6 +7,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Kanban boards. They fill the detail panel whenever no task is open: selecting a project shows one, `enter` on a card opens that task, and `esc` brings the board back. A project's agile boards each appear with their own columns and their own issues, as configured in Jira -- including columns that collect several statuses -- and `[`/`]` switches between them. A project with no agile board falls back to one column per project status. The board mirrors what the issue list is showing, so a narrower tab such as Assigned or a `/` filter narrows the board with it. `f` filters by assignee on top of that, with the current user and an unassigned bucket pinned on top; the choice is remembered per project
+
 ## [2.19.2] - 2026-07-08
 
 ### Fixed

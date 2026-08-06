@@ -228,7 +228,7 @@ func TestEditInfoField_LabelsChecklistCallbackUpdatesIssue(t *testing.T) {
 	app.issueCache[testKey] = issue
 
 	_, _ = app.editInfoField(issue)
-	cmd := app.onChecklist([]components.ModalItem{{ID: "backend"}, {ID: "infra"}})
+	cmd := app.onChecklist(components.ChecklistConfirmedMsg{Selected: []components.ModalItem{{ID: "backend"}, {ID: "infra"}}})
 	cmd()
 
 	if len(fake.UpdateIssueCalls) != 1 {
@@ -252,7 +252,7 @@ func TestEditInfoField_ComponentsChecklistCallbackUpdatesIssue(t *testing.T) {
 	issue := selectInfoField(t, app, &jira.Issue{Key: testKey, IssueType: &jira.IssueType{ID: "10001"}, Components: []jira.Component{{ID: "9", Name: "Old"}}}, config.FieldConfig{ID: "components"})
 
 	_, _ = app.editInfoField(issue)
-	cmd := app.onChecklist([]components.ModalItem{{ID: "10"}})
+	cmd := app.onChecklist(components.ChecklistConfirmedMsg{Selected: []components.ModalItem{{ID: "10"}}})
 	cmd()
 
 	if len(fake.UpdateIssueCalls) != 1 {
@@ -639,7 +639,7 @@ func TestHandleCustomFieldOptions_MoreBranches(t *testing.T) {
 		if !app.modal.IsVisible() || !app.modal.IsChecklist() {
 			t.Fatal("checklist modal should be visible")
 		}
-		cmd := app.onChecklist([]components.ModalItem{{ID: "2"}})
+		cmd := app.onChecklist(components.ChecklistConfirmedMsg{Selected: []components.ModalItem{{ID: "2"}}})
 		cmd()
 		vals, ok := fake.UpdateIssueCalls[0].Fields["customfield_1"].([]map[string]string)
 		if !ok || len(vals) != 1 || vals[0]["id"] != "2" {

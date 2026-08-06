@@ -87,13 +87,33 @@ func (s *DemoServer) handle(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			s.handleCreateIssue(w, r)
 		}
-	case strings.HasPrefix(path, "/issue/"):
-		key := strings.TrimPrefix(path, "/issue/")
-		if r.Method == http.MethodPut {
-			s.handleUpdateIssue(w, r, key)
+	case path == "/issueLink":
+		if r.Method == http.MethodPost {
+			s.handleCreateIssueLink(w, r)
 		} else {
+			http.NotFound(w, r)
+		}
+	case strings.HasPrefix(path, "/issueLink/"):
+		if r.Method == http.MethodDelete {
+			s.handleDeleteIssueLink(w, strings.TrimPrefix(path, "/issueLink/"))
+		} else {
+			http.NotFound(w, r)
+		}
+	case path == "/issueLinkType":
+		s.handleIssueLinkTypes(w)
+	case strings.HasPrefix(path, "/issue/"):
+		key, _, _ := strings.Cut(strings.TrimPrefix(path, "/issue/"), "?")
+		switch r.Method {
+		case http.MethodPut:
+			s.handleUpdateIssue(w, r, key)
+		case http.MethodDelete:
+			s.handleDeleteIssue(w, r, key)
+		default:
 			s.handleIssue(w, key)
 		}
+	case strings.HasSuffix(path, "/statuses") && strings.HasPrefix(path, "/project/"):
+		key := strings.TrimSuffix(strings.TrimPrefix(path, "/project/"), "/statuses")
+		s.handleProjectStatuses(w, key)
 	case path == "/priority":
 		s.handlePriorities(w)
 	case strings.HasPrefix(path, "/user/assignable/search"):
@@ -354,6 +374,61 @@ func (s *DemoServer) handleAddComment(w http.ResponseWriter, r *http.Request, ke
 	writeJSON(w, commentToJSON(comment))
 }
 
+// handleProjectStatuses mirrors GET /project/{key}/statuses: the real API
+// groups statuses per issue type, so the demo emits a single group.
+func (s *DemoServer) handleProjectStatuses(w http.ResponseWriter, key string) {
+	statuses, err := s.data.GetProjectStatuses(context.Background(), key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	encoded := make([]any, len(statuses))
+	for i := range statuses {
+		encoded[i] = statusToJSON(&statuses[i])
+	}
+	writeJSON(w, []any{map[string]any{"name": "Task", "statuses": encoded}})
+}
+
+func (s *DemoServer) handleIssueLinkTypes(w http.ResponseWriter) {
+	types, _ := s.data.GetIssueLinkTypes(context.Background())
+	writeJSON(w, map[string]any{"issueLinkTypes": types})
+}
+
+func (s *DemoServer) handleCreateIssueLink(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Type         struct{ Name string } `json:"type"`
+		InwardIssue  struct{ Key string }  `json:"inwardIssue"`
+		OutwardIssue struct{ Key string }  `json:"outwardIssue"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	err := s.data.CreateIssueLink(context.Background(), body.Type.Name, body.InwardIssue.Key, body.OutwardIssue.Key)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *DemoServer) handleDeleteIssueLink(w http.ResponseWriter, linkID string) {
+	if err := s.data.DeleteIssueLink(context.Background(), linkID); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *DemoServer) handleDeleteIssue(w http.ResponseWriter, r *http.Request, key string) {
+	deleteSubtasks := r.URL.Query().Get("deleteSubtasks") == "true"
+	if err := s.data.DeleteIssue(context.Background(), key, deleteSubtasks); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *DemoServer) handlePriorities(w http.ResponseWriter) {
 	priorities, _ := s.data.GetPriorities(context.Background())
 	result := make([]any, len(priorities))
@@ -565,6 +640,34 @@ func (s *DemoServer) handleAgile(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, map[string]any{"values": result})
+	case strings.HasSuffix(path, "/configuration"):
+		id, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(path, "/board/"), "/configuration"))
+		config, err := s.data.GetBoardConfiguration(context.Background(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		columns := make([]any, 0, len(config.Columns))
+		for _, col := range config.Columns {
+			statuses := make([]any, 0, len(col.StatusIDs))
+			for _, statusID := range col.StatusIDs {
+				statuses = append(statuses, map[string]any{"id": statusID})
+			}
+			columns = append(columns, map[string]any{"name": col.Name, "statuses": statuses})
+		}
+		writeJSON(w, map[string]any{"columnConfig": map[string]any{"columns": columns}})
+	case strings.HasPrefix(path, "/board/") && strings.HasSuffix(path, "/issue"):
+		id, _ := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(path, "/board/"), "/issue"))
+		issues, err := s.data.GetBoardIssues(context.Background(), id, "")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		encoded := make([]any, 0, len(issues))
+		for i := range issues {
+			encoded = append(encoded, issueToJSON(&issues[i]))
+		}
+		writeJSON(w, map[string]any{"issues": encoded, "total": len(encoded), "maxResults": 50, "startAt": 0})
 	case strings.HasSuffix(path, "/sprint"):
 		sprints, _ := s.data.GetSprints(context.Background(), 0)
 		result := make([]any, len(sprints))
@@ -638,6 +741,13 @@ func issueToJSON(iss *Issue) map[string]any {
 		fields["issuetype"] = map[string]any{
 			"id": iss.IssueType.ID, "name": iss.IssueType.Name,
 			"iconUrl": iss.IssueType.IconURL, "subtask": iss.IssueType.Subtask,
+		}
+	}
+	if !iss.TimeTracking.IsZero() {
+		fields["timetracking"] = map[string]any{
+			"originalEstimate":  iss.TimeTracking.OriginalEstimate,
+			"remainingEstimate": iss.TimeTracking.RemainingEstimate,
+			"timeSpent":         iss.TimeTracking.TimeSpent,
 		}
 	}
 

@@ -63,7 +63,25 @@ type Issue struct {
 	Comments       []Comment        `json:"-"`
 	Changelog      []ChangelogEntry `json:"-"`
 	Transitions    []Transition     `json:"-"`
+	TimeTracking   *TimeTracking    `json:"-"`
 	CustomFields   map[string]any   `json:"-"`
+}
+
+// TimeTracking holds the Jira timetracking field. Values are Jira duration
+// strings ("2w 3d 4h"), not durations: the unit lengths are per-instance
+// config (a "day" may be 8h), so they are never parsed into time.Duration.
+type TimeTracking struct {
+	OriginalEstimate  string `json:"originalEstimate"`
+	RemainingEstimate string `json:"remainingEstimate"`
+	TimeSpent         string `json:"timeSpent"`
+}
+
+// IsZero reports whether no estimate or spent time is recorded.
+func (t *TimeTracking) IsZero() bool {
+	if t == nil {
+		return true
+	}
+	return t.OriginalEstimate == "" && t.RemainingEstimate == "" && t.TimeSpent == ""
 }
 
 // ChangelogEntry represents a single change in issue history
@@ -117,6 +135,20 @@ type Board struct {
 	ProjectKey string `json:"-"`
 }
 
+// BoardColumn is one column of an agile board. A column can collect several
+// statuses, which is why a board's layout cannot be derived from the project
+// status list alone.
+type BoardColumn struct {
+	Name      string
+	StatusIDs []string
+}
+
+// BoardConfiguration is the column layout of a board.
+type BoardConfiguration struct {
+	BoardID int
+	Columns []BoardColumn
+}
+
 type Project struct {
 	ID        string `json:"id"`
 	Key       string `json:"key"`
@@ -148,6 +180,7 @@ type IssueLink struct {
 }
 
 type IssueLinkType struct {
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Inward  string `json:"inward"`
 	Outward string `json:"outward"`

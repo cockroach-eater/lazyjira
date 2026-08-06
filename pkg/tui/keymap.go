@@ -46,6 +46,8 @@ const (
 	ActCreateSubtask  Action = "createSubtask"
 	ActDuplicateIssue Action = "duplicateIssue"
 	ActShowParent     Action = "showParent"
+	// ActFilterAssignees filters the project board by assignee.
+	ActFilterAssignees Action = "filterAssignees"
 
 	ActNavDown     Action = "navDown"
 	ActNavUp       Action = "navUp"
@@ -100,6 +102,8 @@ func DefaultKeymap() Keymap {
 		ActCreateSubtask:  {"S"},
 		ActShowParent:     {"backspace"},
 
+		ActFilterAssignees: {"f"},
+
 		ActNavDown:     {"j", "down", "ctrl+j"},
 		ActNavUp:       {"k", "up", "ctrl+k"},
 		ActNavTop:      {"g", "home"},
@@ -150,6 +154,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActCreateBranch, kcfg.Issues.CreateBranch)
 	set(ActCreateIssue, kcfg.Issues.CreateIssue)
 	set(ActCreateSubtask, kcfg.Issues.CreateSubtask)
+	set(ActFilterAssignees, kcfg.Issues.FilterAssignees)
 	// Detail
 	set(ActFocusLeft, kcfg.Detail.FocusLeft)
 	set(ActInfoTab, kcfg.Detail.InfoTab)

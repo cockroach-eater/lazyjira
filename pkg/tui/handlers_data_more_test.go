@@ -488,7 +488,7 @@ func TestHandleUsersLoaded_CreateSentinel(t *testing.T) {
 		t.Parallel()
 		app := newAppWithFake(t, &jiratest.FakeClient{T: t})
 		app.usersCache = map[string][]jira.User{}
-		app.onChecklist = func([]components.ModalItem) tea.Cmd { return nil }
+		app.onChecklist = func(components.ChecklistConfirmedMsg) tea.Cmd { return nil }
 
 		_, _ = app.handleUsersLoaded(usersLoadedMsg{
 			users:    []jira.User{{AccountID: "u1", DisplayName: "Ann"}},

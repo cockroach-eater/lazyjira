@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 )
@@ -24,11 +25,17 @@ type ClientInterface interface {
 	AssignIssue(ctx context.Context, issueKey, accountID string) error
 	GetProjects(ctx context.Context) ([]Project, error)
 	GetBoards(ctx context.Context) ([]Board, error)
+	GetBoardConfiguration(ctx context.Context, boardID int) (*BoardConfiguration, error)
 	GetBoardIssues(ctx context.Context, boardID int, jql string) ([]Issue, error)
 	GetChildren(ctx context.Context, parentKey string) ([]Issue, error)
 	UpdateIssue(ctx context.Context, issueKey string, fields map[string]any) error
 	RemoveIssueParent(ctx context.Context, issueKey string) error
 	GetPriorities(ctx context.Context) ([]Priority, error)
+	GetProjectStatuses(ctx context.Context, projectKey string) ([]Status, error)
+	GetIssueLinkTypes(ctx context.Context) ([]IssueLinkType, error)
+	CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	DeleteIssueLink(ctx context.Context, linkID string) error
+	DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error
 	CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error)
 	GetCreateMeta(ctx context.Context, projectKey, issueTypeID string) ([]CreateMetaField, error)
 	GetComments(ctx context.Context, issueKey string) ([]Comment, error)
@@ -298,7 +305,7 @@ func (c *Client) fillSprintFromCustomField(issue *Issue, raw map[string]json.Raw
 
 func (c *Client) SearchIssues(ctx context.Context, jql string, startAt, maxResults int) (*SearchResult, error) {
 	sprintField := c.SprintFieldID()
-	fields := "summary,description,status,priority,assignee,reporter,labels,components," + sprintField + ",issuetype,created,updated,subtasks,issuelinks,parent"
+	fields := "summary,description,status,priority,assignee,reporter,labels,components," + sprintField + ",issuetype,created,updated,subtasks,issuelinks,parent,timetracking"
 	// Default sprint custom-field ids: 10020 (Cloud), 10010 (older Server/DC).
 	if sprintField == sprintFieldAlias {
 		fields += ",customfield_10010,customfield_10020"
@@ -479,6 +486,38 @@ func (c *Client) GetBoards(ctx context.Context) ([]Board, error) {
 	return boards, nil
 }
 
+// GetBoardConfiguration returns the column layout of a board. Columns that map
+// to no status are dropped: they can hold no card.
+func (c *Client) GetBoardConfiguration(ctx context.Context, boardID int) (*BoardConfiguration, error) {
+	var raw struct {
+		ColumnConfig struct {
+			Columns []struct {
+				Name     string `json:"name"`
+				Statuses []struct {
+					ID string `json:"id"`
+				} `json:"statuses"`
+			} `json:"columns"`
+		} `json:"columnConfig"`
+	}
+	path := fmt.Sprintf("/board/%d/configuration", boardID)
+	if err := c.doAgile(ctx, path, &raw); err != nil {
+		return nil, fmt.Errorf("get board %d configuration: %w", boardID, err)
+	}
+
+	config := &BoardConfiguration{BoardID: boardID}
+	for _, col := range raw.ColumnConfig.Columns {
+		if len(col.Statuses) == 0 {
+			continue
+		}
+		ids := make([]string, 0, len(col.Statuses))
+		for _, s := range col.Statuses {
+			ids = append(ids, s.ID)
+		}
+		config.Columns = append(config.Columns, BoardColumn{Name: col.Name, StatusIDs: ids})
+	}
+	return config, nil
+}
+
 func (c *Client) GetBoardIssues(ctx context.Context, boardID int, jql string) ([]Issue, error) {
 	const batchSize = 50
 	const maxPages = 50
@@ -542,6 +581,96 @@ func (c *Client) GetPriorities(ctx context.Context) ([]Priority, error) {
 		return nil, fmt.Errorf("get priorities: %w", err)
 	}
 	return raw, nil
+}
+
+// GetProjectStatuses returns the statuses reachable in a project, deduplicated
+// across issue types and ordered To Do → In Progress → Done. These are the
+// board columns: unlike GetTransitions they do not depend on a current issue.
+func (c *Client) GetProjectStatuses(ctx context.Context, projectKey string) ([]Status, error) {
+	var raw []struct {
+		Statuses []statusResponse `json:"statuses"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/project/"+projectKey+"/statuses", nil, &raw); err != nil {
+		return nil, fmt.Errorf("get statuses of project %s: %w", projectKey, err)
+	}
+
+	seen := make(map[string]bool)
+	var out []Status
+	for _, byType := range raw {
+		for i := range byType.Statuses {
+			s := byType.Statuses[i].toStatus()
+			if s == nil || seen[s.ID] {
+				continue
+			}
+			seen[s.ID] = true
+			out = append(out, *s)
+		}
+	}
+	SortStatuses(out)
+	return out, nil
+}
+
+// SortStatuses orders statuses by workflow category, keeping the server order
+// within each category.
+func SortStatuses(statuses []Status) {
+	sort.SliceStable(statuses, func(i, j int) bool {
+		return statusCategoryRank(statuses[i].CategoryKey) < statusCategoryRank(statuses[j].CategoryKey)
+	})
+}
+
+// statusCategoryRank maps a Jira status category key to a column position.
+// Unknown categories sort with "in progress" so they stay visible in the middle.
+func statusCategoryRank(key string) int {
+	switch key {
+	case "new":
+		return 0
+	case "done":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func (c *Client) GetIssueLinkTypes(ctx context.Context) ([]IssueLinkType, error) {
+	var raw struct {
+		IssueLinkTypes []IssueLinkType `json:"issueLinkTypes"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/issueLinkType", nil, &raw); err != nil {
+		return nil, fmt.Errorf("get issue link types: %w", err)
+	}
+	return raw.IssueLinkTypes, nil
+}
+
+// CreateIssueLink links two issues. The direction is carried by the argument
+// order: inwardKey is the issue the link points at ("is blocked by" side),
+// outwardKey the one it points from ("blocks" side).
+func (c *Client) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	body := map[string]any{
+		"type":         map[string]string{"name": typeName},
+		"inwardIssue":  map[string]string{"key": inwardKey},
+		"outwardIssue": map[string]string{"key": outwardKey},
+	}
+	if err := c.do(ctx, http.MethodPost, "/issueLink", body, nil); err != nil {
+		return fmt.Errorf("create %s link %s -> %s: %w", typeName, outwardKey, inwardKey, err)
+	}
+	return nil
+}
+
+func (c *Client) DeleteIssueLink(ctx context.Context, linkID string) error {
+	if err := c.do(ctx, http.MethodDelete, "/issueLink/"+linkID, nil, nil); err != nil {
+		return fmt.Errorf("delete issue link %s: %w", linkID, err)
+	}
+	return nil
+}
+
+// DeleteIssue removes an issue. Jira rejects the call with 400 when the issue
+// has subtasks and deleteSubtasks is false, so callers can retry after asking.
+func (c *Client) DeleteIssue(ctx context.Context, issueKey string, deleteSubtasks bool) error {
+	path := fmt.Sprintf("/issue/%s?deleteSubtasks=%t", issueKey, deleteSubtasks)
+	if err := c.do(ctx, http.MethodDelete, path, nil, nil); err != nil {
+		return fmt.Errorf("delete issue %s: %w", issueKey, err)
+	}
+	return nil
 }
 
 func (c *Client) CreateIssue(ctx context.Context, fields map[string]any) (*Issue, error) {
@@ -861,22 +990,23 @@ type issueResponse struct {
 }
 
 type issueFieldsResponse struct {
-	Summary     string                     `json:"summary"`
-	Description any                        `json:"description"`
-	Status      *statusResponse            `json:"status"`
-	Priority    *Priority                  `json:"priority"`
-	Assignee    *userResponse              `json:"assignee"`
-	Reporter    *userResponse              `json:"reporter"`
-	Labels      []string                   `json:"labels"`
-	Components  []Component                `json:"components"`
-	Sprint      *Sprint                    `json:"sprint"`
-	IssueType   *IssueType                 `json:"issuetype"`
-	Parent      *issueResponse             `json:"parent"`
-	Created     JiraTime                   `json:"created"`
-	Updated     JiraTime                   `json:"updated"`
-	Subtasks    []issueResponse            `json:"subtasks"`
-	IssueLinks  []issueLinkResponse        `json:"issuelinks"`
-	RawExtra    map[string]json.RawMessage `json:"-"`
+	Summary      string                     `json:"summary"`
+	Description  any                        `json:"description"`
+	Status       *statusResponse            `json:"status"`
+	Priority     *Priority                  `json:"priority"`
+	Assignee     *userResponse              `json:"assignee"`
+	Reporter     *userResponse              `json:"reporter"`
+	Labels       []string                   `json:"labels"`
+	Components   []Component                `json:"components"`
+	Sprint       *Sprint                    `json:"sprint"`
+	IssueType    *IssueType                 `json:"issuetype"`
+	Parent       *issueResponse             `json:"parent"`
+	Created      JiraTime                   `json:"created"`
+	Updated      JiraTime                   `json:"updated"`
+	Subtasks     []issueResponse            `json:"subtasks"`
+	IssueLinks   []issueLinkResponse        `json:"issuelinks"`
+	TimeTracking *TimeTracking              `json:"timetracking"`
+	RawExtra     map[string]json.RawMessage `json:"-"`
 }
 
 func (f *issueFieldsResponse) UnmarshalJSON(data []byte) error {
@@ -928,6 +1058,11 @@ func (r *issueResponse) toIssue() Issue {
 		IssueType:  r.Fields.IssueType,
 		Created:    r.Fields.Created.Time,
 		Updated:    r.Fields.Updated.Time,
+	}
+
+	if !r.Fields.TimeTracking.IsZero() {
+		tt := *r.Fields.TimeTracking
+		issue.TimeTracking = &tt
 	}
 
 	if r.Fields.Status != nil {

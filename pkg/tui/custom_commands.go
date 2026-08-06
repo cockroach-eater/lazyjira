@@ -93,6 +93,9 @@ func (a *App) activeContexts() []config.Context {
 			out = append(out, config.CtxDetail)
 		case views.ModeProject:
 			out = append(out, config.CtxProjects)
+		case views.ModeKanban:
+			// The board shows a project, so project commands apply.
+			out = append(out, config.CtxProjects)
 		case views.ModeSplash:
 			// no custom command contexts on splash
 		}

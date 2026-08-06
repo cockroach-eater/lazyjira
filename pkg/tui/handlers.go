@@ -26,6 +26,7 @@ func (a *App) handleSearchChanged(msg components.SearchChangedMsg) (tea.Model, t
 	switch {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
 		a.issuesList.SetFilter(msg.Query)
+		a.refreshBoard()
 	case a.side == sideLeft && a.leftFocus == focusInfo:
 		a.infoPanel.SetFilter(msg.Query)
 	case a.side == sideLeft && a.leftFocus == focusProjects:
@@ -41,6 +42,7 @@ func (a *App) handleSearchConfirmed() (tea.Model, tea.Cmd) {
 	case a.side == sideLeft && a.leftFocus == focusIssues:
 		selectedIssue := a.issuesList.SelectedIssue()
 		a.issuesList.ClearFilter()
+		a.refreshBoard()
 		if selectedIssue != nil {
 			if _, cmd := a.Update(views.IssueSelectedMsg{Issue: selectedIssue}); cmd != nil {
 				cmds = append(cmds, cmd)
@@ -65,6 +67,7 @@ func (a *App) handleSearchCancelled() (tea.Model, tea.Cmd) {
 	a.issuesList.SetFilter("")
 	a.infoPanel.SetFilter("")
 	a.projectList.SetFilter("")
+	a.refreshBoard()
 	return a, nil
 }
 
@@ -91,14 +94,18 @@ func (a *App) selectProject(p *jira.Project) tea.Cmd {
 	a.createMetaCache = make(map[string][]jira.CreateMetaField)
 	a.invalidateInFlight()
 	a.infoPanel.SetIssue(nil)
+	// A different project means a different set of boards.
+	a.activeBoard = -1
 	a.resolveBoardID()
 	if !a.demoMode {
 		go saveLastProject(p.Key)
 	}
+	// Picking a project replaces whatever task was open with its board.
+	cmds := []tea.Cmd{a.showBoard()}
 	if _, ok := a.usersCache[p.Key]; !ok {
-		return prefetchUsers(p.Key)
+		cmds = append(cmds, prefetchUsers(p.Key))
 	}
-	return nil
+	return tea.Batch(cmds...)
 }
 
 // routeToPanel forwards input to the focused panel.

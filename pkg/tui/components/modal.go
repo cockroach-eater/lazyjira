@@ -31,6 +31,10 @@ type ModalCancelledMsg struct{}
 // ChecklistConfirmedMsg is sent when user confirms a checklist selection
 type ChecklistConfirmedMsg struct {
 	Selected []ModalItem
+	// Cursor is the row that was highlighted on confirm. Callers for which an
+	// empty Selected is ambiguous -- a filter, where "nothing ticked" and
+	// "just this row" look the same to the user -- can fall back to it.
+	Cursor ModalItem
 }
 
 // Modal is a centered popup list for picking an option
@@ -231,6 +235,12 @@ func (m *Modal) IsVisible() bool   { return m.visible }
 func (m *Modal) IsSearching() bool { return m.searching }
 func (m *Modal) IsChecklist() bool { return m.checklist }
 
+// Title is the heading currently displayed.
+func (m *Modal) Title() string { return m.title }
+
+// Items are the rows currently offered, in display order.
+func (m *Modal) Items() []ModalItem { return m.items }
+
 // SearchView renders the modal search bar for external use
 func (m *Modal) SearchView(_ int) string {
 	return RenderFilterBarInput(&m.filterInput)
@@ -348,8 +358,12 @@ func (m *Modal) handleEnter() (Modal, tea.Cmd) {
 				result = append(result, item)
 			}
 		}
+		var cursor ModalItem
+		if m.cursor >= 0 && m.cursor < len(m.items) && !m.items[m.cursor].Separator {
+			cursor = m.items[m.cursor]
+		}
 		m.visible = false
-		return *m, func() tea.Msg { return ChecklistConfirmedMsg{Selected: result} }
+		return *m, func() tea.Msg { return ChecklistConfirmedMsg{Selected: result, Cursor: cursor} }
 	}
 	if m.cursor >= 0 && m.cursor < len(m.items) && !m.items[m.cursor].Separator {
 		selected := m.items[m.cursor]
