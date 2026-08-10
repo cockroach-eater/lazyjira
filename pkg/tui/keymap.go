@@ -28,6 +28,7 @@ const (
 	ActFocusInfo      Action = "focusInfo"
 	ActFocusProj      Action = "focusProjects"
 	ActCopyURL        Action = "copyURL"
+	ActCopyKey        Action = "copyKey"
 	ActBrowser        Action = "browser"
 	ActURLPicker      Action = "urlPicker"
 	ActTransition     Action = "transition"
@@ -82,6 +83,7 @@ func DefaultKeymap() Keymap {
 		ActFocusInfo:      {"3"},
 		ActFocusProj:      {"4"},
 		ActCopyURL:        {"y"},
+		ActCopyKey:        {"ctrl+y"},
 		ActBrowser:        {"o"},
 		ActURLPicker:      {"u"},
 		ActTransition:     {"t"},
@@ -146,6 +148,7 @@ func KeymapFromConfig(kcfg config.KeybindingConfig) Keymap {
 	set(ActBrowser, kcfg.Issues.Browser)
 	set(ActURLPicker, kcfg.Issues.URLPicker)
 	set(ActCopyURL, kcfg.Issues.CopyURL)
+	set(ActCopyKey, kcfg.Issues.CopyKey)
 	set(ActCloseJQLTab, kcfg.Issues.CloseJQLTab)
 	set(ActCreateBranch, kcfg.Issues.CreateBranch)
 	set(ActCreateIssue, kcfg.Issues.CreateIssue)

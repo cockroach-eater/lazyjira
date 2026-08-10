@@ -38,6 +38,7 @@ Detail scroll keys (`J`/`K`/`ctrl+f`/`ctrl+b`) can be remapped via `keybinding.d
 | `o` | Open in browser |
 | `u` | Pick URL from description |
 | `y` | Copy issue URL |
+| `ctrl+y` | Copy issue key |
 | `b` | Create branch from issue |
 | `s` | JQL search |
 | `x` | Close JQL tab |

@@ -102,6 +102,7 @@ keybinding:
         browser: o
         urlPicker: u
         copyURL: "y"
+        copyKey: "ctrl+y"
         closeJQLTab: x
         createBranch: b
     projects:

@@ -90,6 +90,26 @@ func TestContextBindings_DetailCommentsIncludesEdit(t *testing.T) {
 	}
 }
 
+func TestContextBindings_IssuesIncludesCopyKey(t *testing.T) {
+	t.Parallel()
+	app := appForKeybindings(t)
+	app.side = sideLeft
+	app.leftFocus = focusIssues
+
+	bindings := app.ContextBindings()
+
+	found := false
+	for _, binding := range bindings {
+		if binding.Description == "copy issue key" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("copy issue key binding missing from issues context")
+	}
+}
+
 func TestHelpBarItems_NotEmpty(t *testing.T) {
 	t.Parallel()
 

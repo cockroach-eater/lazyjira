@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/textfuel/lazyjira/v2/pkg/config"
+	"github.com/textfuel/lazyjira/v2/pkg/internal/testkit"
 	"github.com/textfuel/lazyjira/v2/pkg/jira"
 	"github.com/textfuel/lazyjira/v2/pkg/jira/jiratest"
 )
@@ -175,5 +177,51 @@ func TestHandleIssueAction_Comments(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("expected fetch command for uncached issue")
+	}
+}
+
+func TestHandleIssueAction_CopyKey(t *testing.T) {
+	t.Parallel()
+	var captured string
+	original := runExternalCommand
+	t.Cleanup(func() { runExternalCommand = original })
+	runExternalCommand = func(input string, waitForExit bool, name string, args ...string) {
+		captured = input
+	}
+
+	app := focusApp(t)
+	app.issuesList.SetIssues([]jira.Issue{{Key: testKey}})
+	app.previewKey = testKey
+	app.issueCache[testKey] = &jira.Issue{Key: testKey}
+
+	_, _, ok := app.handleIssueAction(ActCopyKey)
+
+	if !ok {
+		t.Fatal("ActCopyKey should be handled")
+	}
+	testkit.AssertEqual(t, "clipboard payload", captured, testKey)
+	if !strings.Contains(app.helpBar.View(), testKey) {
+		t.Errorf("help bar should show status message containing %q, got %q", testKey, app.helpBar.View())
+	}
+}
+
+func TestHandleIssueAction_CopyKey_NoIssueIsNoop(t *testing.T) {
+	t.Parallel()
+	var called bool
+	original := runExternalCommand
+	t.Cleanup(func() { runExternalCommand = original })
+	runExternalCommand = func(input string, waitForExit bool, name string, args ...string) {
+		called = true
+	}
+
+	app := focusApp(t)
+
+	_, _, ok := app.handleIssueAction(ActCopyKey)
+
+	if !ok {
+		t.Fatal("ActCopyKey should report handled even with no issue")
+	}
+	if called {
+		t.Error("clipboard should not be touched when no issue is selected")
 	}
 }

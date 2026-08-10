@@ -39,3 +39,23 @@ func TestKeymap_MatchUnknownReturnsEmpty(t *testing.T) {
 	testkit.AssertEqual(t, "unknown key", keymap.Match("this-key-is-unbound"), Action(""))
 	testkit.AssertEqual(t, "unknown nav key", keymap.MatchNav("this-key-is-unbound"), components.NavNone)
 }
+
+func TestDefaultKeymap_CopyKeyBoundToCtrlY(t *testing.T) {
+	t.Parallel()
+
+	keymap := DefaultKeymap()
+
+	testkit.AssertEqual(t, "copyKey resolves ctrl+y", keymap.Match("ctrl+y"), ActCopyKey)
+}
+
+func TestKeymapFromConfig_CopyKeyOverride(t *testing.T) {
+	t.Parallel()
+
+	var keybindingConfig config.KeybindingConfig
+	keybindingConfig.Issues.CopyKey = "Y"
+
+	keymap := KeymapFromConfig(keybindingConfig)
+
+	testkit.AssertSliceEqual(t, "copyKey binding overridden", keymap[ActCopyKey], []string{"Y"})
+	testkit.AssertEqual(t, "Match resolves override", keymap.Match("Y"), ActCopyKey)
+}

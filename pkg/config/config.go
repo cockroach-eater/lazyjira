@@ -162,6 +162,7 @@ type IssueKeys struct {
 	Browser       string `yaml:"browser"`
 	URLPicker     string `yaml:"urlPicker"`
 	CopyURL       string `yaml:"copyURL"`
+	CopyKey       string `yaml:"copyKey"`
 	CloseJQLTab   string `yaml:"closeJQLTab"`
 	CreateBranch  string `yaml:"createBranch"`
 	CreateIssue   string `yaml:"createIssue"`

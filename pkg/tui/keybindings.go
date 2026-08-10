@@ -67,6 +67,8 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActCopyURL, "copy issue URL"),
+			a.bind(ActCopyKey, "copy issue key"),
 			a.bind(ActCreateBranch, "create branch"),
 			a.bind(ActNew, "create issue"),
 			a.bind(ActDuplicateIssue, "duplicate issue"),
@@ -86,6 +88,8 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open issue in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActCopyURL, "copy issue URL"),
+			a.bind(ActCopyKey, "copy issue key"),
 			a.bind(ActFocusRight, "next panel"),
 			a.bind(ActFocusLeft, "previous panel"),
 		)
@@ -117,6 +121,8 @@ func (a *App) ContextBindings() []Binding {
 			a.bind(ActAssignee, "change assignee"),
 			a.bind(ActBrowser, "open in browser"),
 			a.bind(ActURLPicker, "open URL picker"),
+			a.bind(ActCopyURL, "copy issue URL"),
+			a.bind(ActCopyKey, "copy issue key"),
 		)
 		if a.detailView.ActiveTab() == views.TabComments {
 			bindings = append(bindings,

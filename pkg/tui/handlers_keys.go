@@ -378,6 +378,14 @@ func (a *App) handleIssueAction(action Action) (tea.Model, tea.Cmd, bool) {
 	case ActCopyURL:
 		if cur := a.currentIssue(); cur != nil {
 			copyToClipboard(a.cfg.Jira.Host + "/browse/" + cur.Key)
+			a.helpBar.SetStatusMsg("Copied URL for " + cur.Key)
+		}
+		return a, nil, true
+
+	case ActCopyKey:
+		if cur := a.currentIssue(); cur != nil {
+			copyToClipboard(cur.Key)
+			a.helpBar.SetStatusMsg("Copied " + cur.Key)
 		}
 		return a, nil, true
 
